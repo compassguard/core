@@ -173,6 +173,8 @@ export async function streamChat(
 
   const decoder = new TextDecoder();
   let buffer = '';
+  let currentEvent = '';
+  let currentDataLines: string[] = [];
 
   try {
     while (true) {
@@ -183,16 +185,15 @@ export async function streamChat(
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
 
-      let currentEvent = '';
-      let currentData = '';
-
       for (const line of lines) {
-        if (line.startsWith('event: ')) {
-          currentEvent = line.slice(7).trim();
-        } else if (line.startsWith('data: ')) {
-          currentData = line.slice(6);
-        } else if (line === '' && currentEvent && currentData) {
+        const normalizedLine = line.endsWith('\r') ? line.slice(0, -1) : line;
+        if (normalizedLine.startsWith('event: ')) {
+          currentEvent = normalizedLine.slice(7).trim();
+        } else if (normalizedLine.startsWith('data: ')) {
+          currentDataLines.push(normalizedLine.slice(6));
+        } else if (normalizedLine === '' && currentEvent && currentDataLines.length > 0) {
           // End of event, process it
+          const currentData = currentDataLines.join('\n');
           try {
             const data = JSON.parse(currentData);
             handleSSEEvent(currentEvent, data, callbacks);
@@ -200,7 +201,7 @@ export async function streamChat(
             console.warn('[SSE] Failed to parse event data:', currentData, e);
           }
           currentEvent = '';
-          currentData = '';
+          currentDataLines = [];
         }
       }
     }

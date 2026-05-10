@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   streamChat,
@@ -39,6 +39,7 @@ export function useAgentMessage() {
 
   // Track pending state
   const isPendingRef = useRef(false);
+  const [isPending, setIsPending] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const sendUserMessage = useCallback(async (content: string) => {
@@ -48,6 +49,7 @@ export function useAgentMessage() {
     setCurrentWalletAddress(userAddress || null);
     ensureConversationForInput(userAddress || null);
     isPendingRef.current = true;
+    setIsPending(true);
     addUserMessage(content);
     startStreaming();
 
@@ -107,6 +109,7 @@ export function useAgentMessage() {
       setStatus('idle');
     } finally {
       isPendingRef.current = false;
+      setIsPending(false);
       abortControllerRef.current = null;
     }
   }, [
@@ -244,7 +247,7 @@ export function useAgentMessage() {
     sendUserMessage,
     approveProposal,
     rejectProposal,
-    isPending: isPendingRef.current,
+    isPending,
     error: null,
   };
 }

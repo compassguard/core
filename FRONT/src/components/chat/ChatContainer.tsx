@@ -8,6 +8,7 @@ import { MessageList } from './MessageList';
 export function ChatContainer() {
   const messages = useChatStore((state) => state.messages);
   const status = useChatStore((state) => state.status);
+  const pendingProposal = useChatStore((state) => state.pendingProposal);
   const blocked = useChatStore((state) => state.isInputBlocked());
   const readOnlyReason = useChatStore((state) => state.getActiveConversationReadOnlyReason());
   const setCurrentWalletAddress = useChatStore((state) => state.setCurrentWalletAddress);
@@ -22,6 +23,12 @@ export function ChatContainer() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages.length, status]);
+
+  const disabledPlaceholder = pendingProposal
+    ? 'Confirm or cancel the proposal first'
+    : status === 'executing'
+      ? 'Preparing transaction...'
+      : 'Wallet Copilot is responding...';
 
   return (
     <section className="flex min-h-0 flex-1 flex-col rounded-none bg-transparent md:rounded-3xl md:border md:border-outline md:bg-surface md:shadow-sm">
@@ -40,7 +47,12 @@ export function ChatContainer() {
         <div ref={bottomRef} />
       </div>
       <div className="sticky bottom-0 bg-background/90 p-3 backdrop-blur md:rounded-b-3xl md:bg-surface/90 md:p-5">
-        <ChatInput disabled={blocked || isPending} isThinking={status === 'thinking'} onSubmit={sendUserMessage} />
+        <ChatInput
+          disabled={blocked || isPending}
+          disabledPlaceholder={disabledPlaceholder}
+          isThinking={status === 'thinking'}
+          onSubmit={sendUserMessage}
+        />
       </div>
     </section>
   );

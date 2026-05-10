@@ -756,33 +756,39 @@ async function streamResponseToSSE(
   writer: WritableStreamDefaultWriter<Uint8Array>,
   encoder: TextEncoder
 ) {
+  let streamedText = false;
+  const writeToken = async (content: string) => {
+    if (!content) return;
+    streamedText = true;
+    await writeSSE(writer, encoder, 'token', { content });
+  };
+
   for await (const event of parseResponsesStream(responseStream)) {
     if (event.type === 'response.output_text.delta') {
-      const delta = event.delta || '';
-      if (delta) {
-        await writeSSE(writer, encoder, 'token', { content: delta });
-      }
+      await writeToken(event.delta || '');
     } else if (event.type === 'response.content_part.delta') {
-      const delta = event.delta?.text || '';
-      if (delta) {
-        await writeSSE(writer, encoder, 'token', { content: delta });
-      }
+      await writeToken(event.delta?.text || '');
     } else if (event.type === 'response.output_item.added') {
       if (event.item?.type === 'message' && event.item?.content) {
         for (const part of event.item.content) {
-          if (part.text) {
-            await writeSSE(writer, encoder, 'token', { content: part.text });
-          }
+          await writeToken(part.text || '');
         }
       }
-    } else if (event.type === 'response.completed') {
+    } else if (
+      (event.type === 'response.output_text.done' ||
+        event.type === 'response.content_part.done' ||
+        event.type === 'response.output_item.done') &&
+      streamedText
+    ) {
+      return;
+    } else if (event.type === 'response.completed' && !streamedText) {
       const output = event.response?.output;
       if (Array.isArray(output)) {
         for (const item of output) {
           if (item.type === 'message' && item.content) {
             for (const part of item.content) {
-              if (part.text && part.type === 'output_text') {
-                await writeSSE(writer, encoder, 'token', { content: part.text });
+              if (part.type === 'output_text') {
+                await writeToken(part.text || '');
               }
             }
           }

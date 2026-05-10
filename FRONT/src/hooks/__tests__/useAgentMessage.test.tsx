@@ -1,4 +1,4 @@
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -80,6 +80,34 @@ describe('useAgentMessage', () => {
       content: 'Hola, revisar cartera',
       user_address: 'wallet-1',
     });
+  });
+
+  it('updates pending state when streaming starts and finishes', async () => {
+    let resolveStream: (() => void) | undefined;
+    mockedStreamChat.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveStream = resolve;
+        })
+    );
+
+    const { result } = renderHook(() => useAgentMessage(), { wrapper: wrapperFactory() });
+    let sendPromise: Promise<void> = Promise.resolve();
+
+    act(() => {
+      sendPromise = result.current.sendUserMessage('Hola');
+    });
+
+    await waitFor(() => {
+      expect(result.current.isPending).toBe(true);
+    });
+
+    await act(async () => {
+      resolveStream?.();
+      await sendPromise;
+    });
+
+    expect(result.current.isPending).toBe(false);
   });
 
   it('does not approve pending proposal when wallet mismatches conversation wallet', async () => {
