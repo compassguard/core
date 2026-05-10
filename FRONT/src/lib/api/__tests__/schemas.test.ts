@@ -40,4 +40,34 @@ describe('api schemas', () => {
 
     expect(parsed.balances[0].symbol).toBe('SOL');
   });
+
+  it('allows change_24h_pct to be omitted from balances response', () => {
+    const parsed = GetBalancesResponseSchema.parse({
+      balances: [
+        {
+          symbol: 'USDC',
+          mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+          amount: '2500000000',
+          decimals: 6,
+          ui_amount: 2500,
+          usd_value: 2500,
+        },
+      ],
+      total_usd: 2500,
+      updated_at: new Date().toISOString(),
+    });
+
+    expect(parsed.total_usd).toBe(2500);
+    expect(parsed.change_24h_pct).toBeUndefined();
+  });
+
+  it('rejects wallet balances with a non-ISO updated_at timestamp', () => {
+    expect(() =>
+      GetBalancesResponseSchema.parse({
+        balances: [],
+        total_usd: 0,
+        updated_at: 'not-a-date',
+      }),
+    ).toThrow();
+  });
 });

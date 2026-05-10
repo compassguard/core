@@ -88,7 +88,7 @@ export type GetBalancesQuery = {
 export type GetBalancesResponse = {
   balances: TokenBalance[];
   total_usd: number;
-  change_24h_pct: number;
+  change_24h_pct?: number;
   updated_at: string;
 };
 

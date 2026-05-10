@@ -42,6 +42,19 @@ Para cada feature, aplicar una combinacion de controles:
   - Backend rules engine para validaciones rapidas y decision de permit/deny.
   - Smart contracts cuando se requiera garantia on-chain o restricciones no bypassables.
 
+## Convencion de specs por feature
+
+Las specs SDD de nuevas features no deben escribirse directamente en `docs/` como archivos globales.
+Cada feature debe tener su propia carpeta:
+
+- `docs/<nombre-feature>/functional-spec.md`
+- `docs/<nombre-feature>/technical-spec.md`
+- `docs/<nombre-feature>/task.json`
+
+Usar `kebab-case` para `<nombre-feature>`; por ejemplo `docs/wallet-balance-display/`.
+Antes de crear una spec nueva, revisar si ya existe una carpeta para esa feature y continuar ahi.
+Solo usar archivos en la raiz de `docs/` para documentacion transversal, indices o documentos historicos ya existentes.
+
 ## Principio de implementacion
 
 Ninguna operacion critica debe ejecutarse sin pasar primero por la capa de guardrails.

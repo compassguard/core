@@ -86,8 +86,8 @@ export const TokenBalanceSchema = z.object({
 export const GetBalancesResponseSchema = z.object({
   balances: z.array(TokenBalanceSchema),
   total_usd: z.number(),
-  change_24h_pct: z.number(),
-  updated_at: z.string(),
+  change_24h_pct: z.number().optional(),
+  updated_at: z.string().datetime(),
 });
 
 export const AllocationItemSchema = z.object({

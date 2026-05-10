@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { getPhantomProvider, type PhantomPublicKey } from '@/types/phantom';
+import { getAllocationFromBalances, getHighlightBalances } from '@/lib/walletBalances';
 import { useWalletBalances } from './useWalletBalances';
 
 type WalletState = {
@@ -102,6 +103,8 @@ function attemptEagerConnect() {
 export function useWallet() {
   const state = useSyncExternalStore(subscribeToWallet, getWalletSnapshot, getWalletSnapshot);
   const balancesQuery = useWalletBalances(state.address);
+  const highlightBalances = getHighlightBalances(balancesQuery.data?.balances);
+  const allocation = getAllocationFromBalances(balancesQuery.data?.balances);
 
   const connect = useCallback(async () => {
     updateWalletState({ walletError: undefined, isConnecting: true });
@@ -164,5 +167,8 @@ export function useWallet() {
     balances: balancesQuery.data,
     isBalancesLoading: balancesQuery.isLoading,
     balancesError: balancesQuery.error,
+    highlightBalances,
+    allocation,
+    refreshBalances: balancesQuery.refetch,
   };
 }

@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "status": "completed",
+  "feature": "wallet-balance-display",
+  "goal": "Mostrar balance general de la wallet conectada y saldos destacados de SOL y USDC sin usar embedded wallet.",
+  "acceptanceCriteria": [
+    "La feature usa Phantom injected provider y no Phantom Embedded.",
+    "El total general se renderiza desde total_usd de /api/wallet/balances.",
+    "SOL y USDC se identifican por mint canonico de mainnet-beta.",
+    "TopBar, BalanceCard y AssetList muestran la informacion con layout estable.",
+    "Los estados loading, error y empty no inventan datos faltantes.",
+    "useWallet sigue siendo la fuente unica de estado de wallet y balances."
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Alinear contrato de balances",
+      "filesToModify": [
+        "FRONT/src/types/api.ts"
+      ],
+      "dependencies": [],
+      "status": "completed",
+      "evidence": [
+        "Actualicé GetBalancesResponse en FRONT/src/types/api.ts para permitir change_24h_pct opcional.",
+        "Actualicé schema en FRONT/src/lib/api/schemas.ts para exigir updated_at ISO con z.string().datetime().",
+        "Ajusté tests en FRONT/src/lib/api/__tests__/schemas.test.ts para change_24h_pct opcional y rechazo de updated_at no ISO."
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "Derivar SOL y USDC por mint",
+      "filesToModify": [
+        "FRONT/src/hooks/useWallet.ts"
+      ],
+      "dependencies": [
+        "T1"
+      ],
+      "status": "completed",
+      "evidence": [
+        "Añadí constantes canónicas SOL/USDC y helper getHighlightBalances en FRONT/src/lib/walletBalances.ts.",
+        "useWallet ahora expone highlightBalances y refreshBalances desde la fuente única de balances."
+      ]
+    },
+    {
+      "id": "T3",
+      "title": "Actualizar superficies de balance",
+      "filesToModify": [
+        "FRONT/src/components/layout/TopBar.tsx",
+        "FRONT/src/components/wallet/BalanceCard.tsx",
+        "FRONT/src/components/wallet/AssetList.tsx"
+      ],
+      "dependencies": [
+        "T2"
+      ],
+      "status": "completed",
+      "evidence": [
+        "TopBar muestra total de balances con placeholder, chips compactos de SOL/USDC desde highlightBalances y accion Retry balance en error.",
+        "TopBar y BalanceCard muestran SOL como balance principal cuando devnet entrega SOL real pero total_usd es 0.",
+        "BalanceCard ahora maneja loading/error sin mostrar 0, soporta change_24h_pct faltante y muestra mensaje de assets vacíos.",
+        "AssetList ahora muestra estados loading/error/empty de forma compacta y prioriza datos desde useWallet como fallback."
+      ]
+    },
+  {
+      "id": "T4",
+      "title": "Validar desktop, mobile y estados",
+      "filesToModify": [],
+      "dependencies": [
+        "T3"
+      ],
+      "status": "completed",
+      "evidence": [
+        "Instaladas dependencias en el worktree con npm install para habilitar toolchain local.",
+        "npm test paso: 3 archivos de test, 16 tests passed.",
+        "npm run lint:front paso sin errores; quedan 6 warnings preexistentes de react-refresh/only-export-components en componentes ui.",
+        "npm run build paso correctamente; queda warning preexistente de Fast Refresh en app/layout.tsx y aviso de configuracion ESLint Next."
+      ]
+    },
+    {
+      "id": "T5",
+      "title": "Sustituir balances mockeados por consulta real en devnet",
+      "filesToModify": [
+        "app/api/wallet/balances/route.ts",
+        "app/api/wallet/balances/route.test.ts"
+      ],
+      "dependencies": [
+        "T4"
+      ],
+      "status": "completed",
+      "evidence": [
+        "Reemplacé la respuesta hardcodeada en /api/wallet/balances por `getBalance` a Solana RPC con fallback a `https://api.devnet.solana.com` cuando `SOLANA_RPC_URL` no está seteada.",
+        "La respuesta mantiene `balances[]`, `total_usd` y `updated_at`; se devuelve únicamente SOL real y no se inventa USDC.",
+        "Añadí pruebas para la ruta que validan payload realista de SOL y uso de `SOLANA_RPC_URL` cuando está presente."
+      ]
+    },
+    {
+      "id": "T6",
+      "title": "Derivar Allocation chart desde balances reales",
+      "filesToModify": [
+        "FRONT/src/lib/walletBalances.ts",
+        "FRONT/src/components/layout/RightPanel.tsx",
+        "FRONT/src/components/wallet/AssetAllocationDonut.tsx",
+        "FRONT/src/hooks/useWallet.ts",
+        "FRONT/src/lib/__tests__/walletBalances.test.ts"
+      ],
+      "dependencies": [
+        "T5"
+      ],
+      "status": "completed",
+      "evidence": [
+        "La chart de allocation dejó de depender de /api/wallet/allocation y ahora se calcula desde `useWallet.balances`.",
+        "Se agregó cálculo de porcentaje estable desde saldo real (prioriza `usd_value` y fallback a `ui_amount`) para evitar tokens inventados y mantener consistencia con data flow real.",
+        "Se mejoró estado loading/vacío del gráfico para no mostrar `Sin assets` o inventar USDC/JUP.",
+        "Se agregó cobertura en `FRONT/src/lib/__tests__/walletBalances.test.ts` para el fallback con SOL y balances sin valor."
+      ]
+    }
+  ]
+}
