@@ -50,6 +50,43 @@ export type ConditionalBuySolParams = {
   input_amount: number;
   target_price_usd: number;
   min_sol_out?: number;
+  desired_sol_amount?: number;
+  desired_sol_lamports?: number;
+  max_usdc_in?: number;
+  max_oracle_age_seconds?: number;
+  max_confidence_bps?: number;
+  recipient?: string;
+  expires_at?: string;
+  oracle_feed_pubkey?: string;
+  client_order_id?: number;
+  order_pda?: string;
+  execution_mode?: 'create_order_and_deposit';
+};
+
+export type ConditionalOrderSnapshot = {
+  orderPda: string;
+  user: string;
+  recipient: string;
+  clientOrderId: number;
+  usdcTestMint: string;
+  escrowTokenAccount: string;
+  treasuryUsdcAta: string;
+  solVaultPda: string;
+  oracleFeed: string;
+  desiredSolLamports: number;
+  maxUsdcIn: number;
+  targetPriceUsdE8: number;
+  maxOracleAgeSeconds: number;
+  maxConfidenceBps: number;
+  escrowedUsdcAmount: number;
+  executedUsdcAmount: number;
+  executedSolLamports: number;
+  status: 'open' | 'executed' | 'cancelled' | 'expired' | 'reclaimed' | 'unknown';
+  observedExecutable: boolean;
+  observedExecutableReason?: string;
+  indexedAt: number;
+  createdAt: number;
+  expiresAt: number;
 };
 
 export type FunctionExecution = {
@@ -164,6 +201,8 @@ export type TxHistoryItem = {
   status: 'success' | 'failed';
   timestamp: string;
   summary: string;
+  amount?: number;
+  amount_symbol?: string;
   amount_usd?: number;
   explorer_url: string;
 };

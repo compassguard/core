@@ -1,0 +1,269 @@
+{
+  "version": 1,
+  "status": "completed",
+  "goal": "Implement a Phase 1 public transaction history feature for the connected wallet, using backend-managed Solana provider access and a normalized public feed, while preserving a strict privacy boundary for a future Umbra-aware private history domain.",
+  "context": {
+    "source": "explorer_handoff",
+    "summary": "The worktree /private/tmp/solana-transaction-history-umbra on branch feature/transaction-history-umbra already has a stubbed /api/wallet/transactions endpoint, a History tab that fetches when active, and frontend schemas for transactions with address, limit, before, and next_cursor. The user also asked whether transaction history is compatible with Umbra privacy; the answer is yes if public history and Umbra private history are handled as separate visibility domains."
+  },
+  "acceptanceCriteria": [
+    "The History tab fetches real recent public transactions for the connected wallet instead of mock data.",
+    "GET /api/wallet/transactions validates address, supports limit and before cursor inputs, and returns normalized TxHistoryItem records plus optional amount, amount_symbol, and next_cursor.",
+    "The backend implementation uses a backend-managed Solana provider or provider proxy pattern instead of direct browser-side RPC calls.",
+    "The UI handles loading, empty, error, and pagination or load-more behavior for transaction history.",
+    "The UI includes explicit privacy copy stating that the current history view shows public on-chain activity and that Umbra private history requires a later consent-based integration.",
+    "Phase 1 does not require installing or wiring the Umbra SDK.",
+    "No generic public history response leaks private Umbra counterparties, shielded amounts, or silently decrypted metadata.",
+    "Implementation evidence records the validation performed by the Implementer and main-session integration pass."
+  ],
+  "constraints": [
+    "Keep feature documentation under docs/transaction-history/ for this feature.",
+    "Implement only Phase 1 public history in this cycle.",
+    "Preserve the existing frontend transaction schema contract unless a change is strictly necessary.",
+    "Do not require Umbra SDK installation or private-history decryption for Phase 1.",
+    "Treat public history and future Umbra private history as separate visibility domains.",
+    "Do not leak private Umbra details in the generic History view."
+  ],
+  "decisions": [
+    "Phase 1 ships a public history feed only, backed by a backend-managed Solana provider or provider proxy.",
+    "The existing TxHistoryItem and GetTransactionsResponse contract is the normalization target for Phase 1, with optional amount and amount_symbol fields for public net SOL deltas.",
+    "Classification may remain minimal in demo_fast scope, with type other accepted when the provider data is not confidently classifiable.",
+    "The frontend should keep History tab behavior lazy, fetching only when the tab is active.",
+    "Umbra compatibility is preserved by introducing a future private-history domain with explicit consent, registration state, and private event types instead of merging shielded data into the public feed."
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Implement backend public history service",
+      "description": "Add or extend a backend service that fetches recent public Solana transactions for a wallet address from a backend-managed provider, applies defensive validation, and normalizes results into TxHistoryItem records with optional next_cursor.",
+      "filesToCreate": [
+        "BACK/services/transactionHistory.ts"
+      ],
+      "filesToModify": [],
+      "dependencies": [],
+      "verification": [
+        "Service accepts address, limit, and optional before cursor.",
+        "Service returns transactions matching the frontend schema contract.",
+        "Service can emit type other when no reliable classification exists.",
+        "Service returns or derives next_cursor only when another page is available."
+      ],
+      "status": "completed",
+      "evidence": [
+        {
+          "type": "implementation",
+          "date": "2026-05-10",
+          "details": "Implemented BACK/services/transactionHistory.ts with Solana RPC-backed signature lookup, validation, timeout/abort flow, limit normalization, cursor handling, and schema-only normalization."
+        },
+        {
+          "type": "tests",
+          "date": "2026-05-10",
+          "details": "Added app/api/wallet/transactions/route.test.ts coverage for valid history conversion, validation failures, pagination clamp, and provider error redaction."
+        },
+        {
+          "type": "integration_fix",
+          "date": "2026-05-10",
+          "details": "Main-session integration fixed next_cursor typing so npm run build passes."
+        },
+        {
+          "type": "implementation",
+          "date": "2026-05-10",
+          "details": "Main-session follow-up added getTransaction enrichment for page signatures and calculates optional public net SOL deltas as amount/amount_symbol."
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "Replace wallet transactions API stub",
+      "description": "Update app/api/wallet/transactions/route.ts to validate query params, call the backend public history service, and map provider or validation failures to stable API errors instead of returning mock data.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "app/api/wallet/transactions/route.ts"
+      ],
+      "dependencies": [
+        "T1"
+      ],
+      "verification": [
+        "Requests without address fail with 400 invalid_payload.",
+        "Valid requests return normalized transactions and optional next_cursor.",
+        "The route no longer returns hardcoded demo transactions."
+      ],
+      "status": "completed",
+      "evidence": [
+        {
+          "type": "implementation",
+          "date": "2026-05-10",
+          "details": "Replaced mocked response in app/api/wallet/transactions/route.ts with query validation and real service delegation."
+        },
+        {
+          "type": "tests",
+          "date": "2026-05-10",
+          "details": "Route now returns 400 invalid_payload for malformed address/limit/before and 502 provider_error on provider failures; no mock tx payload remains."
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "title": "Wire cursor-capable frontend history fetching",
+      "description": "Update the frontend client and history hook so the History tab can request limit and before cursor values, cache correctly by address and cursor state, and expose enough state to support load-more behavior.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "FRONT/src/lib/api/client.ts",
+        "FRONT/src/hooks/useTransactionHistory.ts"
+      ],
+      "dependencies": [
+        "T2"
+      ],
+      "verification": [
+        "Frontend requests include address and limit, and can include before when paginating.",
+        "Hook exposes loading, error, data, and a way to request the next page.",
+        "Query state stays scoped to the connected wallet address."
+      ],
+      "status": "completed",
+      "evidence": [
+        {
+          "type": "implementation",
+          "date": "2026-05-10",
+          "details": "Updated FRONT/src/lib/api/client.ts query serialization and FRONT/src/hooks/useTransactionHistory.ts to use cursor-based infinite query keyed by address."
+        },
+        {
+          "type": "tests",
+          "date": "2026-05-10",
+          "details": "Added FRONT/src/hooks/useTransactionHistory.test.ts validating page requests and wallet-change request refresh behavior."
+        },
+        {
+          "type": "integration_fix",
+          "date": "2026-05-10",
+          "details": "Main-session integration normalized the wallet address before query-key composition to avoid cache fragmentation."
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "title": "Upgrade History UI for public history states and privacy copy",
+      "description": "Improve the History view in DesktopShell so it renders loading, empty, error, populated list, explorer links, and load-more controls, and adds copy clarifying that the view currently shows public on-chain activity while Umbra private history is a later consent-based integration.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "FRONT/src/components/layout/DesktopShell.tsx"
+      ],
+      "dependencies": [
+        "T3"
+      ],
+      "verification": [
+        "Loading state appears while the query is pending.",
+        "Empty state appears when there are no public transactions.",
+        "Error state appears when the API call fails.",
+        "Users can request more history when next_cursor is available.",
+        "The screen contains privacy copy that does not promise active Umbra support yet."
+      ],
+      "status": "completed",
+      "evidence": [
+        {
+          "type": "implementation",
+          "date": "2026-05-10",
+          "details": "Updated FRONT/src/components/layout/DesktopShell.tsx with loading/empty/error/load-more states, explorer links, and explicit public-vs-private (Umbra) privacy copy."
+        },
+        {
+          "type": "tests",
+          "date": "2026-05-10",
+          "details": "Added FRONT/src/components/layout/DesktopShell.test.tsx covering state rendering and load-more callback path."
+        },
+        {
+          "type": "integration_fix",
+          "date": "2026-05-10",
+          "details": "Main-session integration scoped React UI tests to jsdom and tightened History surface radius/ASCII copy."
+        },
+        {
+          "type": "implementation",
+          "date": "2026-05-10",
+          "details": "Main-session follow-up added net wallet-change amount rendering to populated History rows."
+        }
+      ]
+    },
+    {
+      "id": "T5",
+      "title": "Add validation coverage for public history behavior",
+      "description": "Add or update tests that verify route validation, normalized response shape, pagination cursor behavior, and UI treatment of loading, empty, error, and privacy messaging.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "app/api/wallet/transactions/route.ts",
+        "FRONT/src/hooks/useTransactionHistory.ts",
+        "FRONT/src/components/layout/DesktopShell.tsx"
+      ],
+      "dependencies": [
+        "T2",
+        "T3",
+        "T4"
+      ],
+      "verification": [
+        "Tests fail if the route still returns mock data.",
+        "Tests prove invalid requests are rejected.",
+        "Tests prove next_cursor-driven pagination behavior.",
+        "Tests prove the UI includes the public-history privacy disclaimer."
+      ],
+      "status": "completed",
+      "evidence": [
+        {
+          "type": "tests",
+          "date": "2026-05-10",
+          "details": "Route, hook, and UI tests added for malformed inputs, provider redaction, no mock data/private fields, no Umbra/decrypted/grant fields, load-more, and privacy boundary copy."
+        },
+        {
+          "type": "validation",
+          "date": "2026-05-10",
+          "details": "Main-session integration verified targeted tests pass without manually forcing jsdom."
+        },
+        {
+          "type": "tests",
+          "date": "2026-05-10",
+          "details": "Main-session follow-up added coverage for SOL amount extraction from transaction balance deltas and UI rendering."
+        }
+      ]
+    },
+    {
+      "id": "T6",
+      "title": "Preserve Umbra compatibility boundary in implementation review",
+      "description": "Confirm during implementation and review that no generic history response or UI summary leaks private Umbra data, and that future private history remains a separate visibility domain with explicit consent and registration prerequisites.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "app/api/wallet/transactions/route.ts",
+        "BACK/services/transactionHistory.ts",
+        "FRONT/src/components/layout/DesktopShell.tsx"
+      ],
+      "dependencies": [
+        "T1",
+        "T4"
+      ],
+      "verification": [
+        "No public history payload includes private counterparty or shielded amount fields.",
+        "No UI copy implies private Umbra history is already active.",
+        "Reviewer can trace a clear boundary between public history and future private history."
+      ],
+      "status": "completed",
+      "evidence": [
+        {
+          "type": "review",
+          "date": "2026-05-10",
+          "details": "Verified public response shape in service mapping excludes private Umbra fields and component copy avoids claiming Umbra private support in phase 1."
+        },
+        {
+          "type": "validation",
+          "date": "2026-05-10",
+          "details": "Main-session integration verified npm run build and npm run lint after tester_reviewer findings."
+        }
+      ]
+    }
+  ],
+  "risks": [
+    "Provider responses may not contain enough metadata to classify transactions beyond other in demo scope.",
+    "Cursor semantics can differ across Solana providers, so pagination logic must stay encapsulated in the backend service.",
+    "A single History UI can mislead users if public-vs-private visibility is not stated clearly.",
+    "Future Umbra integration could accidentally leak private metadata if it is appended to the generic public feed instead of a separate domain."
+  ],
+  "validation": [
+    "Targeted route, hook, and UI tests pass.",
+    "Production build passes.",
+    "Lint passes with pre-existing react-refresh warnings only.",
+    "Contract check against GetTransactionsResponseSchema and TxHistoryItemSchema.",
+    "Review check that Phase 1 ships without Umbra SDK dependency and without silent decryption behavior."
+  ]
+}

@@ -98,13 +98,12 @@ export function prepareTransferResult(
  */
 export function generateTransferDisplay(params: TransferParams): {
   summary: string;
-  fee_usd: number;
+  fee_usd?: number;
   provider: string;
 } {
   const shortRecipient = `${params.recipient.slice(0, 4)}...${params.recipient.slice(-4)}`;
   return {
     summary: `Enviar ${params.amount} ${params.token || 'SOL'} a ${shortRecipient}`,
-    fee_usd: 0.01, // TODO: Calculate real fee
     provider: 'Wallet Copilot',
   };
 }

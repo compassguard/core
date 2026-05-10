@@ -1,33 +1,75 @@
+import {
+  normalizeTransactionLimit,
+  validateBeforeCursor,
+  validateWalletAddress,
+  fetchWalletTransactions,
+} from '../../../../BACK/services/transactionHistory';
+// NOTE: keep relative import to avoid path alias gaps in vitest transforms.
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const SIGNATURE_LIMIT_DEFAULT = 20;
+
+function makeInvalidPayloadResponse(message: string) {
+  return Response.json({ error: { code: 'invalid_payload', message } }, { status: 400 });
+}
+
+function makeProviderErrorResponse() {
+  return Response.json(
+    {
+      error: {
+        code: 'provider_error',
+        message: 'Unable to fetch public transaction history from the Solana provider.',
+        details: { reason: 'provider_request_failed' },
+      },
+    },
+    { status: 502 },
+  );
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const address = url.searchParams.get('address');
-  if (!address) {
-    return Response.json({ error: { code: 'invalid_payload', message: 'Missing address query param.' } }, { status: 400 });
+  const rawAddress = url.searchParams.get('address');
+  if (!rawAddress || !rawAddress.trim()) {
+    return makeInvalidPayloadResponse('Missing address query param.');
   }
 
-  return Response.json({
-    transactions: [
-      {
-        tx_hash: '5xYdemo111111111111111111111111111111111111111111111111111',
-        type: 'swap',
-        status: 'success',
-        timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-        summary: 'Swapped 0.5 SOL → 72.5 USDC',
-        amount_usd: 72.5,
-        explorer_url: 'https://explorer.solana.com/',
-      },
-      {
-        tx_hash: '4sendDemo1111111111111111111111111111111111111111111111',
-        type: 'transfer',
-        status: 'success',
-        timestamp: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString(),
-        summary: 'Sent 10 USDC',
-        amount_usd: 10,
-        explorer_url: 'https://explorer.solana.com/',
-      },
-    ],
-  });
+  const rawLimit = url.searchParams.get('limit');
+  const rawBefore = url.searchParams.get('before');
+
+  let limit = SIGNATURE_LIMIT_DEFAULT;
+  if (rawLimit !== null) {
+    const trimmed = rawLimit.trim();
+    if (!trimmed) {
+      return makeInvalidPayloadResponse('Invalid limit query param.');
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      return makeInvalidPayloadResponse('Invalid limit query param.');
+    }
+    limit = normalizeTransactionLimit(parsed);
+  }
+
+  let before: string | undefined;
+  try {
+    before = validateBeforeCursor(rawBefore);
+  } catch {
+    return makeInvalidPayloadResponse('Invalid before query param.');
+  }
+
+  let address: string;
+  try {
+    address = validateWalletAddress(rawAddress);
+  } catch {
+    return makeInvalidPayloadResponse('Invalid address query param.');
+  }
+
+  try {
+    return Response.json(await fetchWalletTransactions(address, limit, before));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Provider lookup failed.';
+    console.error('Wallet transaction lookup failed:', message);
+    return makeProviderErrorResponse();
+  }
 }

@@ -2,6 +2,7 @@ import type {
   AgentMessage,
   AgentMessageResponse as AgentMessageResponseType,
   ApiError,
+  ConditionalOrderSnapshot,
   GetAllocationResponse,
   GetBalancesResponse,
   GetNetworkStatusResponse,
@@ -16,6 +17,9 @@ import {
   GetAllocationResponseSchema,
   GetBalancesResponseSchema,
   GetNetworkStatusResponseSchema,
+  ConditionalOrderSchema,
+  ConditionalOrderListResponseSchema,
+  ConditionalOrderTriggerResponseSchema,
   GetPricesResponseSchema,
   GetTransactionsResponseSchema,
   SSEProposalSchema,
@@ -173,6 +177,8 @@ export async function streamChat(
 
   const decoder = new TextDecoder();
   let buffer = '';
+  let currentEvent = '';
+  let currentDataLines: string[] = [];
 
   try {
     while (true) {
@@ -183,16 +189,15 @@ export async function streamChat(
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
 
-      let currentEvent = '';
-      let currentData = '';
-
       for (const line of lines) {
-        if (line.startsWith('event: ')) {
-          currentEvent = line.slice(7).trim();
-        } else if (line.startsWith('data: ')) {
-          currentData = line.slice(6);
-        } else if (line === '' && currentEvent && currentData) {
+        const normalizedLine = line.endsWith('\r') ? line.slice(0, -1) : line;
+        if (normalizedLine.startsWith('event: ')) {
+          currentEvent = normalizedLine.slice(7).trim();
+        } else if (normalizedLine.startsWith('data: ')) {
+          currentDataLines.push(normalizedLine.slice(6));
+        } else if (normalizedLine === '' && currentEvent && currentDataLines.length > 0) {
           // End of event, process it
+          const currentData = currentDataLines.join('\n');
           try {
             const data = JSON.parse(currentData);
             handleSSEEvent(currentEvent, data, callbacks);
@@ -200,7 +205,7 @@ export async function streamChat(
             console.warn('[SSE] Failed to parse event data:', currentData, e);
           }
           currentEvent = '';
-          currentData = '';
+          currentDataLines = [];
         }
       }
     }
@@ -339,9 +344,15 @@ export function getAllocation(address: string): Promise<GetAllocationResponse> {
 }
 
 export function getTransactions(query: GetTransactionsQuery): Promise<GetTransactionsResponse> {
-  const params = new URLSearchParams({ address: query.address });
-  if (query.limit) params.set('limit', String(query.limit));
-  if (query.before) params.set('before', query.before);
+  const params = new URLSearchParams({ address: query.address.trim() });
+  const before = query.before?.trim();
+  if (query.limit) {
+    const normalizedLimit = Math.min(Math.max(1, Math.floor(query.limit)), 50);
+    params.set('limit', String(normalizedLimit));
+  }
+  if (before) {
+    params.set('before', before);
+  }
   return getJson(`/api/wallet/transactions?${params.toString()}`, GetTransactionsResponseSchema) as Promise<GetTransactionsResponse>;
 }
 
@@ -351,4 +362,30 @@ export function getNetworkStatus(): Promise<GetNetworkStatusResponse> {
 
 export function getPrices(symbols: string[]): Promise<GetPricesResponse> {
   return getJson(`/api/prices?symbols=${encodeURIComponent(symbols.join(','))}`, GetPricesResponseSchema) as Promise<GetPricesResponse>;
+}
+
+export function getConditionalOrders(userAddress: string): Promise<ConditionalOrderSnapshot[]> {
+  return getJson(`/api/conditional-orders?user=${encodeURIComponent(userAddress)}`, ConditionalOrderListResponseSchema) as Promise<
+    ConditionalOrderSnapshot[]
+  >;
+}
+
+export function getConditionalOrder(orderPda: string): Promise<ConditionalOrderSnapshot> {
+  return getJson(`/api/conditional-orders/${encodeURIComponent(orderPda)}`, ConditionalOrderSchema) as Promise<ConditionalOrderSnapshot>;
+}
+
+export function triggerConditionalOrder(orderPda: string): Promise<{
+  status: 'triggered';
+  orderPda: string;
+  tx_signature: string;
+}> {
+  return postJson(
+    `/api/conditional-orders/${encodeURIComponent(orderPda)}`,
+    { trigger_now: true },
+    ConditionalOrderTriggerResponseSchema,
+  ) as Promise<{
+    status: 'triggered';
+    orderPda: string;
+    tx_signature: string;
+  }>;
 }

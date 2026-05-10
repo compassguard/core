@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   streamChat,
@@ -21,8 +21,9 @@ export function useAgentMessage() {
   const { address: userAddress, signAndSendPreparedTransaction } = useWallet();
 
   // Store actions
-  const sessionId = useChatStore((state) => state.sessionId);
+  const setCurrentWalletAddress = useChatStore((state) => state.setCurrentWalletAddress);
   const setSessionId = useChatStore((state) => state.setSessionId);
+  const ensureConversationForInput = useChatStore((state) => state.ensureConversationForInput);
   const addUserMessage = useChatStore((state) => state.addUserMessage);
   const addAgentMessages = useChatStore((state) => state.addAgentMessages);
   const startStreaming = useChatStore((state) => state.startStreaming);
@@ -33,16 +34,22 @@ export function useAgentMessage() {
   const setProposalUiState = useChatStore((state) => state.setProposalUiState);
   const setPendingProposal = useChatStore((state) => state.setPendingProposal);
   const completeProposal = useChatStore((state) => state.completeProposal);
+  const canApproveProposal = useChatStore((state) => state.canApproveProposal);
+  const setConversationExpired = useChatStore((state) => state.setConversationExpired);
 
   // Track pending state
   const isPendingRef = useRef(false);
+  const [isPending, setIsPending] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const sendUserMessage = useCallback(async (content: string) => {
     const blocked = useChatStore.getState().isInputBlocked();
     if (blocked || isPendingRef.current) return;
 
+    setCurrentWalletAddress(userAddress || null);
+    ensureConversationForInput(userAddress || null);
     isPendingRef.current = true;
+    setIsPending(true);
     addUserMessage(content);
     startStreaming();
 
@@ -54,7 +61,7 @@ export function useAgentMessage() {
         {
           type: 'user_message',
           content,
-          session_id: sessionId || undefined,
+          session_id: useChatStore.getState().sessionId || undefined,
           user_address: userAddress || undefined,
           user_threshold_usd: threshold,
         },
@@ -98,6 +105,9 @@ export function useAgentMessage() {
       );
     } catch (error) {
       if (error instanceof ApiClientError) {
+        if (error.code === 'session_not_found') {
+          setConversationExpired();
+        }
         console.error('[chat] API error:', error.code, error.message);
       } else {
         console.error('[chat] Unknown error:', error);
@@ -106,12 +116,14 @@ export function useAgentMessage() {
       setStatus('idle');
     } finally {
       isPendingRef.current = false;
+      setIsPending(false);
       abortControllerRef.current = null;
     }
   }, [
-    sessionId,
     userAddress,
     threshold,
+    setCurrentWalletAddress,
+    ensureConversationForInput,
     addUserMessage,
     startStreaming,
     appendToken,
@@ -120,13 +132,16 @@ export function useAgentMessage() {
     setProposalFromSSE,
     addAgentMessages,
     setStatus,
+    setConversationExpired,
   ]);
 
   const approveProposal = useCallback(async () => {
     const currentSessionId = useChatStore.getState().sessionId;
     const proposal = useChatStore.getState().pendingProposal;
-    if (!proposal || !currentSessionId) return;
+    const canApprove = canApproveProposal();
+    if (!proposal || !currentSessionId || !canApprove) return;
 
+    setCurrentWalletAddress(userAddress || null);
     setStatus('executing');
     setProposalUiState('preparing_transaction');
 
@@ -175,6 +190,9 @@ export function useAgentMessage() {
         errorCode === 'phantom_not_connected' ||
         errorCode === 'account_changed';
 
+      if (error instanceof ApiClientError && error.code === 'session_not_found') {
+        setConversationExpired();
+      }
       console.error('[chat] Approve error:', error);
 
       if (rejectedByUser || shouldCancel) {
@@ -195,7 +213,10 @@ export function useAgentMessage() {
   }, [
     userAddress,
     addAgentMessages,
+    canApproveProposal,
     completeProposal,
+    setConversationExpired,
+    setCurrentWalletAddress,
     setStatus,
     setProposalUiState,
     setPendingProposal,
@@ -206,28 +227,34 @@ export function useAgentMessage() {
   const rejectProposal = useCallback(async () => {
     const currentSessionId = useChatStore.getState().sessionId;
     const proposal = useChatStore.getState().pendingProposal;
-    if (!proposal || !currentSessionId) return;
+    const canApprove = canApproveProposal();
+    if (!proposal || !currentSessionId || !canApprove) return;
 
     setProposalUiState('cancelled');
     setPendingProposal(null);
     setStatus('idle');
+    setCurrentWalletAddress(userAddress || null);
 
     try {
       const response = await postReject(currentSessionId);
+      if (!response.messages.length) return;
       if (response.messages.length > 0) {
         addAgentMessages(response.messages);
       }
     } catch (error) {
+      if (error instanceof ApiClientError && error.code === 'session_not_found') {
+        setConversationExpired();
+      }
       console.error('[chat] Reject error:', error);
       // Already cleared the proposal, just log the error
     }
-  }, [addAgentMessages, setPendingProposal, setProposalUiState, setStatus]);
+  }, [addAgentMessages, canApproveProposal, setCurrentWalletAddress, setConversationExpired, setPendingProposal, setProposalUiState, setStatus, userAddress]);
 
   return {
     sendUserMessage,
     approveProposal,
     rejectProposal,
-    isPending: isPendingRef.current,
+    isPending,
     error: null,
   };
 }

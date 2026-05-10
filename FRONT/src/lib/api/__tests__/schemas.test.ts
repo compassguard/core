@@ -7,6 +7,9 @@ import {
   ConditionalBuySolParamsSchema,
   TransactionPayloadSchema,
   SSEProposalSchema,
+  ConditionalOrderListResponseSchema,
+  ConditionalOrderTriggerResponseSchema,
+  ConditionalOrderStatusEnum,
 } from '../schemas';
 
 describe('api schemas', () => {
@@ -216,7 +219,7 @@ describe('api schemas', () => {
         level: 'medium',
       },
       execution: {
-        mode: 'phantom_execute_then_optional_backend_proof',
+        mode: 'phantom_sign_and_send',
         network: 'devnet',
         expires_at: new Date(Date.now() + 60_000).toISOString(),
       },
@@ -224,7 +227,57 @@ describe('api schemas', () => {
     });
 
     expect(parsedProposal.function.name).toBe('conditional_buy_sol');
-    expect(parsedProposal.execution?.mode).toBe('phantom_execute_then_optional_backend_proof');
+    expect(parsedProposal.execution?.mode).toBe('phantom_sign_and_send');
+  });
+
+  it('validates conditional order list and detail schemas', () => {
+    const now = Math.floor(Date.now() / 1000);
+
+    const parsed = ConditionalOrderListResponseSchema.parse([
+      {
+        orderPda: '11111111111111111111111111111111',
+        user: '11111111111111111111111111111111',
+        recipient: '11111111111111111111111111111111',
+        clientOrderId: 17,
+        usdcTestMint: 'So11111111111111111111111111111111111111112',
+        escrowTokenAccount: '11111111111111111111111111111111',
+        treasuryUsdcAta: '11111111111111111111111111111111',
+        solVaultPda: '11111111111111111111111111111111',
+        oracleFeed: '11111111111111111111111111111111',
+        desiredSolLamports: 500_000_000,
+        maxUsdcIn: 12_000_000,
+        targetPriceUsdE8: 150_00000000,
+        maxOracleAgeSeconds: 120,
+        maxConfidenceBps: 400,
+        escrowedUsdcAmount: 12_000_000,
+        executedUsdcAmount: 0,
+        executedSolLamports: 0,
+        createdAt: now,
+        expiresAt: now + 3600,
+        status: 'open',
+        observedExecutable: false,
+        indexedAt: now,
+      },
+    ]);
+
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].status).toBe('open');
+  });
+
+  it('validates conditional order trigger response', () => {
+    const parsed = ConditionalOrderTriggerResponseSchema.parse({
+      status: 'triggered',
+      orderPda: '11111111111111111111111111111111',
+      tx_signature: '5TxSig',
+    });
+
+    expect(parsed.status).toBe('triggered');
+  });
+
+  it('includes all conditional order states in enum', () => {
+    expect(ConditionalOrderStatusEnum.safeParse('executed').success).toBe(true);
+    expect(ConditionalOrderStatusEnum.safeParse('open').success).toBe(true);
+    expect(ConditionalOrderStatusEnum.safeParse('reclaimed').success).toBe(true);
   });
 
   it('reuses execution enum schema', () => {

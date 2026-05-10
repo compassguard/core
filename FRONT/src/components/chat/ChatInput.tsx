@@ -1,7 +1,17 @@
 import { FormEvent, useState } from 'react';
 import { Loader2, Plus, Send } from 'lucide-react';
 
-export function ChatInput({ disabled, isThinking, onSubmit }: { disabled: boolean; isThinking: boolean; onSubmit: (value: string) => void }) {
+export function ChatInput({
+  disabled,
+  disabledPlaceholder = 'Confirm or cancel the proposal first',
+  isThinking,
+  onSubmit,
+}: {
+  disabled: boolean;
+  disabledPlaceholder?: string;
+  isThinking: boolean;
+  onSubmit: (value: string) => void;
+}) {
   const [value, setValue] = useState('');
 
   function submit(event: FormEvent) {
@@ -22,7 +32,7 @@ export function ChatInput({ disabled, isThinking, onSubmit }: { disabled: boolea
         onChange={(event) => setValue(event.target.value)}
         rows={1}
         disabled={disabled}
-        placeholder={disabled ? 'Confirm or cancel the proposal first' : 'Ask your wallet copilot…'}
+        placeholder={disabled ? disabledPlaceholder : 'Ask your wallet copilot…'}
         className="max-h-32 min-h-10 flex-1 resize-none bg-transparent px-1 py-2 text-[15px] leading-relaxed text-on-surface outline-none placeholder:text-on-surface-variant disabled:cursor-not-allowed"
         onKeyDown={(event) => {
           if (event.key === 'Enter' && !event.shiftKey) submit(event);

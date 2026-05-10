@@ -51,6 +51,17 @@ export const ConditionalBuySolParamsSchema = z.object({
   input_amount: z.number().positive(),
   target_price_usd: z.number().positive(),
   min_sol_out: z.number().positive().optional(),
+  desired_sol_amount: z.number().positive().optional(),
+  desired_sol_lamports: z.number().int().positive().optional(),
+  max_usdc_in: z.number().positive().optional(),
+  max_oracle_age_seconds: z.number().positive().optional(),
+  max_confidence_bps: z.number().positive().optional(),
+  recipient: z.string().optional(),
+  expires_at: z.string().optional(),
+  oracle_feed_pubkey: z.string().optional(),
+  client_order_id: z.number().optional(),
+  order_pda: z.string().optional(),
+  execution_mode: z.literal('create_order_and_deposit').optional(),
 });
 
 export const FunctionExecutionSchema = z.object({
@@ -172,6 +183,8 @@ export const TxHistoryItemSchema = z.object({
   status: z.enum(['success', 'failed']),
   timestamp: z.string(),
   summary: z.string(),
+  amount: z.number().optional(),
+  amount_symbol: z.string().optional(),
   amount_usd: z.number().optional(),
   explorer_url: z.string(),
 });
@@ -191,6 +204,49 @@ export const GetNetworkStatusResponseSchema = z.object({
 export const GetPricesResponseSchema = z.object({
   prices: z.record(z.number()),
   updated_at: z.string(),
+});
+
+export const ConditionalOrderStatusEnum = z.enum([
+  'open',
+  'executed',
+  'cancelled',
+  'expired',
+  'reclaimed',
+  'unknown',
+]);
+
+export const ConditionalOrderSchema = z.object({
+  orderPda: z.string(),
+  user: z.string(),
+  recipient: z.string(),
+  clientOrderId: z.number(),
+  usdcTestMint: z.string(),
+  escrowTokenAccount: z.string(),
+  treasuryUsdcAta: z.string(),
+  solVaultPda: z.string(),
+  oracleFeed: z.string(),
+  desiredSolLamports: z.number(),
+  maxUsdcIn: z.number(),
+  targetPriceUsdE8: z.number(),
+  maxOracleAgeSeconds: z.number(),
+  maxConfidenceBps: z.number(),
+  escrowedUsdcAmount: z.number(),
+  executedUsdcAmount: z.number(),
+  executedSolLamports: z.number(),
+  createdAt: z.number(),
+  expiresAt: z.number(),
+  status: ConditionalOrderStatusEnum,
+  observedExecutable: z.boolean(),
+  observedExecutableReason: z.string().optional(),
+  indexedAt: z.number(),
+});
+
+export const ConditionalOrderListResponseSchema = z.array(ConditionalOrderSchema);
+
+export const ConditionalOrderTriggerResponseSchema = z.object({
+  status: z.literal('triggered'),
+  orderPda: z.string(),
+  tx_signature: z.string(),
 });
 
 // ============================================================================

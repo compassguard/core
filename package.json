@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "eslint app FRONT/src BACK/services",
     "test": "vitest --run",
+    "test:back": "vitest --config vitest.back.config.ts --run",
     "test:watch": "vitest",
     "dev:front": "next dev",
     "dev:back": "next dev",

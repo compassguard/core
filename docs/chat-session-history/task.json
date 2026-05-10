@@ -1,0 +1,197 @@
+{
+  "version": 1,
+  "status": "completed",
+  "goal": "Persistir la conversacion activa y el sessionId a traves de refresh, agregar historial de conversaciones local manejable desde UI y bloquear acciones inseguras cuando la sesion backend expire o la wallet no coincida.",
+  "context": {
+    "source": "explorer_handoff",
+    "summary": "El chat actual vive en memoria en FRONT/src/stores/chatStore.ts. sessionId se recibe por SSE en useAgentMessage. El backend usa un Map con TTL de 30 minutos en BACK/services/chatSessionStore.ts y crea una sesion nueva si falta o expiro la previa. ChatHistoryList hoy es placeholder. Se requiere MVP con localStorage, schemaVersion, migracion, pruning, delete/clear history y tratamiento seguro de pendingProposal, sesiones expiradas y wallet mismatch."
+  },
+  "acceptanceCriteria": [
+    "La conversacion activa, sus mensajes y su sessionId se restauran despues de un refresh sin crear una nueva conversacion automaticamente.",
+    "ChatHistoryList muestra conversaciones reales ordenadas por updatedAt y permite seleccionar una, borrarla o limpiar todo el historial.",
+    "El historial persistido no guarda private keys, blobs unsigned, transacciones firmadas ni artefactos sensibles de signing.",
+    "Las aprobaciones siguen llamando a /api/chat function_approve y el backend sigue siendo fuente de verdad para pendingProposal y guardrails.",
+    "Una propuesta pendiente rehidratada desde localStorage queda bloqueada o marcada expirada cuando la sesion backend ya no existe.",
+    "Si la wallet actual no coincide con la de la conversacion, el historial queda en modo solo lectura para acciones sensibles."
+  ],
+  "constraints": [
+    "Especificar e implementar bajo docs/chat-session-history/, no en la raiz de docs/.",
+    "No agregar base de datos ni persistencia backend en esta feature.",
+    "No inventar aprobaciones offline ni rehidratar pendingProposal como fuente de verdad operativa.",
+    "Mantener el historial como representacion UI local con schemaVersion y migraciones.",
+    "Todas las tareas deben iniciar con status pending y evidence vacio; solo Implementer las actualiza despues."
+  ],
+  "decisions": [
+    "Usar Zustand persist/localStorage sobre el store de chat existente.",
+    "Persistir activeConversationId, conversationsById, messages, sessionId, timestamps, title y metadatos de wallet.",
+    "No persistir artefactos sensibles ni confiar en pendingProposal rehidratado para aprobar.",
+    "Tratar sesiones backend expiradas como historial legible pero no accionable.",
+    "Implementar delete por conversacion y clear history total en MVP.",
+    "Clasificar propuestas rehidratadas sin pendingProposal operativo como proposal_stale: quedan visibles como historial, no aprobables, y un nuevo mensaje abre otra conversacion."
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Definir modelo persistido de conversaciones y reglas de rehidratacion",
+      "description": "Diseñar los tipos de conversacion persistida, campos versionados, derivacion de title, criterios para activeConversationId y estrategia para no rehidratar capacidad operativa sensible desde pendingProposal.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "FRONT/src/stores/chatStore.ts",
+        "FRONT/src/types/chat.ts"
+      ],
+      "dependencies": [],
+      "verification": [
+        "Revisar tipos TypeScript y compile del store sin errores.",
+        "Cubrir con tests unitarios el shape versionado y la derivacion de title."
+      ],
+      "status": "completed",
+      "evidence": [
+        "2026-05-09: Ajuste de tipos PersistedConversation y metadatos de sesión/wallet en FRONT/src/types/chat.ts y FRONT/src/stores/chatStore.ts.",
+        "2026-05-09: npx vitest run FRONT/src/stores/__tests__/chatStore.test.ts FRONT/src/hooks/__tests__/useAgentMessage.test.tsx FRONT/src/components/sidebar/__tests__/ChatHistoryList.test.tsx (PASS)"
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "Agregar persistencia local con schemaVersion, migrate y pruning",
+      "description": "Convertir el chat store a persist de Zustand, guardar conversaciones en localStorage, restaurar la conversacion activa despues de refresh y manejar migraciones o registros corruptos/incompatibles.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "FRONT/src/stores/chatStore.ts"
+      ],
+      "dependencies": [
+        "T1"
+      ],
+      "verification": [
+        "Refresh manual conserva conversacion activa, sessionId y mensajes.",
+        "Tests unitarios validan rehidratacion, migrate y pruning."
+      ],
+      "status": "completed",
+      "evidence": [
+        "2026-05-09: Migración y sanitización de estado persistido ajustadas en FRONT/src/stores/chatStore.ts (schemaVersion 2, prune, ensureConversationOrder).",
+        "2026-05-09: npx vitest run FRONT/src/stores/__tests__/chatStore.test.ts FRONT/src/hooks/__tests__/useAgentMessage.test.tsx FRONT/src/components/sidebar/__tests__/ChatHistoryList.test.tsx (PASS)"
+      ]
+    },
+    {
+      "id": "T3",
+      "title": "Asegurar guardas de sesion expirada y wallet mismatch",
+      "description": "Actualizar useAgentMessage y el estado derivado del chat para bloquear approve/reject o acciones sensibles cuando la sesion backend sea stale o la wallet actual no coincida con la conversacion rehidratada.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "FRONT/src/hooks/useAgentMessage.ts",
+        "FRONT/src/stores/chatStore.ts",
+        "FRONT/src/types/chat.ts"
+      ],
+      "dependencies": [
+        "T1",
+        "T2"
+      ],
+      "verification": [
+        "Tests validan bloqueo de aprobacion tras refresh con sesion expirada.",
+        "Tests validan modo solo lectura cuando cambia la wallet."
+      ],
+      "status": "completed",
+      "evidence": [
+        "2026-05-09: Se ajustó getConversationReadOnlyReason y setConversationExpired en FRONT/src/stores/chatStore.ts para bloqueo por sessionStatus/TTL y wallet mismatch.",
+        "2026-05-09: useAgentMessage marca sesión expirada en errores session_not_found y evita aprobación en estado bloqueado.",
+        "2026-05-09: Main-session fix post-review: propuestas rehidratadas sin pendingProposal operativo quedan como proposal_stale, no aprobables.",
+        "2026-05-09: npx vitest run FRONT/src/stores/__tests__/chatStore.test.ts FRONT/src/hooks/__tests__/useAgentMessage.test.tsx FRONT/src/components/sidebar/__tests__/ChatHistoryList.test.tsx (PASS)"
+      ]
+    },
+    {
+      "id": "T4",
+      "title": "Reemplazar ChatHistoryList placeholder por historial real",
+      "description": "Conectar ChatHistoryList al store persistido, listar conversaciones ordenadas por updatedAt, soportar seleccion, delete individual y clear history, y reflejar estado de conversacion activa.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "FRONT/src/components/sidebar/ChatHistoryList.tsx",
+        "FRONT/src/stores/chatStore.ts"
+      ],
+      "dependencies": [
+        "T2"
+      ],
+      "verification": [
+        "La UI muestra conversaciones reales y cambia la activa al seleccionar.",
+        "Delete y clear history actualizan lista y estado activo correctamente."
+      ],
+      "status": "completed",
+      "evidence": [
+        "2026-05-09: ChatHistoryList reemplazado para listar conversations reales, abrir/borrar/clear desde store persistido.",
+        "2026-05-09: npx vitest run FRONT/src/stores/__tests__/chatStore.test.ts FRONT/src/hooks/__tests__/useAgentMessage.test.tsx FRONT/src/components/sidebar/__tests__/ChatHistoryList.test.tsx (PASS)"
+      ]
+    },
+    {
+      "id": "T5",
+      "title": "Integrar comportamiento de nueva conversacion y continuidad segura",
+      "description": "Definir como se crea una nueva conversacion, como se actualiza sessionId cuando llega SSE session y como se evita mezclar una sesion backend nueva con una conversacion historica expirada.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "FRONT/src/hooks/useAgentMessage.ts",
+        "FRONT/src/stores/chatStore.ts"
+      ],
+      "dependencies": [
+        "T2",
+        "T3"
+      ],
+      "verification": [
+        "Enviar mensaje desde conversacion nueva crea contexto persistido correcto.",
+        "Una sesion nueva no reaprovecha propuestas expiradas de una conversacion vieja."
+      ],
+      "status": "completed",
+      "evidence": [
+        "2026-05-09: ensureConversationForInput / startNewConversation / setConversationExpired y gestión de sessionId actualizadas para sesiones mixtas y rotación segura.",
+        "2026-05-09: useAgentMessage y chatStore cubren inicio de conversación en sesión inválida y rehidración de sesión.",
+        "2026-05-09: Main-session fix post-review: enviar desde una conversacion proposal_stale inicia una conversacion nueva para no mezclar mensajes con una propuesta historica.",
+        "2026-05-09: npx vitest run FRONT/src/stores/__tests__/chatStore.test.ts FRONT/src/hooks/__tests__/useAgentMessage.test.tsx FRONT/src/components/sidebar/__tests__/ChatHistoryList.test.tsx (PASS)"
+      ]
+    },
+    {
+      "id": "T6",
+      "title": "Agregar cobertura automatizada y validacion final",
+      "description": "Crear o extender tests unitarios/componentes para store, hook y sidebar; ejecutar lint y test del proyecto para dejar evidencia de validacion del feature.",
+      "filesToCreate": [
+        "FRONT/src/stores/__tests__/chatStore.test.ts",
+        "FRONT/src/hooks/__tests__/useAgentMessage.test.ts",
+        "FRONT/src/components/sidebar/__tests__/ChatHistoryList.test.tsx"
+      ],
+      "filesToModify": [
+        "FRONT/src/stores/chatStore.ts",
+        "FRONT/src/hooks/useAgentMessage.ts",
+        "FRONT/src/components/sidebar/ChatHistoryList.tsx"
+      ],
+      "dependencies": [
+        "T3",
+        "T4",
+        "T5"
+      ],
+      "verification": [
+        "npm run lint",
+        "npm test",
+        "npm run build"
+      ],
+      "status": "completed",
+      "evidence": [
+        "2026-05-09: npx vitest run FRONT/src/stores/__tests__/chatStore.test.ts FRONT/src/hooks/__tests__/useAgentMessage.test.tsx FRONT/src/components/sidebar/__tests__/ChatHistoryList.test.tsx (PASS: 14 tests).",
+        "2026-05-09: npm test (PASS: 4 files, 16 tests).",
+        "2026-05-09: npm run lint (PASS: 0 errors, 7 existing Fast Refresh warnings).",
+        "2026-05-09: npm run build (PASS).",
+        "2026-05-09: git diff --check (PASS)."
+      ]
+    }
+  ],
+  "risks": [
+    "Rehidratacion insegura de pendingProposal que permita UI accionable sobre una sesion backend vencida.",
+    "Desincronizacion entre proposal en messages[] y el campo dedicado pendingProposal.",
+    "Persistencia excesiva en localStorage que exceda cuota o degrade rendimiento.",
+    "Ambiguedad al continuar una conversacion historica cuando el backend responde con una sesion nueva."
+  ],
+  "validation": [
+    "npm run lint",
+    "npm test",
+    "npm run build",
+    "git diff --check",
+    "Prueba manual: enviar mensaje, refrescar y verificar restauracion de conversacion activa.",
+    "Prueba manual: abrir historial con wallet distinta y confirmar modo solo lectura.",
+    "Prueba manual: simular sesion expirada y verificar propuesta marcada expirada/no aprobable.",
+    "Prueba manual: borrar una conversacion y limpiar historial completo."
+  ]
+}

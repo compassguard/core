@@ -1,0 +1,290 @@
+{
+  "version": 1,
+  "status": "planned",
+  "goal": "Extender la feature wallet-safety-validation para que las transferencias SOL aprobadas se ejecuten con enforcement on-chain mediante AgentActionGuard, usando guarded_transfer, ActionApproval verificable y una WalletSafetyAttestation PDA, mientras se mantiene el flujo Phantom-first y el backend sin custody de firma.",
+  "context": {
+    "source": "explorer_handoff",
+    "summary": "La feature existente wallet-safety-validation ya tiene docs separadas y no debe sobrescribirse. Hoy el backend valida off-chain/RPC, crea proposal y function_approve devuelve unsigned_tx_base64 para Phantom, pero la transferencia simple no invoca un programa propio. Existe AgentActionGuard con UserPolicy y ActionApproval PDA por action_hash, y la verificación actual en BACK/services/onchainApproval.ts es débil porque solo inspecciona logs/invocación. Esta extensión debe introducir enforcement real con guarded_transfer y verificación determinística de PDAs."
+  },
+  "acceptanceCriteria": [
+    "Las transferencias SOL cubiertas por wallet-safety-validation se ejecutan mediante AgentActionGuard.guarded_transfer y no mediante SystemProgram.transfer directo desde el flujo aprobado.",
+    "El programa valida UserPolicy, ActionApproval y WalletSafetyAttestation antes de mover fondos.",
+    "ActionApproval y WalletSafetyAttestation se derivan con seeds determinísticas y deben coincidir con el mismo action_hash canónico.",
+    "El backend verifica resultado leyendo PDAs on-chain y no considerando suficiente una prueba basada solo en logs o en la mera invocación del programa.",
+    "El frontend mantiene el modelo Phantom-first: backend prepara unsigned_tx_base64 y el usuario firma/envía con Phantom sin enviar signed_tx_base64 al backend.",
+    "La documentación y los contratos dejan explícito que el MVP cubre SOL transfer y no SPL transfer."
+  ],
+  "constraints": [
+    "No sobrescribir docs/wallet-safety-validation/ aunque exista fuera de este worktree o en otra rama.",
+    "No implementar runtime code en este entregable; es solo especificación y planificación.",
+    "No introducir un programa nuevo para el MVP salvo que aparezca un blocker técnico fuerte durante implementación.",
+    "Mantener Phantom-first y no requerir una segunda firma del backend/oracle en la tx final del usuario.",
+    "Modelar reputación dinámica mediante attestation backend/oracle con expiración; las listas duras solo son enforceables on-chain si están representadas en cuentas/config.",
+    "Todas las tareas deben quedar en status pending y evidence vacío."
+  ],
+  "decisions": [
+    "Extender AgentActionGuard para el MVP en lugar de crear WalletSafetyGuard, porque reduce superficie de deploy y reutiliza ActionApproval/UserPolicy ya existentes.",
+    "Agregar una cuenta WalletSafetyAttestation PDA dentro del programa para representar la validación dinámica de riesgo sin exigir cofirma del backend en la tx del usuario.",
+    "Usar guarded_transfer como única vía de ejecución protegida para la transferencia SOL cubierta por esta feature.",
+    "Canonicalizar action_hash con JSON canónico y sha256 incluyendo tipo de acción, red, user, recipient, amount_lamports, policy_pda y expires_at.",
+    "Endurecer BACK/services/onchainApproval.ts para leer y validar PDAs derivados en vez de confiar en logs o solo en la presencia de una instrucción del programa."
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Definir contrato canónico de action_hash y PDAs",
+      "description": "Alinear el payload canónico de TRANSFER_SOL_GUARDED, las seeds de ActionApproval y WalletSafetyAttestation, y la metadata mínima que deberá compartir backend, programa y frontend.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "BACK/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs",
+        "BACK/services/chat.ts",
+        "BACK/services/onchainApproval.ts",
+        "BACK/services/tools/transfer.ts"
+      ],
+      "dependencies": [],
+      "verification": [
+        "Existe una única definición funcional del action_hash para transferencias SOL protegidas.",
+        "Las seeds documentadas para ActionApproval y WalletSafetyAttestation son determinísticas y consistentes entre programa y backend."
+      ],
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "T2",
+      "title": "Diseñar y agregar WalletSafetyAttestation al programa",
+      "description": "Extender AgentActionGuard con la cuenta WalletSafetyAttestation, su tamaño, sus campos y la instrucción upsert_wallet_safety_attestation o equivalente para emitir attestations vigentes por acción.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "BACK/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs"
+      ],
+      "dependencies": [
+        "T1"
+      ],
+      "verification": [
+        "El programa define WalletSafetyAttestation con user, recipient, action_hash, expiración y attestor.",
+        "La instrucción de emisión/actualización restringe correctamente al signer autorizado."
+      ],
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "T3",
+      "title": "Implementar guarded_transfer en AgentActionGuard",
+      "description": "Agregar la instrucción guarded_transfer que valide UserPolicy, ActionApproval, WalletSafetyAttestation y luego haga CPI a System Program para mover lamports, marcando executed dentro de la misma instrucción.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "BACK/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs"
+      ],
+      "dependencies": [
+        "T1",
+        "T2"
+      ],
+      "verification": [
+        "guarded_transfer falla si approval o attestation no coinciden con el action_hash esperado.",
+        "La instrucción marca ActionApproval.executed en el mismo camino exitoso que mueve fondos.",
+        "La instrucción no permite replay ni bypass por amount o recipient distintos."
+      ],
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "T4",
+      "title": "Agregar configuración de attestors autorizados",
+      "description": "Definir una estrategia mínima para administrar la autoridad que puede emitir WalletSafetyAttestation, ya sea mediante config PDA o una alternativa equivalente de bajo riesgo operativo.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "BACK/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs",
+        "BACK/solana/agent-action-guard/README.md"
+      ],
+      "dependencies": [
+        "T2"
+      ],
+      "verification": [
+        "El programa o la documentación definen cómo rotar y validar attestors autorizados.",
+        "La solución no requiere cofirma del attestor en cada tx final del usuario."
+      ],
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "T5",
+      "title": "Actualizar backend para emitir/reutilizar approval y attestation",
+      "description": "Modificar la preparación de propuestas y approve para que el backend genere el action_hash canónico, garantice la existencia de ActionApproval y WalletSafetyAttestation, y almacene el contexto necesario en la sesión.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "BACK/services/chat.ts",
+        "BACK/services/chatSessionStore.ts",
+        "BACK/services/tools/transfer.ts"
+      ],
+      "dependencies": [
+        "T1",
+        "T2"
+      ],
+      "verification": [
+        "La proposal y la sesión guardan action_hash, expiración de approval y expiración de attestation.",
+        "El backend no prepara la tx final si falta una attestation válida o una approval válida."
+      ],
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "T6",
+      "title": "Cambiar function_approve para devolver guarded_transfer",
+      "description": "Reemplazar la construcción actual de SystemProgram.transfer por una unsigned transaction que invoque guarded_transfer y referencie las PDAs derivadas esperadas.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "BACK/services/chat.ts"
+      ],
+      "dependencies": [
+        "T3",
+        "T5"
+      ],
+      "verification": [
+        "Approve devuelve unsigned_tx_base64 de una tx guarded_transfer.",
+        "La respuesta incluye metadata suficiente para depuración o UI, como action_hash y PDAs derivadas.",
+        "No queda ruta aprobada que siga usando transferencia directa para esta feature."
+      ],
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "T7",
+      "title": "Endurecer la verificación on-chain del backend",
+      "description": "Reescribir BACK/services/onchainApproval.ts para derivar, leer y validar ActionApproval y WalletSafetyAttestation tras la confirmación de la tx, descartando pruebas débiles basadas solo en logs.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "BACK/services/onchainApproval.ts"
+      ],
+      "dependencies": [
+        "T1",
+        "T2",
+        "T3"
+      ],
+      "verification": [
+        "La verificación falla si la tx invocó el programa pero ActionApproval no quedó executed.",
+        "La verificación falla si la attestation leída no coincide con user, recipient o action_hash esperados."
+      ],
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "T8",
+      "title": "Actualizar contratos API y tipos frontend",
+      "description": "Alinear schemas y tipos para que approve y function_result representen el nuevo flujo protegido, incluyendo metadata opcional de enforcement on-chain y nuevos códigos de error.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "FRONT/src/lib/api/client.ts",
+        "FRONT/src/lib/api/schemas.ts",
+        "FRONT/src/types/api.ts"
+      ],
+      "dependencies": [
+        "T6"
+      ],
+      "verification": [
+        "Los tipos de approve contemplan guarded_transfer y metadata de enforcement sin romper el modelo unsigned_tx_base64.",
+        "Los errores de approval/attestation expirada o mismatch quedan tipados."
+      ],
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "T9",
+      "title": "Actualizar UX de proposal y estados de ejecución",
+      "description": "Ajustar la UI de transferencia para mostrar guardrail on-chain, expiraciones relevantes y errores diferenciados de approval o attestation, manteniendo el flujo Phantom-first.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "FRONT/src/components/chat/proposals/SendProposalCard.tsx",
+        "FRONT/src/hooks/useAgentMessage.ts",
+        "FRONT/src/hooks/useWallet.ts",
+        "FRONT/src/stores/chatStore.ts"
+      ],
+      "dependencies": [
+        "T8"
+      ],
+      "verification": [
+        "La UI muestra que la transferencia usa enforcement on-chain.",
+        "Los estados distinguen awaiting_signature, submitted, confirmed y failed con razones específicas de approval o attestation."
+      ],
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "T10",
+      "title": "Agregar pruebas del programa y del contrato backend",
+      "description": "Cubrir camino feliz y rechazos por mismatch, expiración, revocación, replay y ausencia de attestation tanto a nivel del programa como de la verificación backend.",
+      "filesToCreate": [
+        "BACK/solana/agent-action-guard/tests/guarded-transfer.ts"
+      ],
+      "filesToModify": [
+        "BACK/services/onchainApproval.ts",
+        "BACK/services/chat.ts"
+      ],
+      "dependencies": [
+        "T3",
+        "T6",
+        "T7"
+      ],
+      "verification": [
+        "Existen pruebas de guarded_transfer success y de fallas por approval/attestation inválidos.",
+        "Existen pruebas backend que demuestran que logs sin mutación correcta de PDAs no alcanzan."
+      ],
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "T11",
+      "title": "Agregar pruebas frontend del flujo approve protegido",
+      "description": "Validar que el frontend consume el nuevo contrato approve, mantiene Phantom-first y representa correctamente fallas de enforcement on-chain.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "FRONT/src/lib/api/__tests__/schemas.test.ts",
+        "FRONT/src/hooks/useAgentMessage.ts",
+        "FRONT/src/components/chat/proposals/SendProposalCard.tsx"
+      ],
+      "dependencies": [
+        "T8",
+        "T9"
+      ],
+      "verification": [
+        "Los tests prueban el parseo del contrato approve con metadata de enforcement.",
+        "Los tests prueban la representación de errores de approval/attestation expirada y de mismatch de wallet."
+      ],
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "T12",
+      "title": "Documentar deploy, configuración y rollout",
+      "description": "Actualizar la documentación operativa del programa y del backend para describir program id, attestor authority, variables de entorno, derivación de PDAs y estrategia de rollout sin bypass.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "BACK/solana/agent-action-guard/README.md",
+        ".env.example"
+      ],
+      "dependencies": [
+        "T4",
+        "T6",
+        "T7"
+      ],
+      "verification": [
+        "La documentación explica cómo configurar AGENT_ACTION_GUARD_PROGRAM_ID, RPC y autoridad de attestation.",
+        "La documentación deja explícito que la feature protegida no debe volver al flujo directo."
+      ],
+      "status": "pending",
+      "evidence": []
+    }
+  ],
+  "risks": [
+    "El programa AgentActionGuard puede empezar a mezclar demasiados concerns si se extiende más allá de transfer SOL y approvals simples.",
+    "La canonicalización del action_hash puede divergir entre backend y programa si no se fija tempranamente.",
+    "La seguridad efectiva del modelo depende de la llave o autoridad que emite WalletSafetyAttestation.",
+    "TTL demasiado corto para la attestation puede generar mucha fricción UX; demasiado largo puede debilitar el valor del scoring dinámico.",
+    "Un rollout parcial que deje disponible la transferencia directa puede anular el enforcement buscado."
+  ],
+  "validation": [
+    "Verificar que docs/wallet-safety-validation-onchain-enforcement/functional-spec.md existe y cubre alcance, flujo, estados, UX e acceptance criteria.",
+    "Verificar que docs/wallet-safety-validation-onchain-enforcement/technical-spec.md cubre arquitectura, diseño del programa, cuentas, instrucciones, PDAs, attestation model, integración backend/frontend, action_hash, migración, testing y security checklist.",
+    "Verificar que docs/wallet-safety-validation-onchain-enforcement/task.json es JSON válido, tiene status planned, todas las tareas están en pending y todas tienen evidence [].",
+    "Verificar que las tareas están ordenadas por dependencia y separan trabajo bloqueante del paralelizable."
+  ]
+}

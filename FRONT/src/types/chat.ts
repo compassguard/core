@@ -15,6 +15,32 @@ export type AgentChatMessage = AgentMessage & {
 
 export type ChatMessage = UserChatMessage | AgentChatMessage;
 
+export type ConversationSessionStatus = 'unknown' | 'active' | 'expired';
+
+export type ConversationWalletStatus = 'unknown' | 'match' | 'mismatch';
+
+export type ConversationActionBlockReason = 'wallet_mismatch' | 'session_expired' | 'proposal_stale';
+
+export type PendingProposalPreview = {
+  toolName?: string;
+  createdAt?: string;
+};
+
+export type PersistedConversation = {
+  id: string;
+  sessionId: string | null;
+  title: string;
+  messages: ChatMessage[];
+  createdAt: string;
+  updatedAt: string;
+  walletAddressAtCreation: string | null;
+  lastWalletAddress: string | null;
+  hasPendingProposal: boolean;
+  pendingProposalPreview: PendingProposalPreview | null;
+  sessionStatus: ConversationSessionStatus;
+  walletStatus: ConversationWalletStatus;
+};
+
 export type ProposalUiState =
   | 'pending'
   | 'preparing_transaction'
