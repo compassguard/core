@@ -14,7 +14,7 @@ Si otro documento parece contradecirla, gana `frontend-spec.md` y el documento d
 
 - Next.js 14+ App Router, TypeScript, Tailwind CSS + shadcn/ui.
 - Código UI en `FRONT/src/`, exportado desde `FRONT/src/App.tsx` y consumido por `app/page.tsx`.
-- Phantom Embedded Wallet SDK solo para login con Google, address/display, disconnect y export private key.
+- Phantom Browser Extension para autenticación: conexión directa con wallet del usuario, sin SDK embebido ni OAuth.
 - El frontend **no construye, firma ni envía transacciones** y **no habla directo con Solana RPC, Jupiter, Helius, Birdeye ni risk-score providers**.
 - Toda ejecución de transacciones y toda integración blockchain/provider vive detrás del backend/agent (`/api/*` y `BACK/services/*`).
 

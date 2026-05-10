@@ -30,14 +30,28 @@ export function ConnectButton() {
   }
 
   if (!wallet.isConnected) {
+    const isPhantomNotDetected = wallet.walletError?.toLowerCase().includes('not detected');
+
     return (
       <div className="flex flex-col items-end gap-1">
         <Button onClick={connect} disabled={isBusy || wallet.isConnecting} className="rounded-xl bg-primary px-5 text-primary-foreground hover:bg-primary/90">
           {isBusy || wallet.isConnecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-          Sign in with Google
+          Connect Phantom
         </Button>
         {wallet.walletError ? (
-          <p className="max-w-56 text-right text-xs text-error-text">{wallet.walletError}</p>
+          <div className="max-w-64 text-right text-xs text-error-text">
+            <p>{wallet.walletError}</p>
+            {isPhantomNotDetected ? (
+              <a
+                href="https://phantom.app/download"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 inline-block underline hover:text-error-text/80"
+              >
+                Download Phantom
+              </a>
+            ) : null}
+          </div>
         ) : null}
       </div>
     );

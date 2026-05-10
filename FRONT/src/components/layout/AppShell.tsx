@@ -30,7 +30,7 @@ function PreLogin() {
         </div>
         <p className="text-sm font-semibold uppercase tracking-[0.2em] text-primary">Converge Wallet Copilot</p>
         <h1 className="mt-4 text-5xl font-bold tracking-tight text-on-surface">An agent-first wallet for Solana</h1>
-        <p className="mt-5 text-lg leading-8 text-on-surface-variant">Sign in with Google through Phantom Embedded, chat with your wallet copilot, and let the backend agent handle transaction execution safely.</p>
+        <p className="mt-5 text-lg leading-8 text-on-surface-variant">Connect your Phantom wallet, chat with your wallet copilot, and let the backend agent handle transaction execution safely.</p>
         <div className="mt-8 flex justify-center"><ConnectButton /></div>
       </div>
     </main>

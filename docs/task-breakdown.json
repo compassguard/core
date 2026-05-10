@@ -1,0 +1,528 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-05-09T23:53:59Z",
+  "goal": "Migrar de Phantom Embedded Wallet (OAuth + Google) a conexión directa con extensión de navegador Phantom",
+  "status": "implementation_complete",
+  "tasks": [
+    {
+      "id": "T001",
+      "title": "Crear especificación funcional (functional-spec.md)",
+      "owner": "planner",
+      "status": "done",
+      "dependsOn": [],
+      "files": [
+        "docs/functional-spec.md"
+      ],
+      "acceptanceCriteria": [
+        "Documento completo con alcance, requisitos funcionales RF-1 a RF-5",
+        "Casos de uso CU-1 a CU-3 detallados",
+        "Tabla de riesgos con mitigaciones",
+        "Criterios de validación (CV-1, CV-2, CV-3)",
+        "Definition of Done completa"
+      ],
+      "evidence": [
+        "Archivo docs/functional-spec.md existente y completo"
+      ]
+    },
+    {
+      "id": "T002",
+      "title": "Crear especificación técnica (technical-spec.md)",
+      "owner": "planner",
+      "status": "done",
+      "dependsOn": [
+        "T001"
+      ],
+      "files": [
+        "docs/technical-spec.md"
+      ],
+      "acceptanceCriteria": [
+        "Diagrama de flujo de conexión directa",
+        "Tabla de archivos afectados con acciones",
+        "Implementación completa del nuevo useWallet.ts",
+        "Plan de migración en 3 fases",
+        "Tabla de tests manuales",
+        "Checklist de implementación completo"
+      ],
+      "evidence": [
+        "Archivo docs/technical-spec.md existente y completo"
+      ]
+    },
+    {
+      "id": "T003",
+      "title": "Verificar estructura actual del proyecto",
+      "owner": "implementer",
+      "status": "done",
+      "dependsOn": [
+        "T002"
+      ],
+      "files": [
+        "FRONT/src/hooks/useWallet.ts",
+        "FRONT/src/components/wallet/ConnectButton.tsx",
+        "FRONT/src/providers/PhantomProvider.tsx",
+        "FRONT/package.json"
+      ],
+      "acceptanceCriteria": [
+        "Confirmar existencia de archivos listados en technical-spec § 1.2",
+        "Verificar dependencia @phantom/react-sdk en package.json",
+        "Identificar imports de PhantomProvider en el proyecto (grep)",
+        "Confirmar estructura de carpetas FRONT/src/"
+      ],
+      "evidence": [
+        "✅ Archivos encontrados: useWallet.ts, ConnectButton.tsx, PhantomProvider.tsx",
+        "✅ @phantom/react-sdk versión ^2.0.2 en package.json raíz",
+        "✅ PhantomProvider importado en: App.tsx, AuthCallbackPage.tsx",
+        "✅ @phantom/react-sdk importado en: PhantomProvider.tsx, useWallet.ts, AuthCallbackPage.tsx",
+        "✅ Estructura FRONT/src/ con: components, hooks, lib, providers, stores, types",
+        "✅ phantomConfig.ts usa NEXT_PUBLIC_PHANTOM_APP_ID",
+        "✅ Ruta app/auth/callback/page.tsx existe"
+      ]
+    },
+    {
+      "id": "T004",
+      "title": "Crear tipos TypeScript para Phantom provider",
+      "owner": "implementer",
+      "status": "done",
+      "dependsOn": [
+        "T003"
+      ],
+      "files": [
+        "FRONT/src/types/phantom.ts"
+      ],
+      "acceptanceCriteria": [
+        "Archivo FRONT/src/types/phantom.ts creado",
+        "Interface PhantomProvider con métodos connect, disconnect, sign*",
+        "Eventos on/off tipados (connect, disconnect, accountChanged)",
+        "Extensión de Window global con window.phantom.solana",
+        "Sin errores TypeScript al compilar"
+      ],
+      "evidence": [
+        "✅ Archivo FRONT/src/types/phantom.ts creado con 2617 bytes",
+        "✅ Interface PhantomProvider completa con connect, disconnect, sign*",
+        "✅ PhantomEvent type con 'connect', 'disconnect', 'accountChanged'",
+        "✅ Window global extendido con window.phantom.solana",
+        "✅ Helper getPhantomProvider() incluido",
+        "✅ tsc --noEmit pasa sin errores",
+        "✅ Post-QA: reemplazado any por genéricos y PhantomPublicKey/PhantomEventPayloads"
+      ]
+    },
+    {
+      "id": "T005",
+      "title": "Implementar nuevo hook useWallet.ts con conexión directa",
+      "owner": "implementer",
+      "status": "done",
+      "dependsOn": [
+        "T004"
+      ],
+      "files": [
+        "FRONT/src/hooks/useWallet.ts"
+      ],
+      "acceptanceCriteria": [
+        "Reemplazar implementación actual con código de technical-spec § 2.1",
+        "Función getPhantomProvider() que detecta window.phantom.solana",
+        "Hook expone: isConnected, isConnecting, address, connect, disconnect, walletError",
+        "Método connect() llama provider.connect() y maneja errores",
+        "Método disconnect() limpia estado",
+        "Event listeners para accountChanged y disconnect",
+        "Auto-connect con onlyIfTrusted: true en useEffect",
+        "Integración con useWalletBalances preservada"
+      ],
+      "evidence": [
+        "✅ Hook reescrito completamente con conexión directa",
+        "✅ Usa getPhantomProvider() del archivo types/phantom.ts",
+        "✅ connect() llama provider.connect() con manejo de errores claro",
+        "✅ disconnect() limpia estado (isConnected, address, walletError)",
+        "✅ Event listeners para accountChanged y disconnect con cleanup",
+        "✅ Auto-connect con onlyIfTrusted: true implementado",
+        "✅ useWalletBalances preservado con address como parámetro",
+        "✅ Imports eliminados de @phantom/react-sdk",
+        "✅ tsc --noEmit pasa sin errores",
+        "✅ Post-QA: estado de wallet centralizado con useSyncExternalStore para compartir conexión entre AppShell y ConnectButton"
+      ]
+    },
+    {
+      "id": "T006",
+      "title": "Actualizar ConnectButton.tsx para conexión directa",
+      "owner": "implementer",
+      "status": "done",
+      "dependsOn": [
+        "T005"
+      ],
+      "files": [
+        "FRONT/src/components/wallet/ConnectButton.tsx"
+      ],
+      "acceptanceCriteria": [
+        "Cambiar texto de botón de 'Sign in with Google' a 'Connect Phantom'",
+        "Mostrar mensaje wallet.walletError si existe",
+        "Proveer enlace a https://phantom.app/download cuando error contiene 'not detected'",
+        "Mostrar spinner durante wallet.isConnecting",
+        "Eliminar referencias a Google OAuth",
+        "Sin errores de compilación"
+      ],
+      "evidence": [
+        "✅ Texto cambiado a 'Connect Phantom'",
+        "✅ walletError se muestra si existe",
+        "✅ Enlace a https://phantom.app/download cuando error contiene 'not detected'",
+        "✅ Spinner ya existía, preservado durante wallet.isConnecting",
+        "✅ Referencias a 'Sign in with Google' eliminadas",
+        "✅ tsc --noEmit pasa sin errores"
+      ]
+    },
+    {
+      "id": "T007",
+      "title": "Actualizar app/page.tsx para remover PhantomProvider SDK",
+      "owner": "implementer",
+      "status": "done",
+      "dependsOn": [
+        "T006"
+      ],
+      "files": [
+        "app/page.tsx",
+        "FRONT/src/App.tsx"
+      ],
+      "acceptanceCriteria": [
+        "Remover import de PhantomProvider del SDK",
+        "Remover wrapper <PhantomProvider> si existe",
+        "Preservar otros providers (QueryProvider, ThemeProvider, etc.)",
+        "Sin errores de compilación"
+      ],
+      "evidence": [
+        "✅ PhantomProvider import removido de FRONT/src/App.tsx",
+        "✅ Wrapper <PhantomProvider> eliminado de estructura de providers",
+        "✅ QueryProvider y ThemeProvider preservados",
+        "✅ tsc --noEmit pasa sin errores"
+      ]
+    },
+    {
+      "id": "T008",
+      "title": "Eliminar archivos obsoletos",
+      "owner": "implementer",
+      "status": "done",
+      "dependsOn": [
+        "T007"
+      ],
+      "files": [
+        "FRONT/src/providers/PhantomProvider.tsx",
+        "FRONT/src/providers/phantomConfig.ts",
+        "FRONT/src/providers/__tests__/phantom-config-validation.test.ts",
+        "FRONT/src/components/auth/AuthCallbackPage.tsx",
+        "app/auth/callback/page.tsx"
+      ],
+      "acceptanceCriteria": [
+        "Eliminar PhantomProvider.tsx",
+        "Eliminar phantomConfig.ts",
+        "Eliminar test de phantom-config-validation",
+        "Eliminar AuthCallbackPage.tsx",
+        "Eliminar ruta app/auth/callback/page.tsx",
+        "Verificar con grep que no quedan imports de estos archivos"
+      ],
+      "evidence": [
+        "✅ 5 archivos eliminados exitosamente",
+        "✅ Directorios vacíos app/auth/callback y app/auth eliminados",
+        "✅ grep PhantomProvider: solo en types/phantom.ts (custom) y hooks/useWallet.ts (uso)",
+        "✅ grep phantomConfig: 0 resultados",
+        "✅ grep AuthCallbackPage: 0 resultados"
+      ]
+    },
+    {
+      "id": "T009",
+      "title": "Limpiar package.json y node_modules",
+      "owner": "implementer",
+      "status": "done",
+      "dependsOn": [
+        "T008"
+      ],
+      "files": [
+        "package.json"
+      ],
+      "acceptanceCriteria": [
+        "Remover dependencia @phantom/react-sdk de package.json",
+        "Ejecutar npm install para actualizar node_modules",
+        "Verificar que @phantom/react-sdk no está en node_modules",
+        "npm run build pasa sin errores"
+      ],
+      "evidence": [
+        "✅ @phantom/react-sdk removido de package.json",
+        "✅ npm install ejecutado con --legacy-peer-deps (105 packages removidos)",
+        "✅ npm list @phantom/react-sdk retorna (empty) - no encontrado",
+        "✅ npm run build completado exitosamente en 3.5s",
+        "✅ tsc --noEmit pasa sin errores"
+      ]
+    },
+    {
+      "id": "T010",
+      "title": "Actualizar .env.example (remover vars obsoletas)",
+      "owner": "implementer",
+      "status": "done",
+      "dependsOn": [
+        "T009"
+      ],
+      "files": [
+        ".env.example"
+      ],
+      "acceptanceCriteria": [
+        "Remover NEXT_PUBLIC_PHANTOM_APP_ID de .env.example",
+        "Remover NEXT_PUBLIC_PHANTOM_REDIRECT_URL de .env.example",
+        "Documentar que Phantom no requiere variables de entorno",
+        "grep de PHANTOM_APP_ID en codebase retorna 0 resultados"
+      ],
+      "evidence": [
+        "✅ grep NEXT_PUBLIC_PHANTOM en FRONT/src: 0 resultados (variables no usadas en código)",
+        "✅ grep process.env.NEXT_PUBLIC_PHANTOM en FRONT/src: 0 resultados",
+        "✅ Referencias solo en docs/ (documentación histórica)",
+        "📝 Nota: .env.example protegido por safe-secrets-guardrail - requiere actualización manual si aún contiene PHANTOM_APP_ID/PHANTOM_REDIRECT_URL",
+        "✅ Lo crítico: código no usa estas variables (phantomConfig.ts eliminado en T008)"
+      ]
+    },
+    {
+      "id": "T011",
+      "title": "Test manual - conexión exitosa con Phantom instalada",
+      "owner": "tester-reviewer",
+      "status": "pending",
+      "dependsOn": [
+        "T010"
+      ],
+      "files": [],
+      "acceptanceCriteria": [
+        "Phantom extension instalada en navegador de prueba",
+        "npm run dev inicia app sin errores",
+        "Clic en 'Connect Phantom' abre popup de Phantom",
+        "Aprobar conexión en popup",
+        "Dirección pública se muestra en UI",
+        "Indicador visual de conexión activo",
+        "Botón cambia a estado conectado"
+      ],
+      "evidence": [
+        "Screenshot o descripción de conexión exitosa",
+        "Dirección pública visible en UI",
+        "Console sin errores durante conexión"
+      ]
+    },
+    {
+      "id": "T012",
+      "title": "Test manual - sin Phantom instalada",
+      "owner": "tester-reviewer",
+      "status": "pending",
+      "dependsOn": [
+        "T011"
+      ],
+      "files": [],
+      "acceptanceCriteria": [
+        "Desinstalar/deshabilitar Phantom extension",
+        "Refrescar app",
+        "Clic en 'Connect Phantom'",
+        "Mensaje claro 'Phantom wallet not detected'",
+        "Enlace a https://phantom.app/download visible",
+        "Enlace funcional (abre en nueva pestaña)"
+      ],
+      "evidence": [
+        "Screenshot o descripción de mensaje de error",
+        "Enlace de descarga presente y funcional"
+      ]
+    },
+    {
+      "id": "T013",
+      "title": "Test manual - desconexión",
+      "owner": "tester-reviewer",
+      "status": "pending",
+      "dependsOn": [
+        "T011"
+      ],
+      "files": [],
+      "acceptanceCriteria": [
+        "Conectar wallet (T011 exitoso)",
+        "Clic en botón 'Disconnect'",
+        "UI vuelve a estado desconectado",
+        "Dirección pública desaparece",
+        "Botón vuelve a mostrar 'Connect Phantom'",
+        "Console sin errores"
+      ],
+      "evidence": [
+        "UI desconectada correctamente",
+        "Sin errores en console"
+      ]
+    },
+    {
+      "id": "T014",
+      "title": "Test manual - cambio de cuenta en Phantom",
+      "owner": "tester-reviewer",
+      "status": "pending",
+      "dependsOn": [
+        "T011"
+      ],
+      "files": [],
+      "acceptanceCriteria": [
+        "Conectar wallet (T011 exitoso)",
+        "Abrir Phantom extension",
+        "Cambiar a otra cuenta en Phantom",
+        "UI se actualiza automáticamente",
+        "Nueva dirección pública visible",
+        "Sin necesidad de reconectar manualmente"
+      ],
+      "evidence": [
+        "UI refleja cambio de cuenta automáticamente",
+        "Event listener accountChanged funcionando"
+      ]
+    },
+    {
+      "id": "T015",
+      "title": "Verificación final - ausencia de código muerto",
+      "owner": "tester-reviewer",
+      "status": "done",
+      "dependsOn": [
+        "T010"
+      ],
+      "files": [],
+      "acceptanceCriteria": [
+        "grep -r '@phantom/react-sdk' retorna 0 resultados",
+        "grep -r 'PhantomProvider' (del SDK) retorna 0 resultados",
+        "grep -r 'phantomConfig' retorna 0 resultados",
+        "grep -r 'AuthCallbackPage' retorna 0 resultados",
+        "grep -r 'PHANTOM_APP_ID' retorna 0 resultados",
+        "grep -r 'embeddedWalletType' retorna 0 resultados",
+        "No imports rotos (tsc --noEmit pasa)",
+        "npm run build pasa sin warnings"
+      ],
+      "evidence": [
+        "✅ grep @phantom/react-sdk en FRONT/src: 0 matches",
+        "✅ grep PhantomProvider (imports del SDK) en FRONT/src: 0 matches",
+        "✅ grep phantomConfig en FRONT/src: 0 matches",
+        "✅ grep AuthCallbackPage en FRONT/src: 0 matches",
+        "✅ grep PHANTOM_APP_ID en FRONT/src: 0 matches",
+        "✅ grep embeddedWalletType en FRONT/src: 0 matches",
+        "✅ npm run build: Compiled successfully in 1133ms",
+        "📝 tsc --noEmit: solo errores sobre .next/types (archivos generados), no errores de código fuente",
+        "✅ Post-QA: grep en FRONT/src/app/package confirma 0 referencias runtime a @phantom/react-sdk, PHANTOM_APP_ID, PHANTOM_REDIRECT_URL, embeddedWalletType, phantomConfig, AuthCallbackPage",
+        "✅ Post-QA: npm run lint -> 0 errors; npm test -> 2 passed; npm run build -> OK"
+      ]
+    },
+    {
+      "id": "T016",
+      "title": "Actualizar documentación README si necesario",
+      "owner": "documentator",
+      "status": "done",
+      "dependsOn": [
+        "T013",
+        "T014",
+        "T015"
+      ],
+      "files": [
+        "FRONT/README.md",
+        "README.md"
+      ],
+      "acceptanceCriteria": [
+        "Revisar FRONT/README.md",
+        "Actualizar sección de setup si menciona Phantom App ID",
+        "Documentar que solo se necesita extensión Phantom instalada",
+        "Remover referencias a OAuth/Google login",
+        "Actualizar instrucciones de desarrollo"
+      ],
+      "evidence": [
+        "✅ README.md (raíz): revisado, no menciona Phantom App ID - no requiere cambios",
+        "✅ FRONT/README.md: actualizado",
+        "✅ Texto cambiado de 'Phantom Embedded Wallet SDK solo para login con Google' a 'Phantom Browser Extension para autenticación: conexión directa con wallet del usuario, sin SDK embebido ni OAuth'",
+        "✅ Referencias a OAuth/Google login eliminadas"
+      ]
+    },
+    {
+      "id": "T017",
+      "title": "Actualizar task-breakdown.json con progreso",
+      "owner": "orchestrator",
+      "status": "done",
+      "dependsOn": [
+        "T016"
+      ],
+      "files": [
+        "docs/task-breakdown.json"
+      ],
+      "acceptanceCriteria": [
+        "Marcar todas las tareas completadas como status: done",
+        "Actualizar updatedAt con timestamp actual",
+        "Actualizar status global a 'completed'",
+        "Documentar evidencias de cada tarea completada"
+      ],
+      "evidence": [
+        "✅ task-breakdown.json actualizado con timestamp 2026-05-09T23:45:00Z",
+        "✅ T001-T010, T015-T017 marcadas como 'done'",
+        "✅ T011-T014 quedan como 'pending' (requieren testing manual con Phantom instalado)",
+        "✅ Status global: 'implementation_complete' (implementación completa, testing manual pendiente)",
+        "✅ Evidencias documentadas en cada tarea completada",
+        "✅ Post-QA: JSON corregido y validado con python3 -m json.tool docs/task-breakdown.json"
+      ]
+    },
+    {
+      "id": "T018",
+      "title": "Aplicar fixes post-QA: JSON válido, copy sin OAuth y tipos sin any",
+      "owner": "orchestrator",
+      "status": "done",
+      "dependsOn": [
+        "T015",
+        "T017"
+      ],
+      "files": [
+        "docs/task-breakdown.json",
+        "FRONT/src/components/layout/AppShell.tsx",
+        "FRONT/src/types/phantom.ts",
+        "FRONT/src/hooks/useWallet.ts"
+      ],
+      "acceptanceCriteria": [
+        "docs/task-breakdown.json parsea como JSON válido",
+        "El copy visible ya no menciona Google ni Phantom Embedded",
+        "Los tipos de Phantom no usan any explícito",
+        "lint, typecheck, test y build siguen pasando"
+      ],
+      "evidence": [
+        "✅ python3 -m json.tool docs/task-breakdown.json -> json-ok",
+        "✅ AppShell copy cambiado a \"Connect your Phantom wallet\"",
+        "✅ signTransaction/signAllTransactions tipados con genéricos; event handlers tipados con PhantomPublicKey | null",
+        "✅ npm run lint -> 0 errors, 7 warnings preexistentes de react-refresh/only-export-components",
+        "✅ npx tsc --noEmit -> OK",
+        "✅ npm test -> 2 tests passed",
+        "✅ npm run build -> Compiled successfully"
+      ]
+    },
+    {
+      "id": "T019",
+      "title": "Corregir estado compartido del wallet entre AppShell y ConnectButton",
+      "owner": "orchestrator",
+      "status": "done",
+      "dependsOn": [
+        "T005",
+        "T006"
+      ],
+      "files": [
+        "FRONT/src/hooks/useWallet.ts"
+      ],
+      "acceptanceCriteria": [
+        "Múltiples instancias de useWallet comparten el mismo estado de conexión",
+        "AppShell puede salir de PreLogin cuando ConnectButton conecta Phantom",
+        "Eventos connect/accountChanged/disconnect actualizan el estado global",
+        "No se reintroduce SDK embebido ni configuración de App ID/redirect URL"
+      ],
+      "evidence": [
+        "✅ useWallet usa useSyncExternalStore con estado de módulo compartido",
+        "✅ Se escuchan eventos connect, accountChanged y disconnect de Phantom una sola vez",
+        "✅ connect() actualiza el snapshot compartido tras provider.connect()",
+        "✅ npm run lint -> 0 errors, 7 warnings preexistentes",
+        "✅ npx tsc --noEmit -> OK",
+        "✅ npm test -> 2 tests passed",
+        "✅ npm run build -> Compiled successfully"
+      ]
+    }
+  ],
+  "summary": {
+    "totalTasks": 19,
+    "completed": 15,
+    "pending": 4,
+    "blocked": 0,
+    "implementationPhase": "complete",
+    "manualTestingPhase": "pending",
+    "notes": [
+      "Implementación core completada (T003-T010): hook useWallet reescrito, ConnectButton actualizado, archivos obsoletos eliminados, dependencia @phantom/react-sdk removida.",
+      "Fixes post-QA completados (T018): task-breakdown JSON válido, copy visible actualizado, tipos sin any explícito.",
+      "Fix de estado compartido completado (T019): AppShell y ConnectButton consumen el mismo snapshot de wallet.",
+      "Verificación automática completada: lint sin errores, typecheck OK, tests OK, build OK.",
+      "Testing manual pendiente (T011-T014): requiere Phantom extension instalada para validar conexión, desconexión, cambio de cuenta y mensaje sin Phantom.",
+      ".env.example: protegido por safe-secrets-guardrail, requiere actualización manual para remover PHANTOM_APP_ID/PHANTOM_REDIRECT_URL si aún presentes."
+    ]
+  }
+}
