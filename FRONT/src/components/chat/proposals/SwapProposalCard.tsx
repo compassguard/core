@@ -16,11 +16,12 @@ export function SwapProposalCard({
 }) {
   const params = proposal.function.params as SwapParams | OrcaSwapParams;
   const isOrcaSwap = proposal.function.name === 'swap_orca_usdc_to_sol';
+  const tokenLabel = (token: string) => (isOrcaSwap && token === 'USDC' ? 'devUSDC' : token);
   const payValue = isOrcaSwap
-    ? `${(params as OrcaSwapParams).input_amount} ${(params as OrcaSwapParams).input_token}`
+    ? `${(params as OrcaSwapParams).input_amount} ${tokenLabel((params as OrcaSwapParams).input_token)}`
     : `${(params as SwapParams).amount_in} ${(params as SwapParams).token_in}`;
   const receiveValue = isOrcaSwap
-    ? (params as OrcaSwapParams).output_token
+    ? tokenLabel((params as OrcaSwapParams).output_token)
     : (params as SwapParams).token_out;
   const { approveProposal, rejectProposal } = useAgentMessage();
   const uiState = useChatStore((state) => state.proposalUiState) ?? proposal.uiState;

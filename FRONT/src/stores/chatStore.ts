@@ -794,14 +794,15 @@ export const useChatStore = create<ChatStore>()(
               : null;
 
             const nextMessages = [...conversation.messages, ...chatMessages];
-            const touchedConversation: PersistedConversation = {
-              ...conversation,
-              messages: nextMessages,
-              title: deriveConversationTitle(nextMessages),
-              updatedAt: now,
-              hasPendingProposal: Boolean(functionCall),
-              pendingProposalPreview: functionCall
-                ? {
+              const touchedConversation: PersistedConversation = {
+                ...conversation,
+                messages: nextMessages,
+                title: deriveConversationTitle(nextMessages),
+                updatedAt: now,
+                sessionStatus: 'active',
+                hasPendingProposal: Boolean(functionCall),
+                pendingProposalPreview: functionCall
+                  ? {
                     toolName: functionCall.function.name,
                     createdAt: functionCall.timestamp,
                   }
@@ -927,6 +928,7 @@ export const useChatStore = create<ChatStore>()(
               messages: nextMessages,
               updatedAt: now,
               title: deriveConversationTitle(nextMessages),
+              sessionStatus: 'active',
               hasPendingProposal: true,
               pendingProposalPreview: {
                 toolName: proposal.function.name,
@@ -967,8 +969,8 @@ export const useChatStore = create<ChatStore>()(
                 role: 'agent',
                 type: 'text',
                 content: status === 'success'
-                  ? `Transferencia ejecutada exitosamente.${execute.tx_hash ? ` TX: ${execute.tx_hash.slice(0, 8)}...` : ''}`
-                  : `Error en la transferencia: ${execute.error || 'Error desconocido'}`,
+                  ? `Transacción ejecutada exitosamente.${execute.tx_hash ? ` TX: ${execute.tx_hash.slice(0, 8)}...` : ''}`
+                  : `Error en la transacción: ${execute.error || 'Error desconocido'}`,
                 execute,
                 timestamp: now,
               };

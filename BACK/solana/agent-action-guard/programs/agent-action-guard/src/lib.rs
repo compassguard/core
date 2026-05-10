@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-declare_id!("ETLBetVBpHeG3pKKqpCaRQYfQ2opMNEKCsrQUyqgyg6s");
+declare_id!("FcMZYCXAkBvaFazQutSJWqtq4nUWKfbBQGEeyvvazgQ");
 
 // Pyth price account structure (simplified for reading)
 // Based on pyth-sdk-solana PriceAccount layout
@@ -43,7 +43,7 @@ fn read_pyth_price(data: &[u8]) -> Result<(i64, u64, i32, i64)> {
     let conf = u64::from_le_bytes(data[216..224].try_into().unwrap());
     // Status (u32) at 224
     let status = u32::from_le_bytes(data[224..228].try_into().unwrap());
-    
+
     // Check status is Trading (1)
     if status != 1 {
         return err!(GuardError::OracleDataStale);
@@ -62,7 +62,10 @@ fn read_pyth_price(data: &[u8]) -> Result<(i64, u64, i32, i64)> {
 pub mod agent_action_guard {
     use super::*;
 
-    pub fn initialize_policy(ctx: Context<InitializePolicy>, params: InitPolicyParams) -> Result<()> {
+    pub fn initialize_policy(
+        ctx: Context<InitializePolicy>,
+        params: InitPolicyParams,
+    ) -> Result<()> {
         let policy = &mut ctx.accounts.user_policy;
         policy.user = ctx.accounts.user.key();
         policy.max_transfer_lamports = params.max_transfer_lamports;
@@ -77,7 +80,11 @@ pub mod agent_action_guard {
 
     pub fn update_policy(ctx: Context<UpdatePolicy>, params: InitPolicyParams) -> Result<()> {
         let policy = &mut ctx.accounts.user_policy;
-        require_keys_eq!(policy.user, ctx.accounts.user.key(), GuardError::Unauthorized);
+        require_keys_eq!(
+            policy.user,
+            ctx.accounts.user.key(),
+            GuardError::Unauthorized
+        );
         policy.max_transfer_lamports = params.max_transfer_lamports;
         policy.max_swap_usd = params.max_swap_usd;
         policy.max_slippage_bps = params.max_slippage_bps;
@@ -87,20 +94,35 @@ pub mod agent_action_guard {
         Ok(())
     }
 
-    pub fn create_action_approval(ctx: Context<CreateActionApproval>, params: CreateActionApprovalParams) -> Result<()> {
+    pub fn create_action_approval(
+        ctx: Context<CreateActionApproval>,
+        params: CreateActionApprovalParams,
+    ) -> Result<()> {
         let policy = &ctx.accounts.user_policy;
         require!(policy.enabled, GuardError::PolicyDisabled);
 
         if params.action_type == ActionType::TransferSol as u8 {
-            require!(params.input_amount <= policy.max_transfer_lamports, GuardError::TransferAmountTooHigh);
+            require!(
+                params.input_amount <= policy.max_transfer_lamports,
+                GuardError::TransferAmountTooHigh
+            );
         }
 
-        if params.action_type == ActionType::SimulatedSwap as u8 || params.action_type == ActionType::BuySol as u8 || params.action_type == ActionType::BuySolOracleConditional as u8 {
-            require!(params.max_slippage_bps <= policy.max_slippage_bps, GuardError::SlippageTooHigh);
+        if params.action_type == ActionType::SimulatedSwap as u8
+            || params.action_type == ActionType::BuySol as u8
+            || params.action_type == ActionType::BuySolOracleConditional as u8
+        {
+            require!(
+                params.max_slippage_bps <= policy.max_slippage_bps,
+                GuardError::SlippageTooHigh
+            );
         }
 
         if params.action_type == ActionType::PrivateTransfer as u8 {
-            require!(policy.allow_private_actions, GuardError::PrivateActionsDisabled);
+            require!(
+                policy.allow_private_actions,
+                GuardError::PrivateActionsDisabled
+            );
         }
 
         let now = Clock::get()?.unix_timestamp;
@@ -127,7 +149,11 @@ pub mod agent_action_guard {
 
     pub fn revoke_action_approval(ctx: Context<MutateApproval>) -> Result<()> {
         let approval = &mut ctx.accounts.action_approval;
-        require_keys_eq!(approval.user, ctx.accounts.user.key(), GuardError::Unauthorized);
+        require_keys_eq!(
+            approval.user,
+            ctx.accounts.user.key(),
+            GuardError::Unauthorized
+        );
         require!(!approval.executed, GuardError::AlreadyExecuted);
         approval.revoked = true;
         Ok(())
@@ -135,7 +161,11 @@ pub mod agent_action_guard {
 
     pub fn mark_executed(ctx: Context<MutateApproval>) -> Result<()> {
         let approval = &mut ctx.accounts.action_approval;
-        require_keys_eq!(approval.user, ctx.accounts.user.key(), GuardError::Unauthorized);
+        require_keys_eq!(
+            approval.user,
+            ctx.accounts.user.key(),
+            GuardError::Unauthorized
+        );
         check_approval_active(approval)?;
         approval.executed = true;
         Ok(())
@@ -147,13 +177,24 @@ pub mod agent_action_guard {
         max_confidence_bps: u64,
     ) -> Result<()> {
         let approval = &mut ctx.accounts.action_approval;
-        require_keys_eq!(approval.user, ctx.accounts.user.key(), GuardError::Unauthorized);
+        require_keys_eq!(
+            approval.user,
+            ctx.accounts.user.key(),
+            GuardError::Unauthorized
+        );
         check_approval_active(approval)?;
-        require!(approval.action_type == ActionType::BuySolOracleConditional as u8, GuardError::InvalidActionType);
-        require_keys_eq!(approval.oracle_feed, ctx.accounts.oracle_price_feed.key(), GuardError::OracleFeedMismatch);
+        require!(
+            approval.action_type == ActionType::BuySolOracleConditional as u8,
+            GuardError::InvalidActionType
+        );
+        require_keys_eq!(
+            approval.oracle_feed,
+            ctx.accounts.oracle_price_feed.key(),
+            GuardError::OracleFeedMismatch
+        );
 
         let current_time = Clock::get()?.unix_timestamp;
-        
+
         // Read Pyth price data directly from account
         let oracle_data = ctx.accounts.oracle_price_feed.try_borrow_data()?;
         let (price_value, price_conf, price_expo, price_timestamp) = read_pyth_price(&oracle_data)?;
@@ -174,13 +215,19 @@ pub mod agent_action_guard {
         };
 
         require!(oracle_price_e8 > 0, GuardError::InvalidOraclePrice);
-        require!(oracle_price_e8 as u64 <= approval.target_price_usd_e8, GuardError::PriceConditionNotMet);
+        require!(
+            oracle_price_e8 as u64 <= approval.target_price_usd_e8,
+            GuardError::PriceConditionNotMet
+        );
 
         // confidence bps relative to price
         let price_abs = (price_value as i128).abs();
         require!(price_abs > 0, GuardError::InvalidOraclePrice);
         let conf_bps = ((price_conf as i128) * 10_000 / price_abs) as u64;
-        require!(conf_bps <= max_confidence_bps, GuardError::OracleConfidenceTooHigh);
+        require!(
+            conf_bps <= max_confidence_bps,
+            GuardError::OracleConfidenceTooHigh
+        );
 
         approval.executed = true;
         Ok(())
@@ -190,7 +237,10 @@ pub mod agent_action_guard {
 fn check_approval_active(approval: &ActionApproval) -> Result<()> {
     require!(!approval.executed, GuardError::AlreadyExecuted);
     require!(!approval.revoked, GuardError::ApprovalRevoked);
-    require!(approval.expires_at > Clock::get()?.unix_timestamp, GuardError::ApprovalExpired);
+    require!(
+        approval.expires_at > Clock::get()?.unix_timestamp,
+        GuardError::ApprovalExpired
+    );
     Ok(())
 }
 

@@ -1,3 +1,4 @@
+import React from 'react';
 import type { ChatMessage, PendingProposal } from '@/types/chat';
 import { AgentMessage } from './AgentMessage';
 import { AlertBanner } from './AlertBanner';
@@ -10,10 +11,12 @@ export function MessageList({ messages }: { messages: ChatMessage[] }) {
   const pendingProposal = useChatStore((state) => state.pendingProposal);
   const canApproveProposal = useChatStore((state) => state.canApproveProposal());
   const activeConversationReadOnlyReason = useChatStore((state) => state.getActiveConversationReadOnlyReason());
+  const streamingContent = useChatStore((state) => state.streamingContent);
 
   const blockReason = !canApproveProposal
     ? activeConversationReadOnlyReason
     : null;
+  const hasStreamingContent = streamingContent.trim().length > 0;
 
   return (
     <div className="space-y-5">
@@ -41,6 +44,18 @@ export function MessageList({ messages }: { messages: ChatMessage[] }) {
         if (message.type === 'text') return <AgentMessage key={message.id} message={message} />;
         return null;
       })}
+      {hasStreamingContent ? (
+        <AgentMessage
+          key="streaming-text"
+          message={{
+            id: 'streaming-text',
+            role: 'agent',
+            type: 'text',
+            content: streamingContent,
+            timestamp: new Date().toISOString(),
+          }}
+        />
+      ) : null}
     </div>
   );
 }

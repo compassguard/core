@@ -25,7 +25,7 @@ export function MobileShell({ activeTab, onTabChange }: { activeTab: string; onT
           <>
             <BalanceCard data={wallet.balances} isLoading={wallet.isBalancesLoading} isError={Boolean(wallet.balancesError)} />
             <ConditionalOrdersPanel userAddress={wallet.address} />
-            <div className="h-[calc(100vh-18rem)]"><ChatContainer /></div>
+            <div className="h-[calc(100dvh-18rem)] min-h-96 overflow-hidden"><ChatContainer /></div>
           </>
         ) : activeTab === 'Assets' ? (
           <>

@@ -31,7 +31,7 @@ import {
   buildConditionalBuyCreateOrderTx,
   toConditionalBuyProposalPayload,
 } from './tools/conditionalBuySol';
-import { quoteOrcaUsdcToSol, type OrcaSwapParams } from './tools/orcaSwap';
+import { DEVNET_USDC_MINT, quoteOrcaUsdcToSol, type OrcaSwapParams } from './tools/orcaSwap';
 import { buildUnsignedOrcaSwapTx } from './tools/orcaSwapTx';
 import {
   callAzureResponsesStream,
@@ -273,6 +273,11 @@ export function isReadOnlyAgentTool(toolName: string): boolean {
 }
 const DEFAULT_SOLANA_NETWORK: SolanaNetwork = 'devnet';
 const PROPOSAL_TTL_MS = 5 * 60 * 1000;
+const USDC_FUNDING_BUFFER_MULTIPLIER = 1.15;
+const MIN_USDC_FUNDING_SWAP_SOL = 0.05;
+const DEV_USDC_FUNDING_SOL_PER_USDC = 0.06;
+const TOKEN_PROGRAM_ID = new web3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+const ASSOCIATED_TOKEN_PROGRAM_ID = new web3.PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
 
 // ============================================================================
 // Helpers
@@ -332,6 +337,59 @@ async function writeSSE(
 
 function getProposalExpiry(): number {
   return Date.now() + PROPOSAL_TTL_MS;
+}
+
+function getRequiredUsdcForConditionalBuy(args: ConditionalBuySolParams): number {
+  return Number(args.max_usdc_in || args.input_amount || 0);
+}
+
+function displaySwapToken(token: 'USDC' | 'SOL'): string {
+  return token === 'USDC' ? 'devUSDC' : token;
+}
+
+async function getWalletUsdcTestBalance(userAddress: string): Promise<number> {
+  const owner = new web3.PublicKey(userAddress);
+  const usdcMint = process.env.USDC_TEST_MINT || DEVNET_USDC_MINT;
+  const mint = new web3.PublicKey(usdcMint);
+  const ata = web3.PublicKey.findProgramAddressSync(
+    [owner.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), mint.toBuffer()],
+    ASSOCIATED_TOKEN_PROGRAM_ID,
+  )[0];
+
+  try {
+    const balance = await getSolanaConnection().getTokenAccountBalance(ata, 'confirmed');
+    return balance.value.uiAmount ?? Number(balance.value.amount) / 10 ** balance.value.decimals;
+  } catch {
+    return 0;
+  }
+}
+
+async function buildUsdcFundingSwap(requiredUsdc: number, targetPriceUsd: number): Promise<{
+  args: OrcaSwapParams;
+  quote: Awaited<ReturnType<typeof quoteOrcaUsdcToSol>>;
+}> {
+  const quotePrice = Math.max(Number(targetPriceUsd) || 1, 1);
+  const solInput = Math.max(
+    MIN_USDC_FUNDING_SWAP_SOL,
+    requiredUsdc * DEV_USDC_FUNDING_SOL_PER_USDC,
+    (requiredUsdc * USDC_FUNDING_BUFFER_MULTIPLIER) / quotePrice,
+  );
+  const quote = await quoteOrcaUsdcToSol({
+    input_token: 'SOL',
+    output_token: 'USDC',
+    input_amount: solInput,
+    slippage_bps: 100,
+  });
+
+  return {
+    args: {
+      input_token: 'SOL',
+      output_token: 'USDC',
+      input_amount: Number(solInput.toFixed(6)),
+      slippage_bps: 100,
+    },
+    quote,
+  };
 }
 
 function isProposalExpired(proposal: PendingProposal): boolean {
@@ -630,15 +688,11 @@ async function handleOrcaSwapToolCall(
       },
     });
 
-    const outAmount =
-      toolArgs.output_token === 'SOL'
-        ? Number(quote.estimated_output_base_units) / 1_000_000_000
-        : Number(quote.estimated_output_base_units) / 1_000_000;
     const proposal: AgentFunctionCallMessage = {
       type: 'function_call',
       function: { name: 'swap_orca_usdc_to_sol', params: toolArgs },
       display: {
-        summary: `Swap Orca: ${toolArgs.input_amount} ${toolArgs.input_token} -> ~${outAmount.toFixed(6)} ${toolArgs.output_token}`,
+        summary: `Swap Orca: ${toolArgs.input_amount} ${displaySwapToken(toolArgs.input_token)} -> ${displaySwapToken(toolArgs.output_token)}`,
         provider: 'orca_whirlpools_devnet',
       },
       risk: {
@@ -885,6 +939,96 @@ async function handleConditionalBuyToolCall(
     await writeSSE(writer, encoder, 'done', { session_id: sessionId });
     await writer.close();
     return;
+  }
+
+  const requiredUsdc = getRequiredUsdcForConditionalBuy(toolArgs);
+  if (session.userAddress && requiredUsdc > 0) {
+    let usdcBalance = 0;
+    try {
+      usdcBalance = await getWalletUsdcTestBalance(session.userAddress);
+    } catch {
+      usdcBalance = 0;
+    }
+
+    if (usdcBalance + 0.000001 < requiredUsdc) {
+      try {
+        const missingUsdc = Math.max(requiredUsdc - usdcBalance, 0);
+        const fundingSwap = await buildUsdcFundingSwap(missingUsdc, toolArgs.target_price_usd);
+        const swapArgs = fundingSwap.args;
+
+        updateSession(sessionId, {
+          pendingProposal: {
+            proposalType: 'swap_orca_usdc_to_sol',
+            state: 'awaiting_approval',
+            toolName: 'swap_orca_usdc_to_sol',
+            toolArgs: { ...swapArgs, quote: fundingSwap.quote },
+            toolResult: {
+              status: 'prepared',
+              reason: 'DEV_USDC_REQUIRED_BEFORE_CONDITIONAL_ORDER',
+              next_conditional_buy_args: {
+                ...toolArgs,
+                ...proposalPayload,
+              },
+            },
+            createdAt: Date.now(),
+            expiresAt: getProposalExpiry(),
+            expectedUserAddress: session.userAddress,
+            network: DEFAULT_SOLANA_NETWORK,
+          },
+        });
+
+        const proposal: AgentFunctionCallMessage = {
+          type: 'function_call',
+          function: { name: 'swap_orca_usdc_to_sol', params: swapArgs },
+          display: {
+            summary: `Primero fondear devUSDC: ${swapArgs.input_amount} SOL -> devUSDC`,
+            provider: 'orca_whirlpools_devnet',
+          },
+          risk: {
+            score: 35,
+            level: 'medium',
+            reasons: [
+              `Tu wallet tiene ${usdcBalance.toFixed(6)} devUSDC y la orden necesita ${requiredUsdc} devUSDC`,
+              'Primero se prepara un swap real SOL -> devUSDC en Orca devnet',
+            ],
+          },
+          execution: {
+            mode: 'phantom_sign_and_send',
+            network: DEFAULT_SOLANA_NETWORK,
+            expires_at: new Date(getProposalExpiry()).toISOString(),
+            expected_user_address: session.userAddress,
+          },
+          timestamp: now(),
+        };
+
+        await writeSSE(writer, encoder, 'alert', {
+          severity: 'info',
+          content:
+            `Para crear la orden condicional primero necesitás devUSDC en la wallet. ` +
+            `Preparé un swap Orca SOL -> devUSDC; cuando se confirme voy a dejar lista la propuesta condicional.`,
+          timestamp: now(),
+        });
+        await writeSSE(writer, encoder, 'proposal', proposal);
+        await writeSSE(writer, encoder, 'done', {
+          session_id: sessionId,
+          awaiting_approval: true,
+          action_type: 'FUND_DEV_USDC_BEFORE_CONDITIONAL_BUY',
+        });
+        await writer.close();
+        return;
+      } catch (e) {
+        await writeSSE(writer, encoder, 'alert', {
+          severity: 'warning',
+          content:
+            `Tu wallet no tiene suficiente devUSDC para esta orden. ` +
+            `Hacé primero un swap SOL -> devUSDC en Orca devnet y luego repetí la orden condicional.`,
+          timestamp: now(),
+        });
+        await writeSSE(writer, encoder, 'done', { session_id: sessionId });
+        await writer.close();
+        return;
+      }
+    }
   }
 
   const oracleFeed = process.env.PYTH_SOL_USD_FEED || 'ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d';
@@ -1265,7 +1409,7 @@ async function handleFunctionApprove(request: {
       messages: [
         {
           type: 'text',
-          content: `Aprobación recibida para orden condicional (objetivo ${buyArgs.desired_sol_amount || buyArgs.min_sol_out || '—'} SOL, recipient ${shortRecipient}, max ${buyArgs.max_usdc_in || buyArgs.input_amount} USDC). Ejecuta la transacción en Phantom y luego confirma la propuesta.`,
+          content: `Aprobación recibida para orden condicional (objetivo ${buyArgs.desired_sol_amount || buyArgs.min_sol_out || '—'} SOL, recipient ${shortRecipient}, max ${buyArgs.max_usdc_in || buyArgs.input_amount} devUSDC). Ejecuta la transacción en Phantom y luego confirma la propuesta.`,
           timestamp: now(),
         },
       ],
@@ -1358,7 +1502,7 @@ async function handleFunctionApprove(request: {
       messages: [
         {
           type: 'text',
-          content: `Swap preparado: ${swapArgs.input_amount} ${swapArgs.input_token} → ${swapArgs.output_token}. Firma en tu wallet para ejecutar.`,
+          content: `Swap preparado: ${swapArgs.input_amount} ${displaySwapToken(swapArgs.input_token)} → ${displaySwapToken(swapArgs.output_token)}. Firma en tu wallet para ejecutar.`,
           timestamp: now(),
         },
       ],
@@ -1530,6 +1674,98 @@ async function handleFunctionResult(request: {
       },
       { status: 400 },
     );
+  }
+
+  if (
+    pendingProposal.toolName === 'swap_orca_usdc_to_sol' &&
+    request.status === 'confirmed' &&
+    pendingProposal.toolResult?.reason === 'DEV_USDC_REQUIRED_BEFORE_CONDITIONAL_ORDER'
+  ) {
+    const nextArgs = pendingProposal.toolResult.next_conditional_buy_args as ConditionalBuySolParams | undefined;
+    if (nextArgs) {
+      const quoteUsdPrice = Math.max(1, Number(nextArgs.target_price_usd));
+      const proposalPayload = toConditionalBuyProposalPayload(nextArgs, session.userAddress || '', quoteUsdPrice);
+      const decision = evaluateConditionalBuy({
+        ...nextArgs,
+        desired_sol_amount: proposalPayload.desired_sol_amount,
+      });
+
+      if (decision.decision === 'REJECT') {
+        clearPendingProposal(request.session_id);
+        return jsonResponse({
+          messages: [
+            {
+              type: 'text',
+              content: `Swap confirmado, pero no puedo preparar la orden condicional: ${decision.reasons.join(', ')}`,
+              execute: { status: 'success', tx_hash: request.tx_signature },
+              timestamp: now(),
+            },
+          ],
+        });
+      }
+
+      const conditionalToolArgs = {
+        ...nextArgs,
+        ...proposalPayload,
+      };
+      const proposal: AgentFunctionCallMessage = {
+        type: 'function_call',
+        function: {
+          name: 'conditional_buy_sol',
+          params: conditionalToolArgs,
+        },
+        display: {
+          summary: `Orden condicional para ${proposalPayload.desired_sol_amount} SOL si SOL <= ${nextArgs.target_price_usd} USD`,
+          provider: 'conditional_escrow_program',
+        },
+        risk: {
+          score: 35,
+          level: 'medium',
+          reasons: [
+            'Compra condicional requiere validación oracle on-chain',
+            ...decision.reasons,
+          ],
+        },
+        execution: {
+          mode: 'phantom_sign_and_send',
+          network: DEFAULT_SOLANA_NETWORK,
+          expires_at: new Date(getProposalExpiry()).toISOString(),
+          expected_user_address: session.userAddress ?? undefined,
+        },
+        timestamp: now(),
+      };
+
+      updateSession(request.session_id, {
+        pendingProposal: {
+          proposalType: 'conditional_buy_sol',
+          state: 'awaiting_approval',
+          toolName: 'conditional_buy_sol',
+          toolArgs: conditionalToolArgs,
+          toolResult: {
+            status: 'prepared',
+            reason: 'READY_FOR_ONCHAIN_ORACLE_APPROVAL_AFTER_DEV_USDC_FUNDING',
+            funding_swap_signature: request.tx_signature,
+          },
+          createdAt: Date.now(),
+          expiresAt: getProposalExpiry(),
+          expectedUserAddress: session.userAddress,
+          network: DEFAULT_SOLANA_NETWORK,
+          txSignature: request.tx_signature,
+        },
+      });
+
+      return jsonResponse({
+        messages: [
+          {
+            type: 'text',
+            content: 'Swap de devUSDC confirmado. Ahora queda lista la orden condicional para aprobar con Phantom.',
+            execute: { status: 'success', tx_hash: request.tx_signature },
+            timestamp: now(),
+          },
+          proposal,
+        ],
+      });
+    }
   }
 
   const statusToPersist = request.status === 'failed' ? 'failed' : request.status === 'confirmed' ? 'confirmed' : 'submitted';

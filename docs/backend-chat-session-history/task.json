@@ -1,0 +1,187 @@
+{
+  "version": 1,
+  "status": "planned",
+  "goal": "Mover la sesion de chat al backend para que el transcript y pendingProposal sean administrados server-side, y el frontend persista y use solamente el session_id activo para rehidratar la conversacion.",
+  "context": {
+    "source": "explorer_handoff",
+    "summary": "Hoy el frontend persiste conversaciones, mensajes y sessionId en localStorage desde FRONT/src/stores/chatStore.ts. useAgentMessage agrega mensajes y propuestas localmente. El backend ya tiene BACK/services/chatSessionStore.ts con SessionState en memoria y TTL de 30 minutos, pero BACK/services/chat.ts no usa messages como historial real para el LLM ni expone lectura de transcript. La feature debe volver backend-first la sesion activa, agregar get_history o equivalente para rehidratacion y eliminar la persistencia local de transcript completo."
+  },
+  "acceptanceCriteria": [
+    "El backend mantiene por sessionId el transcript de la conversacion y pendingProposal como fuente operativa de verdad.",
+    "BACK/services/chat.ts usa el historial acumulado de la sesion al construir el input del LLM para user_message.",
+    "Existe una operacion backend para obtener el historial de una sesion vigente por session_id y rehidratar la UI despues de refresh.",
+    "El frontend deja de persistir mensajes, conversaciones completas y pendingProposal en localStorage; solo persiste el session_id activo.",
+    "Despues de refresh, la UI restaura la conversacion activa consultando backend con session_id cuando la sesion sigue vigente.",
+    "Si el session_id ya no existe o expiro, la UI limpia la sesion local y la siguiente interaccion crea una sesion nueva sin mezclar transcript viejo.",
+    "Aprobar, rechazar y reportar function_result mantienen el transcript backend y pendingProposal en un estado coherente para rehidratacion posterior."
+  ],
+  "constraints": [
+    "Crear los artefactos solo bajo docs/backend-chat-session-history/.",
+    "No implementar persistencia durable en Redis, base de datos o almacenamiento externo; el store sigue siendo en memoria con TTL.",
+    "No inventar historial durable multi-conversacion ni indice de sesiones por usuario si no existe backend para listarlo.",
+    "No persistir en frontend mensajes, listas de conversaciones, propuestas pendientes, transacciones unsigned, firmas ni otros artefactos sensibles.",
+    "Todas las tareas deben quedar con status pending y evidence vacio; solo Implementer actualiza progreso y evidencia."
+  ],
+  "decisions": [
+    "La feature cubre una sesion activa rehidratable por session_id, no un historial durable de multiples conversaciones.",
+    "El endpoint existente POST /api/chat se extiende con un request type get_history para recuperar transcript y pendingProposal.",
+    "El backend mantiene una representacion de transcript apta para contexto LLM y para serializacion a UI, con helpers unificados de append/update.",
+    "El frontend conserva estado UI efimero en memoria y persiste solo sessionId como bootstrap minimo.",
+    "La expiracion de sesion sigue determinada por el TTL backend actual de 30 minutos."
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Definir modelo backend de transcript y helpers de sesion",
+      "description": "Extender el store de sesion para representar transcript, proposal y resultados de manera consistente, agregando helpers de append y serializacion sin depender de snapshots del frontend.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "BACK/services/chatSessionStore.ts"
+      ],
+      "dependencies": [],
+      "verification": [
+        "Tests unitarios cubren creacion de sesion, append de mensajes, lectura serializable y expiracion TTL."
+      ],
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "T2",
+      "title": "Hacer que chat.ts use y actualice el historial de sesion",
+      "description": "Actualizar el flujo user_message para agregar el mensaje del usuario al transcript, construir el input del LLM con historial acumulado y persistir respuesta final, proposal y cambios de estado derivados de approve/reject/function_result.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "BACK/services/chat.ts"
+      ],
+      "dependencies": [
+        "T1"
+      ],
+      "verification": [
+        "Tests de chat validan que el input al LLM incluye historial previo de la sesion.",
+        "Tests validan persistencia coherente de pendingProposal y eventos de resultado."
+      ],
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "T3",
+      "title": "Agregar contrato API de rehidratacion por session_id",
+      "description": "Extender el contrato de POST /api/chat con get_history o equivalente y devolver transcript rehidratable, pendingProposal y errores session_not_found consistentes.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "BACK/services/chat.ts",
+        "app/api/chat/route.ts"
+      ],
+      "dependencies": [
+        "T1"
+      ],
+      "verification": [
+        "Tests cubren respuesta exitosa de get_history.",
+        "Tests cubren 404/session_not_found cuando la sesion falta o expiro."
+      ],
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "T4",
+      "title": "Simplificar el store frontend para persistir solo session_id",
+      "description": "Remover la persistencia local de conversaciones, mensajes y propuestas del chat store; dejar un bootstrap minimo con sessionId y mantener el resto del estado como UI efimera en memoria.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "FRONT/src/stores/chatStore.ts",
+        "FRONT/src/stores/__tests__/chatStore.test.ts"
+      ],
+      "dependencies": [
+        "T3"
+      ],
+      "verification": [
+        "Tests del store prueban que localStorage solo contiene sessionId.",
+        "Tests prueban que mensajes y pendingProposal no sobreviven por persistencia local."
+      ],
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "T5",
+      "title": "Rehidratar la sesion activa desde backend en el frontend",
+      "description": "Actualizar hooks y flujo UI para recuperar transcript y pendingProposal usando get_history al montar o al detectar sessionId persistido, limpiar sesiones expiradas y continuar con una sesion nueva cuando corresponda.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "FRONT/src/hooks/useAgentMessage.ts",
+        "FRONT/src/lib/api/client.ts",
+        "FRONT/src/hooks/__tests__/useAgentMessage.test.tsx",
+        "FRONT/src/stores/chatStore.ts"
+      ],
+      "dependencies": [
+        "T3",
+        "T4"
+      ],
+      "verification": [
+        "Tests del hook validan rehidratacion exitosa desde sessionId persistido.",
+        "Tests validan limpieza local cuando get_history devuelve session_not_found."
+      ],
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "T6",
+      "title": "Ajustar UI dependiente del historial local eliminado",
+      "description": "Adecuar componentes y flujos que hoy asumen conversaciones persistidas localmente para que operen con una sola sesion activa rehidratable o con estado efimero, sin mostrar historial durable inexistente.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "FRONT/src/components/sidebar/ChatHistoryList.tsx",
+        "FRONT/src/stores/chatStore.ts"
+      ],
+      "dependencies": [
+        "T4",
+        "T5"
+      ],
+      "verification": [
+        "La UI no muestra mensajes stale recuperados desde localStorage.",
+        "La navegacion del chat sigue siendo coherente cuando no existe historial durable multi-conversacion."
+      ],
+      "status": "pending",
+      "evidence": []
+    },
+    {
+      "id": "T7",
+      "title": "Cubrir validacion automatizada end-to-end del cambio de ownership",
+      "description": "Extender o crear tests backend y frontend para asegurar el nuevo ownership de sesion, la rehidratacion tras refresh y la coherencia de approve/reject/function_result.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "BACK/services/__tests__/chat.test.ts",
+        "FRONT/src/stores/__tests__/chatStore.test.ts",
+        "FRONT/src/hooks/__tests__/useAgentMessage.test.tsx"
+      ],
+      "dependencies": [
+        "T2",
+        "T3",
+        "T4",
+        "T5",
+        "T6"
+      ],
+      "verification": [
+        "npm test",
+        "Prueba manual: enviar mensaje, refrescar y verificar rehidratacion desde backend.",
+        "Prueba manual: expirar o invalidar sessionId y verificar que la UI reinicia la sesion.",
+        "Prueba manual: proposal pendiente sigue visible tras refresh si la sesion continua vigente."
+      ],
+      "status": "pending",
+      "evidence": []
+    }
+  ],
+  "risks": [
+    "La migracion desde historial local rico a sessionId-only puede romper componentes que dependen de listas de conversaciones persistidas.",
+    "Si transcript para LLM y transcript para UI se actualizan por caminos distintos, puede haber divergencia funcional.",
+    "Las respuestas stream pueden duplicarse o quedar incompletas si no se consolida correctamente el texto final antes de persistirlo.",
+    "El store en memoria implica perdida de sesiones activas despues de reinicio del servidor; es una limitacion aceptada del alcance.",
+    "Sin un indice backend por usuario no existe historial durable multi-conversacion; la UI debe reflejar esa limitacion sin comportamiento ambiguo."
+  ],
+  "validation": [
+    "Ejecutar tests unitarios/backend del session store y chat service.",
+    "Ejecutar tests frontend del store y hook de rehidratacion.",
+    "Verificar manualmente refresh con sesion vigente.",
+    "Verificar manualmente expiracion TTL o session_not_found.",
+    "Verificar manualmente approve, reject y function_result despues de rehidratacion."
+  ]
+}

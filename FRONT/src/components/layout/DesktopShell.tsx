@@ -22,15 +22,15 @@ export function DesktopShell({ activeTab, onTabChange }: { activeTab: string; on
   );
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="h-screen overflow-hidden bg-background">
       <TopBar activeTab={activeTab} onTabChange={onTabChange} />
-      <div className="mx-auto grid max-w-[1440px] grid-cols-[280px_minmax(0,1fr)_320px] gap-6 px-6 py-6">
-        <aside className="space-y-4">
+      <div className="mx-auto grid h-[calc(100vh-5rem)] max-w-[1440px] grid-cols-[280px_minmax(0,1fr)_320px] gap-6 px-6 py-6">
+        <aside className="min-h-0 space-y-4 overflow-y-auto">
           <AccountCard />
           <ChatHistoryList />
           <QuickActionsList onSettings={() => setSettingsOpen(true)} />
         </aside>
-        <main className="flex min-h-[calc(100vh-8rem)] min-w-0 flex-col">
+        <main className={`flex min-h-0 min-w-0 flex-col ${activeTab === 'Chat' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
           {activeTab === 'Chat'
             ? <ChatContainer />
             : activeTab === 'Assets'
@@ -50,7 +50,9 @@ export function DesktopShell({ activeTab, onTabChange }: { activeTab: string; on
                 : <ExplorePlaceholder />
           }
         </main>
-        <RightPanel />
+        <div className="min-h-0 overflow-y-auto">
+          <RightPanel />
+        </div>
       </div>
       <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>

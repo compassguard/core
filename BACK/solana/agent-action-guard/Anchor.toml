@@ -5,7 +5,10 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-agent_action_guard = "ETLBetVBpHeG3pKKqpCaRQYfQ2opMNEKCsrQUyqgyg6s"
+agent_action_guard = "FcMZYCXAkBvaFazQutSJWqtq4nUWKfbBQGEeyvvazgQ"
+
+[registry]
+url = "https://api.apr.dev"
 
 [provider]
 cluster = "devnet"
@@ -13,5 +16,3 @@ wallet = "~/.config/solana/id.json"
 
 [scripts]
 test = "anchor test"
-
-[hooks]

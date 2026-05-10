@@ -9,20 +9,40 @@ export function ChatContainer() {
   const messages = useChatStore((state) => state.messages);
   const status = useChatStore((state) => state.status);
   const pendingProposal = useChatStore((state) => state.pendingProposal);
+  const streamingContent = useChatStore((state) => state.streamingContent);
   const blocked = useChatStore((state) => state.isInputBlocked());
   const readOnlyReason = useChatStore((state) => state.getActiveConversationReadOnlyReason());
   const setCurrentWalletAddress = useChatStore((state) => state.setCurrentWalletAddress);
   const wallet = useWallet();
   const { sendUserMessage, isPending } = useAgentMessage();
+  const scrollAreaRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const shouldStickToBottomRef = useRef(true);
 
   useEffect(() => {
     setCurrentWalletAddress(wallet.address || null);
   }, [wallet.address, setCurrentWalletAddress]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [messages.length, status]);
+    if (!shouldStickToBottomRef.current) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      bottomRef.current?.scrollIntoView({
+        behavior: streamingContent ? 'auto' : 'smooth',
+        block: 'end',
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [messages.length, status, streamingContent]);
+
+  function handleScroll() {
+    const scrollArea = scrollAreaRef.current;
+    if (!scrollArea) return;
+
+    const distanceFromBottom = scrollArea.scrollHeight - scrollArea.scrollTop - scrollArea.clientHeight;
+    shouldStickToBottomRef.current = distanceFromBottom < 96;
+  }
 
   const disabledPlaceholder = pendingProposal
     ? 'Confirm or cancel the proposal first'
@@ -31,8 +51,8 @@ export function ChatContainer() {
       : 'Wallet Copilot is responding...';
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col rounded-none bg-transparent md:rounded-3xl md:border md:border-outline md:bg-surface md:shadow-sm">
-      <div className="min-h-0 flex-1 overflow-y-auto px-1 py-4 md:px-6 md:py-6">
+    <section className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-none bg-transparent md:rounded-3xl md:border md:border-outline md:bg-surface md:shadow-sm">
+      <div ref={scrollAreaRef} onScroll={handleScroll} className="min-h-0 flex-1 overflow-y-auto px-1 py-4 md:px-6 md:py-6">
         {readOnlyReason === 'session_expired' ? (
           <p className="mb-3 rounded-lg border border-warning bg-warning-bg px-3 py-2 text-sm text-warning">Esta conversación tiene sesión expirada. Envía un mensaje para continuar en una conversación nueva.</p>
         ) : null}

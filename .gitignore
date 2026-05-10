@@ -19,6 +19,9 @@ out/
 .env.test.local
 .env.production.local
 
+# Local Solana keypairs
+.keys/
+
 # Debug logs
 npm-debug.log*
 yarn-debug.log*

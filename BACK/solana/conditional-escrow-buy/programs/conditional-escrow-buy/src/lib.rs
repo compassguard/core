@@ -3,12 +3,14 @@ use anchor_lang::solana_program::{program::invoke, program::invoke_signed, syste
 use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked};
 
-declare_id!("G6RB5XQwcnXXp34vDot3ERcbGS8RcXUtacMhgXAM8P7n");
+declare_id!("FDwvY7eqeCNn27haATZJbqfnACJTr9YveG6yy9RcUt7u");
 
 const VAULT_CONFIG_SEED: &[u8] = b"vault-config";
 const ORDER_SEED: &[u8] = b"order";
 const ESCROW_AUTHORITY_SEED: &[u8] = b"escrow-authority";
 const SOL_VAULT_SEED: &[u8] = b"sol-vault";
+const LAMPORTS_PER_SOL: u64 = 1_000_000_000;
+const PRICE_SCALE_E8: u64 = 100_000_000;
 
 const PYTH_PRICE_ACCOUNT_SIZE: usize = 3312;
 const PYTH_MAGIC: u32 = 0xa1b2c3d4;
@@ -33,8 +35,14 @@ pub mod conditional_escrow_buy {
         params: InitializeVaultConfigParams,
     ) -> Result<()> {
         require!(!params.paused, ErrorCode::VaultPaused);
-        require!(params.max_confidence_bps <= 10_000, ErrorCode::InvalidConfidenceBpsRange);
-        require!(params.max_oracle_age_seconds >= 1, ErrorCode::InvalidOracleAge);
+        require!(
+            params.max_confidence_bps <= 10_000,
+            ErrorCode::InvalidConfidenceBpsRange
+        );
+        require!(
+            params.max_oracle_age_seconds >= 1,
+            ErrorCode::InvalidOracleAge
+        );
         require!(params.usdc_decimals <= 18, ErrorCode::InvalidUsdcDecimals);
 
         let vault_config = &mut ctx.accounts.vault_config;
@@ -61,8 +69,11 @@ pub mod conditional_escrow_buy {
         );
         require!(params.amount > 0, ErrorCode::InvalidFundAmount);
 
-        let transfer_ix =
-            system_instruction::transfer(&ctx.accounts.admin.key(), &ctx.accounts.sol_vault.key(), params.amount);
+        let transfer_ix = system_instruction::transfer(
+            &ctx.accounts.admin.key(),
+            &ctx.accounts.sol_vault.key(),
+            params.amount,
+        );
         let accounts = &[
             ctx.accounts.admin.to_account_info(),
             ctx.accounts.sol_vault.to_account_info(),
@@ -81,15 +92,33 @@ pub mod conditional_escrow_buy {
 
         require!(!ctx.accounts.vault_config.paused, ErrorCode::VaultPaused);
         require!(params.client_order_id > 0, ErrorCode::InvalidClientOrderId);
-        require!(params.desired_sol_lamports > 0, ErrorCode::InvalidDesiredSolAmount);
+        require!(
+            params.desired_sol_lamports > 0,
+            ErrorCode::InvalidDesiredSolAmount
+        );
         require!(params.max_usdc_in > 0, ErrorCode::InvalidMaxUsdcIn);
-        require!(params.max_usdc_in >= params.deposit_amount, ErrorCode::DepositExceedsMaxUsdc);
-        require!(params.target_price_usd_e8 > 0, ErrorCode::InvalidTargetPrice);
+        require!(
+            params.max_usdc_in >= params.deposit_amount,
+            ErrorCode::DepositExceedsMaxUsdc
+        );
+        require!(
+            params.target_price_usd_e8 > 0,
+            ErrorCode::InvalidTargetPrice
+        );
         require!(params.deposit_amount > 0, ErrorCode::InvalidDepositAmount);
         require!(params.expires_at > now, ErrorCode::OrderExpired);
-        require!(params.recipient != Pubkey::default(), ErrorCode::InvalidRecipient);
-        require!(params.max_oracle_age_seconds > 0, ErrorCode::InvalidOracleAge);
-        require!(params.max_confidence_bps > 0, ErrorCode::InvalidConfidenceBps);
+        require!(
+            params.recipient != Pubkey::default(),
+            ErrorCode::InvalidRecipient
+        );
+        require!(
+            params.max_oracle_age_seconds > 0,
+            ErrorCode::InvalidOracleAge
+        );
+        require!(
+            params.max_confidence_bps > 0,
+            ErrorCode::InvalidConfidenceBps
+        );
         require!(
             ctx.accounts.user_usdc_token_account.mint == ctx.accounts.vault_config.usdc_test_mint,
             ErrorCode::InvalidMint
@@ -147,6 +176,8 @@ pub mod conditional_escrow_buy {
 
     pub fn execute_order(ctx: Context<ExecuteOrder>) -> Result<()> {
         let now = Clock::get()?.unix_timestamp;
+        let order_account_key = ctx.accounts.order.key();
+        let vault_config_key = ctx.accounts.vault_config.key();
         let order = &mut ctx.accounts.order;
         require!(order.status == STATUS_OPEN, ErrorCode::OrderNotOpen);
         require!(now <= order.expires_at, ErrorCode::OrderExpired);
@@ -169,7 +200,8 @@ pub mod conditional_escrow_buy {
         require!(!ctx.accounts.vault_config.paused, ErrorCode::VaultPaused);
 
         let oracle_feed_data = ctx.accounts.oracle_price_feed.try_borrow_data()?;
-        let (price_value, price_confidence, exponent, price_ts) = parse_pyth_price(&oracle_feed_data)?;
+        let (price_value, price_confidence, exponent, price_ts) =
+            parse_pyth_price(&oracle_feed_data)?;
 
         let age_seconds = (now - price_ts).max(0);
         require!(
@@ -181,7 +213,10 @@ pub mod conditional_escrow_buy {
 
         let max_confidence = u64::from(order.max_confidence_bps);
         let conf_bps = confidence_bps(price_confidence, price_value)?;
-        require!(conf_bps <= max_confidence, ErrorCode::OracleConfidenceTooHigh);
+        require!(
+            conf_bps <= max_confidence,
+            ErrorCode::OracleConfidenceTooHigh
+        );
 
         let oracle_price_e8 = pyth_price_to_e8(price_value, exponent)?;
         let target_price_e8 =
@@ -197,7 +232,10 @@ pub mod conditional_escrow_buy {
             u32::from(ctx.accounts.vault_config.usdc_decimals),
         )?;
         require!(required_usdc > 0, ErrorCode::InvalidRequiredUsdc);
-        require!(required_usdc <= order.max_usdc_in, ErrorCode::RequiredUsdcExceedsLimit);
+        require!(
+            required_usdc <= order.max_usdc_in,
+            ErrorCode::RequiredUsdcExceedsLimit
+        );
         require!(
             required_usdc <= order.escrowed_usdc_amount,
             ErrorCode::EscrowInsufficient
@@ -211,11 +249,13 @@ pub mod conditional_escrow_buy {
             ErrorCode::VaultInsufficientSol
         );
 
-        let escrow_authority_seeds = [
+        let escrow_authority_bump = [order.escrow_authority_bump];
+        let escrow_authority_seeds: &[&[u8]] = &[
             ESCROW_AUTHORITY_SEED,
-            ctx.accounts.order.to_account_info().key.as_ref(),
-            &[order.escrow_authority_bump],
+            order_account_key.as_ref(),
+            &escrow_authority_bump,
         ];
+        let escrow_authority_signer: &[&[&[u8]]] = &[escrow_authority_seeds];
 
         let to_treasury_ctx = CpiContext::new_with_signer(
             ctx.accounts.token_program.to_account_info(),
@@ -225,7 +265,7 @@ pub mod conditional_escrow_buy {
                 authority: ctx.accounts.escrow_authority.to_account_info(),
                 mint: ctx.accounts.usdc_mint.to_account_info(),
             },
-            &[&escrow_authority_seeds],
+            escrow_authority_signer,
         );
         token::transfer_checked(
             to_treasury_ctx,
@@ -233,9 +273,7 @@ pub mod conditional_escrow_buy {
             ctx.accounts.vault_config.usdc_decimals,
         )?;
 
-        let leftover = order
-            .escrowed_usdc_amount
-            .saturating_sub(required_usdc);
+        let leftover = order.escrowed_usdc_amount.saturating_sub(required_usdc);
         if leftover > 0 {
             let to_user_ctx = CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
@@ -245,7 +283,7 @@ pub mod conditional_escrow_buy {
                     authority: ctx.accounts.escrow_authority.to_account_info(),
                     mint: ctx.accounts.usdc_mint.to_account_info(),
                 },
-                &[&escrow_authority_seeds],
+                escrow_authority_signer,
             );
             token::transfer_checked(
                 to_user_ctx,
@@ -254,11 +292,9 @@ pub mod conditional_escrow_buy {
             )?;
         }
 
-        let sol_vault_seeds = [
-            SOL_VAULT_SEED,
-            ctx.accounts.vault_config.to_account_info().key.as_ref(),
-            &[ctx.accounts.vault_config.vault_bump],
-        ];
+        let sol_vault_bump = [ctx.accounts.vault_config.vault_bump];
+        let sol_vault_seeds: &[&[u8]] =
+            &[SOL_VAULT_SEED, vault_config_key.as_ref(), &sol_vault_bump];
         let transfer_ix = system_instruction::transfer(
             &ctx.accounts.sol_vault.key(),
             &ctx.accounts.recipient.key(),
@@ -269,7 +305,7 @@ pub mod conditional_escrow_buy {
             ctx.accounts.recipient.to_account_info(),
             ctx.accounts.system_program.to_account_info(),
         ];
-        invoke_signed(&transfer_ix, &sol_vault_accounts, &[&sol_vault_seeds])?;
+        invoke_signed(&transfer_ix, &sol_vault_accounts, &[sol_vault_seeds])?;
 
         order.status = STATUS_EXECUTED;
         order.executed_usdc_amount = required_usdc;
@@ -281,8 +317,15 @@ pub mod conditional_escrow_buy {
 
     pub fn cancel_order(ctx: Context<CancelOrder>) -> Result<()> {
         require!(!ctx.accounts.vault_config.paused, ErrorCode::VaultPaused);
-        require!(ctx.accounts.order.status == STATUS_OPEN, ErrorCode::OrderNotOpen);
-        require_keys_eq!(ctx.accounts.user.key(), ctx.accounts.order.user, ErrorCode::SignerMismatch);
+        require!(
+            ctx.accounts.order.status == STATUS_OPEN,
+            ErrorCode::OrderNotOpen
+        );
+        require_keys_eq!(
+            ctx.accounts.user.key(),
+            ctx.accounts.order.user,
+            ErrorCode::SignerMismatch
+        );
         require!(
             Clock::get()?.unix_timestamp <= ctx.accounts.order.expires_at,
             ErrorCode::OrderNotExpired
@@ -297,11 +340,11 @@ pub mod conditional_escrow_buy {
         refund_escrow_to_user(
             order,
             &order_key,
-            &ctx.accounts.order_user_escrow_authority.to_account_info(),
-            &ctx.accounts.token_program,
-            &ctx.accounts.escrow_token_account,
-            &ctx.accounts.user_usdc_token_account,
-            &ctx.accounts.usdc_mint,
+            ctx.accounts.order_user_escrow_authority.to_account_info(),
+            ctx.accounts.token_program.to_account_info(),
+            ctx.accounts.escrow_token_account.to_account_info(),
+            ctx.accounts.user_usdc_token_account.to_account_info(),
+            ctx.accounts.usdc_mint.to_account_info(),
             ctx.accounts.vault_config.usdc_decimals,
         )?;
 
@@ -311,8 +354,15 @@ pub mod conditional_escrow_buy {
 
     pub fn reclaim_expired_order(ctx: Context<CancelOrder>) -> Result<()> {
         require!(!ctx.accounts.vault_config.paused, ErrorCode::VaultPaused);
-        require!(ctx.accounts.order.status == STATUS_OPEN, ErrorCode::OrderNotOpen);
-        require_keys_eq!(ctx.accounts.user.key(), ctx.accounts.order.user, ErrorCode::SignerMismatch);
+        require!(
+            ctx.accounts.order.status == STATUS_OPEN,
+            ErrorCode::OrderNotOpen
+        );
+        require_keys_eq!(
+            ctx.accounts.user.key(),
+            ctx.accounts.order.user,
+            ErrorCode::SignerMismatch
+        );
         require!(
             Clock::get()?.unix_timestamp > ctx.accounts.order.expires_at,
             ErrorCode::OrderExpired
@@ -327,11 +377,11 @@ pub mod conditional_escrow_buy {
         refund_escrow_to_user(
             order,
             &order_key,
-            &ctx.accounts.order_user_escrow_authority.to_account_info(),
-            &ctx.accounts.token_program,
-            &ctx.accounts.escrow_token_account,
-            &ctx.accounts.user_usdc_token_account,
-            &ctx.accounts.usdc_mint,
+            ctx.accounts.order_user_escrow_authority.to_account_info(),
+            ctx.accounts.token_program.to_account_info(),
+            ctx.accounts.escrow_token_account.to_account_info(),
+            ctx.accounts.user_usdc_token_account.to_account_info(),
+            ctx.accounts.usdc_mint.to_account_info(),
             ctx.accounts.vault_config.usdc_decimals,
         )?;
 
@@ -415,27 +465,8 @@ pub struct Order {
 }
 
 impl Order {
-    pub const LEN: usize = 32
-        + 32
-        + 8
-        + 32
-        + 32
-        + 32
-        + 32
-        + 32
-        + 8
-        + 8
-        + 8
-        + 4
-        + 2
-        + 8
-        + 8
-        + 8
-        + 8
-        + 8
-        + 1
-        + 1
-        + 1;
+    pub const LEN: usize =
+        32 + 32 + 8 + 32 + 32 + 32 + 32 + 32 + 8 + 8 + 8 + 4 + 2 + 8 + 8 + 8 + 8 + 8 + 1 + 1 + 1;
 }
 
 #[derive(Accounts)]
@@ -468,9 +499,7 @@ pub struct FundSolVault<'info> {
     pub vault_config: Account<'info, VaultConfig>,
 
     #[account(
-        init_if_needed,
-        payer = admin,
-        space = 0,
+        mut,
         seeds = [SOL_VAULT_SEED, vault_config.key().as_ref()],
         bump = vault_config.vault_bump,
     )]
@@ -511,7 +540,7 @@ pub struct CreateOrderAndDeposit<'info> {
         init_if_needed,
         payer = user,
         associated_token::authority = escrow_authority,
-        associated_token::mint = vault_config.usdc_test_mint,
+        associated_token::mint = usdc_mint,
         associated_token::token_program = token_program,
     )]
     pub escrow_token_account: Account<'info, TokenAccount>,
@@ -538,6 +567,7 @@ pub struct CreateOrderAndDeposit<'info> {
     )]
     pub sol_vault_pda: SystemAccount<'info>,
 
+    /// CHECK: The program reads raw Pyth price data and validates address, magic, version, type, status, and freshness.
     #[account(address = vault_config.oracle_feed)]
     pub oracle_price_feed: AccountInfo<'info>,
 
@@ -573,9 +603,8 @@ pub struct ExecuteOrder<'info> {
     #[account(
         mut,
         constraint = escrow_token_account.key() == order.escrow_token_account @ ErrorCode::InvalidEscrowAccount,
-        token::mint = vault_config.usdc_test_mint,
         associated_token::authority = escrow_authority,
-        associated_token::mint = vault_config.usdc_test_mint,
+        associated_token::mint = usdc_mint,
     )]
     pub escrow_token_account: Account<'info, TokenAccount>,
 
@@ -596,6 +625,7 @@ pub struct ExecuteOrder<'info> {
     #[account(address = vault_config.usdc_test_mint)]
     pub usdc_mint: Account<'info, Mint>,
 
+    /// CHECK: The program reads raw Pyth price data and validates address, magic, version, type, status, and freshness.
     #[account(address = order.oracle_feed)]
     pub oracle_price_feed: AccountInfo<'info>,
 
@@ -648,42 +678,40 @@ pub struct CancelOrder<'info> {
     pub token_program: Program<'info, Token>,
 }
 
-fn refund_escrow_to_user(
-    order: &mut Account<Order>,
+fn refund_escrow_to_user<'info>(
+    order: &mut Account<'info, Order>,
     order_account_key: &Pubkey,
-    escrow_authority: &AccountInfo,
-    token_program: &Program<Token>,
-    escrow_token_account: &Account<TokenAccount>,
-    user_token_account: &Account<TokenAccount>,
-    usdc_mint: &Account<Mint>,
+    escrow_authority: AccountInfo<'info>,
+    token_program: AccountInfo<'info>,
+    escrow_token_account: AccountInfo<'info>,
+    user_token_account: AccountInfo<'info>,
+    usdc_mint: AccountInfo<'info>,
     usdc_decimals: u8,
 ) -> Result<()> {
     if order.escrowed_usdc_amount == 0 {
         return Ok(());
     }
 
-    let seeds = [
+    let escrow_authority_bump = [order.escrow_authority_bump];
+    let seeds: &[&[u8]] = &[
         ESCROW_AUTHORITY_SEED,
         order_account_key.as_ref(),
-        &[order.escrow_authority_bump],
+        &escrow_authority_bump,
     ];
+    let signer_seeds: &[&[&[u8]]] = &[seeds];
 
     let refund_ctx = CpiContext::new_with_signer(
-        token_program.to_account_info(),
+        token_program,
         TransferChecked {
-            from: escrow_token_account.to_account_info(),
-            to: user_token_account.to_account_info(),
-            authority: escrow_authority.to_account_info(),
-            mint: usdc_mint.to_account_info(),
+            from: escrow_token_account,
+            to: user_token_account,
+            authority: escrow_authority,
+            mint: usdc_mint,
         },
-        &[&seeds],
+        signer_seeds,
     );
 
-    token::transfer_checked(
-        refund_ctx,
-        order.escrowed_usdc_amount,
-        usdc_decimals,
-    )?;
+    token::transfer_checked(refund_ctx, order.escrowed_usdc_amount, usdc_decimals)?;
     order.escrowed_usdc_amount = 0;
     Ok(())
 }
@@ -753,7 +781,8 @@ fn pyth_price_to_e8(price: i64, exponent: i32) -> Result<i64> {
     let normalized = if exponent == -8 {
         as_128
     } else if exponent < -8 {
-        let delta = usize::try_from((-exponent - 8) as i64).map_err(|_| ErrorCode::OraclePowOverflow)?;
+        let delta =
+            usize::try_from((-exponent - 8) as i64).map_err(|_| ErrorCode::OraclePowOverflow)?;
         let factor = 10_i128
             .checked_pow(delta as u32)
             .ok_or(ErrorCode::OraclePowOverflow)?;
@@ -798,7 +827,7 @@ fn compute_required_usdc(
         .checked_pow(usdc_decimals)
         .ok_or(ErrorCode::InvalidUsdcDecimals)?;
     let denominator = LAMPORTS_PER_SOL
-        .checked_mul(10_00000000u64)
+        .checked_mul(PRICE_SCALE_E8)
         .ok_or(ErrorCode::MathOverflow)? as u128;
 
     let numerator = lamports_u128
@@ -911,20 +940,20 @@ mod tests {
     #[test]
     fn test_required_usdc_small_amount_rounds_up() {
         let required = compute_required_usdc(1, 150_00000000, 6).unwrap();
-        assert_eq!(required, 2);
+        assert_eq!(required, 1);
     }
 
     #[test]
     fn test_pyth_price_to_e8_applies_decimal_shift() {
         assert_eq!(pyth_price_to_e8(150_00000000, -8).unwrap(), 150_00000000);
-        assert_eq!(pyth_price_to_e8(2_00000000, -7).unwrap(), 200_00000000);
+        assert_eq!(pyth_price_to_e8(20_000_000, -7).unwrap(), 200_000000);
         assert_eq!(pyth_price_to_e8(2_500000000, -9).unwrap(), 250000000);
     }
 
     #[test]
     fn test_confidence_bps_calculation() {
         let bps = confidence_bps(500_000000, 100_00000000).unwrap();
-        assert_eq!(bps, 0);
+        assert_eq!(bps, 500);
     }
 
     #[test]

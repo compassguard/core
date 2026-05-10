@@ -34,7 +34,21 @@ export type SessionState = {
   updatedAt: number;
 };
 
-const store = new Map<string, SessionState>();
+type ChatSessionRuntime = {
+  store: Map<string, SessionState>;
+  cleanupHandle: ReturnType<typeof setInterval> | null;
+};
+
+const globalChatSessionRuntime = globalThis as typeof globalThis & {
+  __compassChatSessionRuntime?: ChatSessionRuntime;
+};
+
+const runtime = globalChatSessionRuntime.__compassChatSessionRuntime ??= {
+  store: new Map<string, SessionState>(),
+  cleanupHandle: null,
+};
+
+const store = runtime.store;
 
 const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -92,12 +106,14 @@ export function deleteSession(sessionId: string): boolean {
   return store.delete(sessionId);
 }
 
-// Cleanup expired sessions periodically
-setInterval(() => {
-  const now = Date.now();
-  for (const [id, session] of store.entries()) {
-    if (now - session.updatedAt > SESSION_TTL_MS) {
-      store.delete(id);
+// Cleanup expired sessions periodically. Keep the interval global-safe for Next dev HMR.
+if (!runtime.cleanupHandle) {
+  runtime.cleanupHandle = setInterval(() => {
+    const now = Date.now();
+    for (const [id, session] of store.entries()) {
+      if (now - session.updatedAt > SESSION_TTL_MS) {
+        store.delete(id);
+      }
     }
-  }
-}, 5 * 60 * 1000); // Every 5 minutes
+  }, 5 * 60 * 1000);
+}

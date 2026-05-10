@@ -13,10 +13,11 @@ import {
 
 const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
-const PROGRAM_ID = process.env.CONDITIONAL_ESCROW_BUY_PROGRAM_ID || 'G6RB5XQwcnXXp34vDot3ERcbGS8RcXUtacMhgXAM8P7n';
+const PROGRAM_ID = process.env.CONDITIONAL_ESCROW_BUY_PROGRAM_ID || 'FDwvY7eqeCNn27haATZJbqfnACJTr9YveG6yy9RcUt7u';
 const INDEX_POLL_MS = Number(process.env.CONDITIONAL_ORDER_INDEX_INTERVAL_MS || '15000');
 const ORACLE_POLL_MS = Number(process.env.CONDITIONAL_ORDER_ORACLE_POLL_MS || '10000');
 const EXECUTE_BACKOFF_MS = Number(process.env.CONDITIONAL_ORDER_EXECUTE_BACKOFF_MS || '45000');
+const MIN_INDEX_REFRESH_MS = Number(process.env.CONDITIONAL_ORDER_MIN_INDEX_REFRESH_MS || '60000');
 const KEEP_ORDER_EXECUTION = process.env.CONDITIONAL_ORDER_KEEPER_ENABLED === 'true';
 const KEEP_ORDER_KEYPAIR_JSON = process.env.CONDITIONAL_ORDER_KEEPER_KEYPAIR || process.env.KEEPER_KEYPAIR_JSON;
 
@@ -87,6 +88,8 @@ const userIndex = new Map<string, Set<string>>();
 const failureState = new Map<string, { nextAttemptAt: number; errorCount: number; lastReason?: string }>();
 let pollerHandle: ReturnType<typeof setInterval> | null = null;
 let oraclePollerHandle: ReturnType<typeof setInterval> | null = null;
+let lastIndexPollAt = 0;
+let indexPollPromise: Promise<void> | null = null;
 
 const oracleLookup = new Map<string, OracleSnapshot>();
 const programOracleLookupTtlSec = Math.max(10, Math.floor(ORACLE_POLL_MS / 1000));
@@ -404,7 +407,7 @@ export async function getOrdersForUser(userAddress: string): Promise<Conditional
   const user = new PublicKey(userAddress).toBase58();
   const orderIds = userIndex.get(user);
   if (!orderIds || !orderIds.size) {
-    await pollConditionalOrders();
+    await pollConditionalOrdersThrottled();
   }
   const idsToUse = userIndex.get(user);
   if (!idsToUse) return [];
@@ -494,6 +497,25 @@ export async function pollConditionalOrders(): Promise<void> {
   await Promise.all(Array.from(neededOracleFeeds).map((feed) => getOracleSnapshot(feed)));
 }
 
+export async function pollConditionalOrdersThrottled(force = false): Promise<void> {
+  const now = Date.now();
+  if (!force && lastIndexPollAt && now - lastIndexPollAt < MIN_INDEX_REFRESH_MS) return;
+  if (indexPollPromise) return indexPollPromise;
+
+  indexPollPromise = pollConditionalOrders()
+    .catch((error) => {
+      console.warn('[conditional-orders] index refresh failed', {
+        message: error instanceof Error ? error.message : 'index_refresh_failed',
+      });
+    })
+    .finally(() => {
+      lastIndexPollAt = Date.now();
+      indexPollPromise = null;
+    });
+
+  return indexPollPromise;
+}
+
 function rawOrderFromDecoded(orderPda: string, decoded: DecodedOrder): void {
   const { status, ...order } = decoded;
   const raw: RawOrderRecord = {
@@ -521,7 +543,7 @@ export async function triggerOrderExecution(orderPda: string): Promise<string> {
 }
 
 export async function pollAndMaybeExecute(): Promise<void> {
-  await pollConditionalOrders();
+  await pollConditionalOrdersThrottled();
   if (!KEEP_ORDER_EXECUTION) return;
   await refreshTrackedOracles();
 
@@ -547,14 +569,26 @@ export async function pollAndMaybeExecute(): Promise<void> {
 
 export async function startConditionalOrderIndexer(): Promise<void> {
   if (pollerHandle) return;
-  await pollAndMaybeExecute();
+  await pollAndMaybeExecute().catch((error) => {
+    console.warn('[conditional-orders] initial poll failed', {
+      message: error instanceof Error ? error.message : 'initial_poll_failed',
+    });
+  });
   pollerHandle = setInterval(() => {
-    void pollAndMaybeExecute();
+    void pollAndMaybeExecute().catch((error) => {
+      console.warn('[conditional-orders] poll failed', {
+        message: error instanceof Error ? error.message : 'poll_failed',
+      });
+    });
   }, Math.max(INDEX_POLL_MS, 5000));
 
   if (!oraclePollerHandle) {
     oraclePollerHandle = setInterval(() => {
-      void refreshTrackedOracles();
+      void refreshTrackedOracles().catch((error) => {
+        console.warn('[conditional-orders] oracle refresh failed', {
+          message: error instanceof Error ? error.message : 'oracle_refresh_failed',
+        });
+      });
     }, Math.max(ORACLE_POLL_MS, 1000));
   }
 }

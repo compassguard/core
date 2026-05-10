@@ -67,7 +67,7 @@ export type ConditionalBuyDecision =
 const CONDITIONAL_ESCROW_BUY_PROGRAM_ID =
   process.env.CONDITIONAL_ESCROW_BUY_PROGRAM_ID ||
   process.env.CONDITIONAL_ESCROW_PROGRAM_ID ||
-  'G6RB5XQwcnXXp34vDot3ERcbGS8RcXUtacMhgXAM8P7n';
+  'FDwvY7eqeCNn27haATZJbqfnACJTr9YveG6yy9RcUt7u';
 
 const VAULT_CONFIG_SEED = Buffer.from('vault-config');
 const ORDER_SEED = Buffer.from('order');
@@ -117,10 +117,6 @@ function getUsdcDecimals(): number {
 function getAssociatedTokenProgramId(): web3.PublicKey {
   const associatedTokenProgramId = process.env.ASSOCIATED_TOKEN_PROGRAM_ID || ASSOCIATED_TOKEN_PROGRAM_ID_DEFAULT.toBase58();
   return new web3.PublicKey(associatedTokenProgramId);
-}
-
-function getOracleFeed(): web3.PublicKey {
-  return new web3.PublicKey(DEFAULT_ORACLE_FEED);
 }
 
 function getOracleAge(config?: number): number {
@@ -233,6 +229,7 @@ function deriveInstructionAccounts(input: {
   vaultConfig: web3.PublicKey;
   treasuryUsdcAta: web3.PublicKey;
   usdcMint: web3.PublicKey;
+  solVault: web3.PublicKey;
   oracleFeed: web3.PublicKey;
 }): web3.AccountMeta[] {
   return [
@@ -244,6 +241,7 @@ function deriveInstructionAccounts(input: {
     { pubkey: input.vaultConfig, isSigner: false, isWritable: true },
     { pubkey: input.treasuryUsdcAta, isSigner: false, isWritable: true },
     { pubkey: input.usdcMint, isSigner: false, isWritable: false },
+    { pubkey: input.solVault, isSigner: false, isWritable: false },
     { pubkey: input.oracleFeed, isSigner: false, isWritable: false },
     { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     { pubkey: getAssociatedTokenProgramId(), isSigner: false, isWritable: false },
@@ -374,6 +372,7 @@ export async function buildConditionalBuyCreateOrderTx(input: ConditionalBuyOrde
       vaultConfig,
       treasuryUsdcAta,
       usdcMint,
+      solVault,
       oracleFeed,
     }),
     data: instructionData,

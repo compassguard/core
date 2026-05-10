@@ -1,7 +1,6 @@
 import {
   getOrdersForUser,
-  startConditionalOrderIndexer,
-  pollConditionalOrders,
+  pollConditionalOrdersThrottled,
 } from '@back/services/conditionalOrders';
 
 export const runtime = 'nodejs';
@@ -16,7 +15,6 @@ type ErrorResponse = {
 
 export async function GET(request: Request): Promise<Response> {
   try {
-    await startConditionalOrderIndexer();
     const user = new URL(request.url).searchParams.get('user');
     if (!user) {
       return Response.json(
@@ -42,7 +40,7 @@ export async function GET(request: Request): Promise<Response> {
 
 export async function POST(): Promise<Response> {
   try {
-    await pollConditionalOrders();
+    await pollConditionalOrdersThrottled(true);
     return Response.json({ status: 'index_refreshed' });
   } catch (error) {
     return Response.json(

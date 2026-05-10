@@ -5,21 +5,17 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-conditional_escrow_buy = "G6RB5XQwcnXXp34vDot3ERcbGS8RcXUtacMhgXAM8P7n"
+conditional_escrow_buy = "FDwvY7eqeCNn27haATZJbqfnACJTr9YveG6yy9RcUt7u"
+
+[registry]
+url = "https://api.apr.dev"
 
 [provider]
 cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
-[scripts]
-test = "anchor test"
-
-[hooks]
-
 [workspace]
 members = ["programs/*"]
 
-[profile.release]
-overflow-checks = true
-lto = "fat"
-codegen-units = 1
+[scripts]
+test = "anchor test"

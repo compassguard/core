@@ -178,9 +178,14 @@ export function useAgentMessage() {
       });
 
       await queryClient.invalidateQueries({ queryKey: ['wallet'] });
-      postFunctionResult(currentSessionId, signResult.tx_signature, 'confirmed').catch((callbackError) => {
+      try {
+        const confirmedResponse = await postFunctionResult(currentSessionId, signResult.tx_signature, 'confirmed');
+        if (confirmedResponse.messages.length > 0) {
+          addAgentMessages(confirmedResponse.messages);
+        }
+      } catch (callbackError) {
         console.warn('[chat] Optional function_result confirmed callback failed:', callbackError);
-      });
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Error al aprobar la transferencia';
       const errorCode = (error as SignAndSendError)?.code;
