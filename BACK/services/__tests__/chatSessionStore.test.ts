@@ -1,11 +1,14 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   appendSessionMessage,
   appendSessionMessages,
   createSession,
   clearPendingProposal,
+  deleteSession,
   getSession,
+  loadSessionFromExternalStore,
+  persistSession,
   updateSession,
   type SessionHistoryMessageInput,
   type PendingProposal,
@@ -15,7 +18,7 @@ describe('chatSessionStore', () => {
   afterEach(() => {
     // Cleanup sessions created during tests by expiring them.
     const staleTs = Date.now() - 31 * 60 * 1000;
-    const sessionIds = ['sess_1', 'sess_2', 'sess_3', 'sess_4'];
+    const sessionIds = ['sess_1', 'sess_2', 'sess_3', 'sess_4', 'sess_external'];
     for (const sessionId of sessionIds) {
       const session = getSession(sessionId);
       if (session) {
@@ -24,6 +27,9 @@ describe('chatSessionStore', () => {
         expect(getSession(sessionId)).toBeNull();
       }
     }
+    delete process.env.CHAT_SESSION_REDIS_REST_URL;
+    delete process.env.CHAT_SESSION_REDIS_REST_TOKEN;
+    vi.restoreAllMocks();
   });
 
   it('appends a serialized user message with generated metadata', () => {
@@ -147,5 +153,63 @@ describe('chatSessionStore', () => {
     expect(wasCleared).toBe(true);
     expect(cleared?.pendingProposal).toBeNull();
     expect(cleared?.messages).toHaveLength(1);
+  });
+
+  it('persists and reloads sessions through the external Redis REST store', async () => {
+    process.env.CHAT_SESSION_REDIS_REST_URL = 'https://redis.example';
+    process.env.CHAT_SESSION_REDIS_REST_TOKEN = 'redis-token';
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    fetchSpy.mockImplementation(() => Promise.resolve(
+      new Response(JSON.stringify({ result: 'OK' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    ));
+
+    const sessionId = 'sess_external';
+    createSession(sessionId, 'thread-external', 'wallet-1');
+    appendSessionMessage(sessionId, {
+      role: 'user',
+      type: 'text',
+      content: 'Hola externo',
+    });
+
+    await persistSession(sessionId);
+
+    const lastSetCall = fetchSpy.mock.calls.at(-1);
+    expect(lastSetCall?.[0]).toBe('https://redis.example');
+    expect(lastSetCall?.[1]).toMatchObject({
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer redis-token',
+        'content-type': 'application/json',
+      },
+    });
+    const setCommand = JSON.parse(String((lastSetCall?.[1] as RequestInit).body));
+    expect(setCommand[0]).toBe('SET');
+    expect(setCommand[1]).toBe('compass:chat:session:sess_external');
+    expect(setCommand[3]).toBe('PX');
+
+    const persistedSnapshot = JSON.stringify(getSession(sessionId));
+    deleteSession(sessionId);
+    fetchSpy.mockResolvedValueOnce(
+      new Response(JSON.stringify({ result: persistedSnapshot }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    const loaded = await loadSessionFromExternalStore(sessionId);
+
+    expect(loaded?.sessionId).toBe(sessionId);
+    expect(loaded?.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: 'user',
+          type: 'text',
+          content: 'Hola externo',
+        }),
+      ]),
+    );
   });
 });

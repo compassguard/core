@@ -223,6 +223,10 @@ RISK_SCORE_API_KEY=
 RISK_SCORE_API_URL=
 
 JUPITER_API_URL=https://lite-api.jup.ag/swap/v1
+
+# Store externo para sesiones de chat en Vercel
+CHAT_SESSION_REDIS_REST_URL=
+CHAT_SESSION_REDIS_REST_TOKEN=
 ```
 
 El frontend solo puede usar variables públicas con prefijo:
@@ -232,6 +236,9 @@ NEXT_PUBLIC_*
 ```
 
 No poner secrets en `FRONT/`.
+
+Para el store de sesiones también se aceptan las variables estándar de Upstash/Vercel KV:
+`UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` o `KV_REST_API_URL` / `KV_REST_API_TOKEN`.
 
 ---
 

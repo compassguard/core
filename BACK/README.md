@@ -26,3 +26,10 @@ Configurar en Vercel o `.env.local` en la raíz:
 - `OPENAI_API_KEY`
 - `OPENAI_CHAT_MODEL` (opcional, default `gpt-4.1-mini`)
 - `OPENAI_API_URL` (opcional, default `https://api.openai.com/v1`)
+- `CHAT_SESSION_REDIS_REST_URL` (recomendado en Vercel para persistir sesiones de chat)
+- `CHAT_SESSION_REDIS_REST_TOKEN` (token del store Redis REST)
+
+También se aceptan los nombres estándar de Upstash/Vercel KV:
+
+- `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`
+- `KV_REST_API_URL` / `KV_REST_API_TOKEN`

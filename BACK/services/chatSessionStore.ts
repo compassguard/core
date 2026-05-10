@@ -1,7 +1,7 @@
 /**
- * In-memory session store for chat state.
+ * Session store for chat state.
  * Maps sessionId to thread state for HITL resume support.
- * TODO: Replace with Redis/Postgres for production.
+ * Uses an external Redis REST store when configured, with in-memory fallback for local development.
  */
 
 export type SolanaNetwork = 'devnet' | 'mainnet-beta';
@@ -125,6 +125,60 @@ const runtime = globalChatSessionRuntime.__compassChatSessionRuntime ??= {
 const store = runtime.store;
 
 const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const SESSION_STORE_KEY_PREFIX = 'compass:chat:session:';
+
+type RedisRestResponse = {
+  result?: unknown;
+  error?: string;
+};
+
+function getExternalStoreConfig(): { url: string; token: string } | null {
+  const url =
+    process.env.CHAT_SESSION_REDIS_REST_URL?.trim() ||
+    process.env.UPSTASH_REDIS_REST_URL?.trim() ||
+    process.env.KV_REST_API_URL?.trim();
+  const token =
+    process.env.CHAT_SESSION_REDIS_REST_TOKEN?.trim() ||
+    process.env.UPSTASH_REDIS_REST_TOKEN?.trim() ||
+    process.env.KV_REST_API_TOKEN?.trim();
+
+  return url && token ? { url, token } : null;
+}
+
+function sessionCacheKey(sessionId: string): string {
+  return `${SESSION_STORE_KEY_PREFIX}${sessionId}`;
+}
+
+async function redisCommand(command: unknown[]): Promise<unknown | null> {
+  const config = getExternalStoreConfig();
+  if (!config) return null;
+
+  const response = await fetch(config.url, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${config.token}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(command),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Session store request failed with status ${response.status}`);
+  }
+
+  const payload = (await response.json()) as RedisRestResponse;
+  if (payload.error) {
+    throw new Error(payload.error);
+  }
+
+  return payload.result ?? null;
+}
+
+function schedulePersistSession(sessionId: string) {
+  void persistSession(sessionId).catch((error) => {
+    console.warn('[chatSessionStore] External session persist failed:', error);
+  });
+}
 
 function nowIso() {
   return new Date().toISOString();
@@ -169,6 +223,7 @@ export function appendSessionMessages(
   session.messages = [...session.messages, ...prepared];
   session.updatedAt = Date.now();
   store.set(sessionId, session);
+  schedulePersistSession(sessionId);
   return session;
 }
 
@@ -204,6 +259,7 @@ export function createSession(sessionId: string, threadId: string, userAddress?:
     updatedAt: now,
   };
   store.set(sessionId, session);
+  schedulePersistSession(sessionId);
   return session;
 }
 
@@ -216,6 +272,7 @@ export function updateSession(
 
   Object.assign(session, updates, { updatedAt: Date.now() });
   store.set(sessionId, session);
+  schedulePersistSession(sessionId);
   return session;
 }
 
@@ -226,11 +283,52 @@ export function clearPendingProposal(sessionId: string): boolean {
   session.pendingProposal = null;
   session.updatedAt = Date.now();
   store.set(sessionId, session);
+  schedulePersistSession(sessionId);
   return true;
 }
 
 export function deleteSession(sessionId: string): boolean {
-  return store.delete(sessionId);
+  const deleted = store.delete(sessionId);
+  void redisCommand(['DEL', sessionCacheKey(sessionId)]).catch((error) => {
+    console.warn('[chatSessionStore] External session delete failed:', error);
+  });
+  return deleted;
+}
+
+export async function persistSession(sessionId: string): Promise<boolean> {
+  const session = store.get(sessionId);
+  if (!session) return false;
+
+  const ttlMs = SESSION_TTL_MS - (Date.now() - session.updatedAt);
+  if (ttlMs <= 0) {
+    store.delete(sessionId);
+    await redisCommand(['DEL', sessionCacheKey(sessionId)]);
+    return false;
+  }
+
+  await redisCommand(['SET', sessionCacheKey(sessionId), JSON.stringify(session), 'PX', Math.max(1, ttlMs)]);
+  return true;
+}
+
+export async function loadSessionFromExternalStore(sessionId: string): Promise<SessionState | null> {
+  const raw = await redisCommand(['GET', sessionCacheKey(sessionId)]);
+  if (typeof raw !== 'string') return null;
+
+  let session: SessionState;
+  try {
+    session = JSON.parse(raw) as SessionState;
+  } catch {
+    return null;
+  }
+
+  if (session.sessionId !== sessionId || Date.now() - session.updatedAt > SESSION_TTL_MS) {
+    store.delete(sessionId);
+    await redisCommand(['DEL', sessionCacheKey(sessionId)]);
+    return null;
+  }
+
+  store.set(sessionId, session);
+  return session;
 }
 
 // Cleanup expired sessions periodically. Keep the interval global-safe for Next dev HMR.

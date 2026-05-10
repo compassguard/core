@@ -13,6 +13,8 @@ import {
   createSession,
   updateSession,
   clearPendingProposal,
+  loadSessionFromExternalStore,
+  persistSession,
   appendSessionMessage,
   appendSessionMessages,
   type SessionHistoryMessage,
@@ -437,6 +439,18 @@ async function writeSSE(
 
 function getProposalExpiry(): number {
   return Date.now() + PROPOSAL_TTL_MS;
+}
+
+async function getSessionWithExternalFallback(sessionId: string): Promise<SessionState | null> {
+  return getSession(sessionId) ?? loadSessionFromExternalStore(sessionId);
+}
+
+async function persistSessionBestEffort(sessionId: string): Promise<void> {
+  try {
+    await persistSession(sessionId);
+  } catch (error) {
+    console.warn('[chat] Unable to persist session externally:', error);
+  }
 }
 
 function toHistoryPrompt(messages: SessionHistoryMessage[]): string {
@@ -1102,7 +1116,7 @@ async function handleGetHistory(request: {
   type: 'get_history';
   session_id: string;
 }): Promise<Response> {
-  const session = getSession(request.session_id);
+  const session = await getSessionWithExternalFallback(request.session_id);
   if (!session) {
     return jsonResponse({ error: { code: 'session_not_found', message: 'Session not found or expired' } }, { status: 404 });
   }
@@ -1148,7 +1162,7 @@ async function handleUserMessage(request: {
     try {
       // Get or create session
       let sessionId = request.session_id?.trim();
-      let session = sessionId ? getSession(sessionId) : null;
+      let session = sessionId ? await getSessionWithExternalFallback(sessionId) : null;
 
       if (!session) {
         sessionId = sessionId || generateSessionId();
@@ -1183,6 +1197,7 @@ async function handleUserMessage(request: {
         await writer.close();
         return;
       }
+      await persistSessionBestEffort(sessionId);
       const maskedUserInput = maskSolanaAddressesForModel(request.content);
       const promptMessages = persistedSession.messages.map((message, index, messages) => {
         const isLatestUserMessage =
@@ -1416,6 +1431,7 @@ async function handleOrcaSwapToolCall(
       },
     });
     appendSessionMessage(sessionId, persistedProposalMessage);
+    await persistSessionBestEffort(sessionId);
 
     const proposal: AgentFunctionCallMessage = {
       type: 'function_call',
@@ -1745,6 +1761,7 @@ async function handleConditionalBuyToolCall(
           content:
             `Para crear la orden condicional primero necesitás devUSDC en la wallet. Preparé un swap Orca SOL -> devUSDC; cuando se confirme voy a dejar lista la propuesta condicional.`,
         });
+        await persistSessionBestEffort(sessionId);
 
         await writeSSE(writer, encoder, 'alert', {
           severity: 'info',
@@ -1836,6 +1853,7 @@ async function handleConditionalBuyToolCall(
     },
   });
   appendSessionMessage(sessionId, sessionProposalMessage);
+  await persistSessionBestEffort(sessionId);
 
   await writeSSE(writer, encoder, 'proposal', proposal);
   await writeSSE(writer, encoder, 'done', {
@@ -2136,6 +2154,7 @@ async function handleTransferToolCall(
     },
   });
   appendSessionMessage(sessionId, sessionProposalMessage);
+  await persistSessionBestEffort(sessionId);
   console.log(`[chat] Proposal created: ${sessionId} - transfer ${canonical.amount} ${canonical.token}`);
 
   await writeSSE(writer, encoder, 'proposal', proposal);
@@ -2220,7 +2239,7 @@ async function handleFunctionApprove(request: {
     return jsonResponse({ error: { code: 'invalid_payload', message: 'session_id is required' } }, { status: 400 });
   }
 
-  const session = getSession(request.session_id);
+  const session = await getSessionWithExternalFallback(request.session_id);
   if (!session) {
     return jsonResponse({ error: { code: 'session_not_found', message: 'Session not found or expired' } }, { status: 404 });
   }
@@ -2268,7 +2287,8 @@ async function handleFunctionApprove(request: {
     state: 'preparing_transaction' as ProposalState,
   };
   updateSession(request.session_id, { pendingProposal: preparedProposal });
-  const proposal = getSession(request.session_id)?.pendingProposal;
+  await persistSessionBestEffort(request.session_id);
+  const proposal = (await getSessionWithExternalFallback(request.session_id))?.pendingProposal;
   if (!proposal) {
     return jsonResponse({ error: { code: 'session_not_found', message: 'Session not found while preparing proposal' } }, { status: 404 });
   }
@@ -2833,6 +2853,7 @@ async function handleFunctionApprove(request: {
       },
     });
   addSessionMessagesFromAgentMessages(request.session_id, response.messages);
+  await persistSessionBestEffort(request.session_id);
 
     return jsonResponse(responseData, { status: 200 });
   }
@@ -2852,7 +2873,7 @@ async function handleFunctionResult(request: {
     return jsonResponse({ error: { code: 'invalid_payload', message: 'session_id is required' } }, { status: 400 });
   }
 
-  const session = getSession(request.session_id);
+  const session = await getSessionWithExternalFallback(request.session_id);
   if (!session) {
     return jsonResponse({ error: { code: 'session_not_found', message: 'Session not found or expired' } }, { status: 404 });
   }
@@ -2878,6 +2899,7 @@ async function handleFunctionResult(request: {
       ],
     };
     addSessionMessagesFromAgentMessages(request.session_id, declineResponse.messages);
+    await persistSessionBestEffort(request.session_id);
     return jsonResponse(
       {
         error: {
@@ -2916,6 +2938,7 @@ async function handleFunctionResult(request: {
         };
         clearPendingProposal(request.session_id);
         addSessionMessagesFromAgentMessages(request.session_id, rejectionResponse.messages);
+        await persistSessionBestEffort(request.session_id);
         return jsonResponse(rejectionResponse);
       }
 
@@ -2981,6 +3004,7 @@ async function handleFunctionResult(request: {
         ],
       };
       addSessionMessagesFromAgentMessages(request.session_id, response.messages);
+      await persistSessionBestEffort(request.session_id);
       return jsonResponse(response);
     }
   }
@@ -3016,6 +3040,7 @@ async function handleFunctionResult(request: {
     ],
   };
   addSessionMessagesFromAgentMessages(request.session_id, response.messages);
+  await persistSessionBestEffort(request.session_id);
 
   return jsonResponse(response, { status: 200 });
 }
@@ -3033,7 +3058,7 @@ async function handleFunctionReject(request: {
     return jsonResponse({ error: { code: 'invalid_payload', message: 'session_id is required' } }, { status: 400 });
   }
 
-  const session = getSession(request.session_id);
+  const session = await getSessionWithExternalFallback(request.session_id);
   if (!session) {
     return jsonResponse({ error: { code: 'session_not_found', message: 'Session not found or expired' } }, { status: 404 });
   }
@@ -3056,6 +3081,7 @@ async function handleFunctionReject(request: {
     ],
   };
   addSessionMessagesFromAgentMessages(request.session_id, response.messages);
+  await persistSessionBestEffort(request.session_id);
 
   return jsonResponse(response, { status: 200 });
 }
