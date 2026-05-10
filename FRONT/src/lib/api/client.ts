@@ -1,6 +1,5 @@
 import type {
-  AgentMessageRequest,
-  AgentMessageResponse,
+  AgentMessage,
   ApiError,
   GetAllocationResponse,
   GetBalancesResponse,
@@ -17,7 +16,12 @@ import {
   GetNetworkStatusResponseSchema,
   GetPricesResponseSchema,
   GetTransactionsResponseSchema,
+  SSEProposalSchema,
 } from './schemas';
+
+// ============================================================================
+// Error Handling
+// ============================================================================
 
 export class ApiClientError extends Error {
   readonly code: string;
@@ -84,9 +88,186 @@ async function postJson<T>(url: string, body: unknown, schema: { parse: (value: 
   return schema.parse(data);
 }
 
-export function postAgentMessage(body: AgentMessageRequest): Promise<AgentMessageResponse> {
-  return postJson('/api/agent/message', body, AgentMessageResponseSchema) as Promise<AgentMessageResponse>;
+// ============================================================================
+// SSE Chat Types
+// ============================================================================
+
+export type ChatRequest =
+  | {
+      type: 'user_message';
+      content: string;
+      session_id?: string;
+      user_address?: string;
+      user_threshold_usd?: number;
+    }
+  | {
+      type: 'function_approve';
+      session_id: string;
+    }
+  | {
+      type: 'function_reject';
+      session_id: string;
+      reason?: string;
+    };
+
+export type SSEEvent =
+  | { event: 'session'; data: { session_id: string } }
+  | { event: 'token'; data: { content: string } }
+  | { event: 'proposal'; data: Extract<AgentMessage, { type: 'function_call' }> }
+  | { event: 'done'; data: { session_id: string; awaiting_approval?: boolean } }
+  | { event: 'error'; data: { code: string; message: string } };
+
+export type ChatStreamCallbacks = {
+  onSession?: (sessionId: string) => void;
+  onToken?: (content: string) => void;
+  onProposal?: (proposal: Extract<AgentMessage, { type: 'function_call' }>) => void;
+  onDone?: (data: { session_id: string; awaiting_approval?: boolean }) => void;
+  onError?: (error: { code: string; message: string }) => void;
+};
+
+// ============================================================================
+// SSE Chat Client
+// ============================================================================
+
+/**
+ * Stream chat messages via SSE.
+ * Used for user_message requests that expect streaming LLM responses.
+ */
+export async function streamChat(
+  request: Extract<ChatRequest, { type: 'user_message' }>,
+  callbacks: ChatStreamCallbacks,
+  signal?: AbortSignal
+): Promise<void> {
+  const response = await fetch('/api/chat', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+    },
+    body: JSON.stringify(request),
+    signal,
+  });
+
+  if (!response.ok) {
+    const data = await parseJson(response);
+    throwIfApiError(data, response.status);
+    throw new ApiClientError(
+      { code: 'http_error', message: `Request failed with status ${response.status}` },
+      response.status,
+    );
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new ApiClientError({ code: 'no_body', message: 'No response body' }, 500);
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      let currentEvent = '';
+      let currentData = '';
+
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          currentEvent = line.slice(7).trim();
+        } else if (line.startsWith('data: ')) {
+          currentData = line.slice(6);
+        } else if (line === '' && currentEvent && currentData) {
+          // End of event, process it
+          try {
+            const data = JSON.parse(currentData);
+            handleSSEEvent(currentEvent, data, callbacks);
+          } catch (e) {
+            console.warn('[SSE] Failed to parse event data:', currentData, e);
+          }
+          currentEvent = '';
+          currentData = '';
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
 }
+
+function handleSSEEvent(event: string, data: unknown, callbacks: ChatStreamCallbacks) {
+  switch (event) {
+    case 'session':
+      if (callbacks.onSession && typeof data === 'object' && data && 'session_id' in data) {
+        callbacks.onSession((data as { session_id: string }).session_id);
+      }
+      break;
+    case 'token':
+      if (callbacks.onToken && typeof data === 'object' && data && 'content' in data) {
+        callbacks.onToken((data as { content: string }).content);
+      }
+      break;
+    case 'proposal':
+      if (callbacks.onProposal) {
+        const parsed = SSEProposalSchema.safeParse(data);
+        if (parsed.success) {
+          callbacks.onProposal(parsed.data as Extract<AgentMessage, { type: 'function_call' }>);
+        } else {
+          console.warn('[SSE] Invalid proposal data:', data);
+        }
+      }
+      break;
+    case 'done':
+      if (callbacks.onDone && typeof data === 'object' && data) {
+        callbacks.onDone(data as { session_id: string; awaiting_approval?: boolean });
+      }
+      break;
+    case 'error':
+      if (callbacks.onError && typeof data === 'object' && data) {
+        callbacks.onError(data as { code: string; message: string });
+      }
+      break;
+  }
+}
+
+// ============================================================================
+// JSON Chat Client (for approve/reject)
+// ============================================================================
+
+export type AgentMessageResponse = {
+  messages: AgentMessage[];
+};
+
+/**
+ * Approve a pending proposal (JSON response)
+ */
+export function postApprove(sessionId: string, executeTxSignature?: string): Promise<AgentMessageResponse> {
+  return postJson(
+    '/api/chat',
+    { type: 'function_approve', session_id: sessionId, execute_tx_signature: executeTxSignature },
+    AgentMessageResponseSchema
+  ) as Promise<AgentMessageResponse>;
+}
+
+/**
+ * Reject a pending proposal (JSON response)
+ */
+export function postReject(sessionId: string, reason?: string): Promise<AgentMessageResponse> {
+  return postJson(
+    '/api/chat',
+    { type: 'function_reject', session_id: sessionId, reason },
+    AgentMessageResponseSchema
+  ) as Promise<AgentMessageResponse>;
+}
+
+// ============================================================================
+// Other API Clients (unchanged)
+// ============================================================================
 
 export function getBalances(address: string): Promise<GetBalancesResponse> {
   return getJson(`/api/wallet/balances?address=${encodeURIComponent(address)}`, GetBalancesResponseSchema) as Promise<GetBalancesResponse>;

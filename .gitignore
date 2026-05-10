@@ -40,3 +40,8 @@ pnpm-debug.log*
 *.tmp
 *.temp
 .cache
+
+# Anchor/Solana build artifacts
+**/target/
+**/.anchor/
+**/test-ledger/

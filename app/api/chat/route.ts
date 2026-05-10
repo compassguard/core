@@ -9,7 +9,10 @@ export async function POST(request: Request) {
   try {
     body = await request.json();
   } catch {
-    return Response.json({ error: 'INVALID_JSON' }, { status: 400 });
+    return Response.json(
+      { error: { code: 'invalid_json', message: 'Invalid JSON payload' } },
+      { status: 400 }
+    );
   }
 
   return proxyAgenticChat(body);

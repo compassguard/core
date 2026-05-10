@@ -1,4 +1,4 @@
-# Spec 000-chat: Backend Chat Agéntico (LangChain + LangGraph) con SSE
+# Spec 001-chat: Backend Chat Agéntico (LangChain + LangGraph) con SSE
 
 ## Problem statement
 

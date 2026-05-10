@@ -16,6 +16,7 @@ export type PendingProposal = {
 export type SessionState = {
   sessionId: string;
   threadId: string;
+  userAddress: string | null;
   messages: BaseMessage[];
   pendingProposal: PendingProposal | null;
   createdAt: number;
@@ -39,11 +40,12 @@ export function getSession(sessionId: string): SessionState | null {
   return session;
 }
 
-export function createSession(sessionId: string, threadId: string): SessionState {
+export function createSession(sessionId: string, threadId: string, userAddress?: string): SessionState {
   const now = Date.now();
   const session: SessionState = {
     sessionId,
     threadId,
+    userAddress: userAddress || null,
     messages: [],
     pendingProposal: null,
     createdAt: now,
@@ -55,7 +57,7 @@ export function createSession(sessionId: string, threadId: string): SessionState
 
 export function updateSession(
   sessionId: string,
-  updates: Partial<Pick<SessionState, 'messages' | 'pendingProposal' | 'threadId'>>
+  updates: Partial<Pick<SessionState, 'messages' | 'pendingProposal' | 'threadId' | 'userAddress'>>
 ): SessionState | null {
   const session = getSession(sessionId);
   if (!session) return null;

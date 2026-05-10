@@ -73,9 +73,9 @@ export type AgentMessage =
     };
 
 export type AgentMessageRequest =
-  | { type: 'user_message'; content: string; user_threshold_usd?: number }
-  | { type: 'function_approve' }
-  | { type: 'function_reject' };
+  | { type: 'user_message'; content: string; session_id?: string; user_address?: string; user_threshold_usd?: number }
+  | { type: 'function_approve'; session_id: string; execute_tx_signature?: string }
+  | { type: 'function_reject'; session_id: string; reason?: string };
 
 export type AgentMessageResponse = {
   messages: AgentMessage[];

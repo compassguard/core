@@ -1,6 +1,10 @@
 /**
- * Backend Chat Service using Azure Responses API with SSE streaming.
- * Implements agentic flow with tools for Solana transfers.
+ * Backend Chat Service - Unified Contract
+ * 
+ * Implements:
+ * - SSE streaming for user_message (LLM responses)
+ * - JSON responses for function_approve/function_reject
+ * - Tool: transfer (unified params)
  */
 
 import { getEnv, jsonResponse } from './upstream';
@@ -10,78 +14,168 @@ import {
   updateSession,
   clearPendingProposal,
 } from './chatSessionStore';
-import { prepareTransferResult, type TransferToolResult } from './tools/transfer';
+import {
+  prepareTransferResult,
+  generateTransferDisplay,
+  assessTransferRisk,
+  type TransferParams,
+} from './tools/transfer';
+import {
+  simulateBuySolQuote,
+  evaluateConditionalBuy,
+  type ConditionalBuySolParams,
+} from './tools/conditionalBuySol';
+import { verifyOracleExecutionTx } from './onchainApproval';
 import {
   callAzureResponsesStream,
   callAzureResponses,
   parseResponsesStream,
   type ResponsesToolDefinition,
-  type ResponsesApiResponse,
 } from './azureResponsesClient';
+import { web3 } from '@coral-xyz/anchor';
 
 // ============================================================================
-// Types
+// Types - Unified Contract
 // ============================================================================
 
-type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
+type ChatRequest =
+  | {
+      type: 'user_message';
+      content: string;
+      session_id?: string;
+      user_address?: string;
+      user_threshold_usd?: number;
+    }
+  | {
+      type: 'function_approve';
+      session_id: string;
+      execute_tx_signature?: string;
+    }
+  | {
+      type: 'function_reject';
+      session_id: string;
+      reason?: string;
+    };
 
-type InputMessage = {
-  role: ChatRole;
+type AgentTextMessage = {
+  type: 'text';
   content: string;
-  name?: string;
-  tool_call_id?: string;
+  execute?: {
+    status: 'success' | 'failed';
+    tx_hash?: string;
+    error?: string;
+  };
+  timestamp: string;
 };
 
-type ChatRequestBody = {
-  sessionId?: string;
-  threadId?: string;
-  messages?: InputMessage[];
-  resume?: {
-    approved: boolean;
-    reason?: string;
+type AgentFunctionCallMessage = {
+  type: 'function_call';
+  function: {
+    name: 'transfer' | 'conditional_buy_sol';
+    params: TransferParams | ConditionalBuySolParams;
   };
+  display: {
+    summary: string;
+    fee_usd?: number;
+    provider?: string;
+  };
+  risk: {
+    score: number;
+    level: 'low' | 'medium' | 'critical';
+    reasons?: string[];
+  };
+  timestamp: string;
 };
+
+type AgentAlertMessage = {
+  type: 'alert';
+  severity: 'info' | 'warning' | 'danger';
+  content: string;
+  timestamp: string;
+};
+
+type AgentMessage = AgentTextMessage | AgentFunctionCallMessage | AgentAlertMessage;
 
 // ============================================================================
-// Tool Definitions
+// Tool Definition for Azure Responses API
 // ============================================================================
 
 const TRANSFER_TOOL: ResponsesToolDefinition = {
   type: 'function',
-  name: 'transfer_to_wallet',
+  name: 'transfer',
   description:
-    'Prepares a transfer of SOL or tokens from one Solana wallet to another. ' +
-    'Does NOT execute the transfer on-chain. Returns a prepared action that requires user approval. ' +
-    'Use this when the user wants to send/transfer SOL or tokens to another wallet address.',
+    'Prepara una transferencia de SOL o tokens a otra wallet de Solana. ' +
+    'NO ejecuta la transferencia on-chain. Retorna una acción preparada que requiere aprobación del usuario. ' +
+    'Usa esta herramienta cuando el usuario quiera enviar/transferir SOL o tokens a otra dirección.',
   parameters: {
     type: 'object',
     properties: {
-      fromWallet: {
-        type: 'string',
-        description: 'Source wallet address (Solana public key)',
-      },
-      toWallet: {
-        type: 'string',
-        description: 'Destination wallet address (Solana public key)',
-      },
       amount: {
         type: 'number',
-        description: 'Amount to transfer (must be positive)',
+        description: 'Cantidad a transferir (debe ser positiva)',
       },
-      tokenSymbol: {
+      token: {
         type: 'string',
-        description: 'Token symbol (default: SOL)',
+        description: 'Símbolo del token (default: SOL)',
+      },
+      recipient: {
+        type: 'string',
+        description: 'Dirección de destino (Solana public key)',
+      },
+      memo: {
+        type: 'string',
+        description: 'Memo opcional para la transacción',
       },
     },
-    required: ['fromWallet', 'toWallet', 'amount'],
+    required: ['amount', 'recipient'],
   },
 };
 
-const ALL_TOOLS = [TRANSFER_TOOL];
+const CONDITIONAL_BUY_SOL_TOOL: ResponsesToolDefinition = {
+  type: 'function',
+  name: 'conditional_buy_sol',
+  description:
+    'Prepara una compra condicional de SOL con USDC. ' +
+    'Debe usarse cuando el usuario diga comprar SOL solo si el precio está por debajo de X USD. ' +
+    'No ejecuta swap real; prepara una aprobación condicionada a validación on-chain de oracle.',
+  parameters: {
+    type: 'object',
+    properties: {
+      input_token: {
+        type: 'string',
+        description: 'Token de entrada (MVP: USDC)',
+        enum: ['USDC'],
+      },
+      input_amount: {
+        type: 'number',
+        description: 'Cantidad de USDC a usar para comprar SOL',
+      },
+      target_price_usd: {
+        type: 'number',
+        description: 'Ejecutar solo si SOL/USD es menor o igual a este precio',
+      },
+      min_sol_out: {
+        type: 'number',
+        description: 'Cantidad mínima de SOL esperada (opcional)',
+      },
+    },
+    required: ['input_token', 'input_amount', 'target_price_usd'],
+  },
+};
+
+const ALL_TOOLS = [TRANSFER_TOOL, CONDITIONAL_BUY_SOL_TOOL];
 
 // ============================================================================
-// SSE Helpers
+// Helpers
 // ============================================================================
+
+function now(): string {
+  return new Date().toISOString();
+}
+
+function generateSessionId(): string {
+  return `sess_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
 
 function sseEvent(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -127,73 +221,39 @@ async function writeSSE(
   await writer.write(encoder.encode(sseEvent(event, data)));
 }
 
-// ============================================================================
-// Message Normalization
-// ============================================================================
-
-export function normalizeMessages(input: unknown): InputMessage[] | null {
-  if (!Array.isArray(input) || input.length === 0) return null;
-
-  const normalized: InputMessage[] = [];
-
-  for (const item of input) {
-    if (!item || typeof item !== 'object') return null;
-    const msg = item as Record<string, unknown>;
-    const role = msg.role;
-    const content = msg.content;
-
-    if (
-      (role !== 'system' && role !== 'user' && role !== 'assistant' && role !== 'tool') ||
-      typeof content !== 'string'
-    ) {
-      return null;
-    }
-
-    normalized.push({
-      role,
-      content,
-      ...(typeof msg.name === 'string' ? { name: msg.name } : {}),
-      ...(typeof msg.tool_call_id === 'string' ? { tool_call_id: msg.tool_call_id } : {}),
-    });
-  }
-
-  return normalized;
+function getSolanaConnection() {
+  const rpcUrl = process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com';
+  return new web3.Connection(rpcUrl, 'confirmed');
 }
 
-/**
- * Convert messages array to a single input string for Responses API.
- */
-function messagesToInput(messages: InputMessage[]): string {
-  return messages
-    .map((m) => {
-      if (m.role === 'system') return `[Sistema]: ${m.content}`;
-      if (m.role === 'assistant') return `[Asistente]: ${m.content}`;
-      if (m.role === 'tool') return `[Resultado de herramienta ${m.name || ''}]: ${m.content}`;
-      return `[Usuario]: ${m.content}`;
-    })
-    .join('\n\n');
-}
-
-// For test compatibility
-export function inputToLangChainMessages(messages: InputMessage[]) {
-  // Stub for backward compatibility with tests
-  return messages.map((m) => ({
-    _getType: () => (m.role === 'user' ? 'human' : m.role === 'assistant' ? 'ai' : m.role),
-    content: m.content,
-  }));
-}
-
-// ============================================================================
-// Tool Execution
-// ============================================================================
-
-function executeTransferTool(args: {
+async function buildUnsignedSolTransferTx(params: {
   fromWallet: string;
   toWallet: string;
-  amount: number;
-  tokenSymbol?: string;
-}): TransferToolResult {
-  return prepareTransferResult(args);
+  amountSol: number;
+}): Promise<{ txBase64: string; blockhash: string; lastValidBlockHeight: number }> {
+  const connection = getSolanaConnection();
+  const from = new web3.PublicKey(params.fromWallet);
+  const to = new web3.PublicKey(params.toWallet);
+  const lamports = Math.round(params.amountSol * web3.LAMPORTS_PER_SOL);
+
+  const ix = web3.SystemProgram.transfer({
+    fromPubkey: from,
+    toPubkey: to,
+    lamports,
+  });
+
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+
+  const msg = new web3.TransactionMessage({
+    payerKey: from,
+    recentBlockhash: blockhash,
+    instructions: [ix],
+  }).compileToV0Message();
+
+  const tx = new web3.VersionedTransaction(msg);
+  const txBase64 = Buffer.from(tx.serialize()).toString('base64');
+
+  return { txBase64, blockhash, lastValidBlockHeight };
 }
 
 // ============================================================================
@@ -203,65 +263,76 @@ function executeTransferTool(args: {
 export async function proxyAgenticChat(body: unknown): Promise<Response> {
   const apiKey = getEnv('OPENAI_API_KEY');
   if (!apiKey) {
-    return jsonResponse({ error: 'OPENAI_API_KEY_NOT_CONFIGURED' }, { status: 503 });
+    return jsonResponse({ error: { code: 'config_error', message: 'OPENAI_API_KEY not configured' } }, { status: 503 });
   }
 
-  const parsed = body as ChatRequestBody;
+  const request = body as ChatRequest;
 
-  // Validate sessionId
-  if (!parsed.sessionId || typeof parsed.sessionId !== 'string' || parsed.sessionId.trim() === '') {
-    return jsonResponse({ error: 'MISSING_SESSION_ID' }, { status: 400 });
+  if (!request || typeof request !== 'object' || !('type' in request)) {
+    return jsonResponse({ error: { code: 'invalid_payload', message: 'Missing request type' } }, { status: 400 });
   }
 
-  const sessionId = parsed.sessionId.trim();
-  const threadId = parsed.threadId || sessionId;
-
-  // Handle resume flow
-  if (parsed.resume) {
-    if (typeof parsed.resume.approved !== 'boolean') {
-      return jsonResponse({ error: 'INVALID_RESUME_PAYLOAD' }, { status: 400 });
-    }
-
-    const session = getSession(sessionId);
-    if (!session || !session.pendingProposal) {
-      return jsonResponse({ error: 'NO_PENDING_PROPOSAL' }, { status: 400 });
-    }
-
-    return handleResumeFlow(sessionId, threadId, parsed.resume);
+  // Route based on request type
+  switch (request.type) {
+    case 'user_message':
+      return handleUserMessage(request);
+    case 'function_approve':
+      return handleFunctionApprove(request);
+    case 'function_reject':
+      return handleFunctionReject(request);
+    default:
+      return jsonResponse({ error: { code: 'invalid_type', message: 'Unknown request type' } }, { status: 400 });
   }
-
-  // Validate messages for normal flow
-  const messages = normalizeMessages(parsed.messages);
-  if (!messages) {
-    return jsonResponse({ error: 'MISSING_MESSAGES' }, { status: 400 });
-  }
-
-  return handleChatFlow(sessionId, threadId, messages);
 }
 
-async function handleChatFlow(
-  sessionId: string,
-  threadId: string,
-  inputMessages: InputMessage[]
-): Promise<Response> {
+// ============================================================================
+// User Message Handler (SSE)
+// ============================================================================
+
+async function handleUserMessage(request: {
+  type: 'user_message';
+  content: string;
+  session_id?: string;
+  user_address?: string;
+  user_threshold_usd?: number;
+}): Promise<Response> {
+  if (!request.content?.trim()) {
+    return jsonResponse({ error: { code: 'invalid_payload', message: 'Content is required' } }, { status: 400 });
+  }
+
   const { stream, writer, encoder } = createSSEStream();
 
   (async () => {
     try {
       // Get or create session
-      let session = getSession(sessionId);
+      let sessionId = request.session_id?.trim();
+      let session = sessionId ? getSession(sessionId) : null;
+
       if (!session) {
-        session = createSession(sessionId, threadId);
+        sessionId = sessionId || generateSessionId();
+        session = createSession(sessionId, sessionId, request.user_address);
+        console.log(`[chat] New session: ${sessionId}`);
+      } else if (request.user_address && !session.userAddress) {
+        // Update user address if provided and not set
+        updateSession(sessionId, { userAddress: request.user_address });
+        session.userAddress = request.user_address;
       }
 
-      // Build conversation input
-      const systemInstruction =
-        'Eres un asistente de guardrails para Solana. ' +
-        'Puedes ayudar a preparar transferencias de tokens entre wallets. ' +
-        'Cuando el usuario pida transferir SOL o tokens, usa la herramienta transfer_to_wallet. ' +
-        'NUNCA digas que ejecutaste una transferencia on-chain. Solo puedes preparar la acción y pedir aprobación del usuario.';
+      // Send session info first
+      await writeSSE(writer, encoder, 'session', { session_id: sessionId });
 
-      const conversationInput = messagesToInput(inputMessages);
+      console.log(`[chat] User message: ${sessionId} - ${request.content.slice(0, 50)}...`);
+
+      // Build conversation
+      const systemInstruction =
+        'Eres un asistente de wallet para Solana llamado Wallet Copilot. ' +
+        'Ayudas a los usuarios a realizar transferencias y compras condicionales de SOL de forma segura. ' +
+        'Cuando el usuario pida transferir SOL o tokens, usa la herramienta transfer. ' +
+        'Cuando el usuario pida comprar SOL solo si el precio está por debajo de X, usa la herramienta conditional_buy_sol. ' +
+        'IMPORTANTE: NUNCA digas que ejecutaste una transferencia on-chain. Solo puedes preparar la acción y pedir aprobación del usuario. ' +
+        'Responde en español de forma concisa y amigable.';
+
+      const conversationInput = `[Usuario]: ${request.content}`;
 
       // First call: check if model wants to use tools
       const initialResponse = await callAzureResponses({
@@ -272,67 +343,30 @@ async function handleChatFlow(
       });
 
       // Check for tool calls in output
-      const toolCall = initialResponse.output?.find((o) => o.type === 'function_call');
+      const toolCall = initialResponse.output?.find(
+        (o) => o.type === 'function_call' && (o.name === 'transfer' || o.name === 'conditional_buy_sol')
+      );
 
-      if (toolCall && toolCall.name === 'transfer_to_wallet') {
-        // Parse tool arguments
-        let toolArgs: { fromWallet: string; toWallet: string; amount: number; tokenSymbol?: string };
-        try {
-          toolArgs = JSON.parse(toolCall.arguments || '{}');
-        } catch {
-          await writeSSE(writer, encoder, 'error', {
-            error: 'INVALID_TOOL_ARGS',
-            message: 'Could not parse tool arguments',
-          });
-          await writeSSE(writer, encoder, 'done', { sessionId, threadId });
-          await writer.close();
-          return;
-        }
-
-        // Execute tool
-        const toolResult = executeTransferTool(toolArgs);
-
-        if (toolResult.status === 'prepared') {
-          // Store pending proposal for HITL
-          updateSession(sessionId, {
-            pendingProposal: {
-              toolName: 'transfer_to_wallet',
-              toolArgs,
-              toolResult,
-              createdAt: Date.now(),
-            },
-            threadId,
-          });
-
-          // Send proposal event
-          await writeSSE(writer, encoder, 'proposal', {
-            type: 'approval_required',
-            proposal: toolResult.preparedAction,
-            message: 'Esta transferencia requiere tu aprobación. ¿Deseas continuar?',
+      if (toolCall && toolCall.name) {
+        if (toolCall.name === 'transfer') {
+          await handleTransferToolCall(
+            { name: toolCall.name, arguments: toolCall.arguments },
             sessionId,
-            threadId,
-          });
-
-          await writeSSE(writer, encoder, 'done', { sessionId, threadId, awaitingApproval: true });
-          await writer.close();
-          return;
+            session.userAddress,
+            writer,
+            encoder,
+            conversationInput,
+            systemInstruction
+          );
         } else {
-          // Tool denied the action, stream explanation
-          const denialInput =
-            conversationInput +
-            `\n\n[Resultado de herramienta transfer_to_wallet]: La transferencia fue rechazada. Razón: ${toolResult.reason}`;
-
-          const denialStream = await callAzureResponsesStream({
-            input: denialInput,
-            instructions: systemInstruction,
-            maxOutputTokens: 1024,
-          });
-
-          await streamResponseToSSE(denialStream, writer, encoder);
-          await writeSSE(writer, encoder, 'done', { sessionId, threadId });
-          await writer.close();
-          return;
+          await handleConditionalBuyToolCall(
+            { name: toolCall.name, arguments: toolCall.arguments },
+            sessionId,
+            writer,
+            encoder
+          );
         }
+        return;
       }
 
       // No tool call - stream the response directly
@@ -344,11 +378,11 @@ async function handleChatFlow(
       });
 
       await streamResponseToSSE(responseStream, writer, encoder);
-      await writeSSE(writer, encoder, 'done', { sessionId, threadId });
+      await writeSSE(writer, encoder, 'done', { session_id: sessionId });
     } catch (err) {
       console.error('[chat] Stream error:', err);
       await writeSSE(writer, encoder, 'error', {
-        error: 'STREAM_ERROR',
+        code: 'stream_error',
         message: err instanceof Error ? err.message : 'Unknown error',
       });
     } finally {
@@ -370,13 +404,205 @@ async function handleChatFlow(
   });
 }
 
+async function handleConditionalBuyToolCall(
+  toolCall: { name: string; arguments?: string },
+  sessionId: string,
+  writer: WritableStreamDefaultWriter<Uint8Array>,
+  encoder: TextEncoder
+) {
+  let toolArgs: ConditionalBuySolParams;
+  try {
+    const parsed = JSON.parse(toolCall.arguments || '{}');
+    toolArgs = {
+      input_token: 'USDC',
+      input_amount: parsed.input_amount,
+      target_price_usd: parsed.target_price_usd,
+      min_sol_out: parsed.min_sol_out,
+    };
+  } catch {
+    await writeSSE(writer, encoder, 'error', {
+      code: 'invalid_tool_args',
+      message: 'Could not parse conditional_buy_sol tool arguments',
+    });
+    await writeSSE(writer, encoder, 'done', { session_id: sessionId });
+    await writer.close();
+    return;
+  }
+
+  const quote = simulateBuySolQuote(toolArgs);
+  const decision = evaluateConditionalBuy(toolArgs, quote);
+
+  if (decision.decision === 'WAIT_CONDITION_NOT_MET') {
+    await writeSSE(writer, encoder, 'token', {
+      content: `Tu condición de compra aún no se cumple. Precio SOL actual simulado: ${quote.sol_usd_price} USD, target: ${toolArgs.target_price_usd} USD.`,
+    });
+    await writeSSE(writer, encoder, 'done', { session_id: sessionId });
+    await writer.close();
+    return;
+  }
+
+  if (decision.decision === 'REJECT') {
+    await writeSSE(writer, encoder, 'error', {
+      code: 'conditional_buy_rejected',
+      message: decision.reasons.join(', '),
+    });
+    await writeSSE(writer, encoder, 'done', { session_id: sessionId });
+    await writer.close();
+    return;
+  }
+
+  const oracleFeed = process.env.PYTH_SOL_USD_FEED || 'ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d';
+
+  const proposal: AgentFunctionCallMessage = {
+    type: 'function_call',
+    function: {
+      name: 'conditional_buy_sol',
+      params: toolArgs,
+    },
+    display: {
+      summary: `Comprar SOL con ${toolArgs.input_amount} USDC si SOL <= ${toolArgs.target_price_usd} USD`,
+      fee_usd: 0.01,
+      provider: 'simulated_devnet_market',
+    },
+    risk: {
+      score: 35,
+      level: 'medium',
+      reasons: [
+        'Compra condicional requiere validación oracle on-chain',
+        ...decision.reasons,
+      ],
+    },
+    timestamp: now(),
+  };
+
+  updateSession(sessionId, {
+    pendingProposal: {
+      toolName: 'conditional_buy_sol',
+      toolArgs: {
+        ...toolArgs,
+        oracle_feed_pubkey: oracleFeed,
+        simulated_quote: quote,
+      },
+      toolResult: {
+        status: 'prepared',
+        reason: 'READY_FOR_ONCHAIN_ORACLE_APPROVAL',
+      },
+      createdAt: Date.now(),
+    },
+  });
+
+  await writeSSE(writer, encoder, 'proposal', proposal);
+  await writeSSE(writer, encoder, 'done', {
+    session_id: sessionId,
+    awaiting_approval: true,
+    action_type: 'BUY_SOL_ORACLE_CONDITIONAL',
+    oracle_feed_pubkey: oracleFeed,
+  });
+  await writer.close();
+}
+
+async function handleTransferToolCall(
+  toolCall: { name: string; arguments?: string },
+  sessionId: string,
+  userAddress: string | null,
+  writer: WritableStreamDefaultWriter<Uint8Array>,
+  encoder: TextEncoder,
+  conversationInput: string,
+  systemInstruction: string
+) {
+  // Parse tool arguments
+  let toolArgs: TransferParams;
+  try {
+    const parsed = JSON.parse(toolCall.arguments || '{}');
+    toolArgs = {
+      amount: parsed.amount,
+      token: parsed.token || 'SOL',
+      recipient: parsed.recipient,
+      memo: parsed.memo,
+    };
+  } catch {
+    await writeSSE(writer, encoder, 'error', {
+      code: 'invalid_tool_args',
+      message: 'Could not parse tool arguments',
+    });
+    await writeSSE(writer, encoder, 'done', { session_id: sessionId });
+    await writer.close();
+    return;
+  }
+
+  // Check if we have user address
+  if (!userAddress) {
+    await writeSSE(writer, encoder, 'error', {
+      code: 'no_wallet',
+      message: 'No wallet connected. Please connect your wallet first.',
+    });
+    await writeSSE(writer, encoder, 'done', { session_id: sessionId });
+    await writer.close();
+    return;
+  }
+
+  // Execute tool
+  const toolResult = prepareTransferResult(toolArgs, userAddress);
+
+  if (toolResult.status === 'prepared') {
+    // Generate display and risk info
+    const display = generateTransferDisplay(toolArgs);
+    const risk = assessTransferRisk(toolArgs);
+
+    // Store pending proposal for HITL
+    updateSession(sessionId, {
+      pendingProposal: {
+        toolName: 'transfer',
+        toolArgs,
+        toolResult,
+        createdAt: Date.now(),
+      },
+    });
+
+    console.log(`[chat] Proposal created: ${sessionId} - transfer ${toolArgs.amount} ${toolArgs.token}`);
+
+    // Build proposal message
+    const proposal: AgentFunctionCallMessage = {
+      type: 'function_call',
+      function: {
+        name: 'transfer',
+        params: toolArgs,
+      },
+      display,
+      risk,
+      timestamp: now(),
+    };
+
+    // Send proposal event
+    await writeSSE(writer, encoder, 'proposal', proposal);
+    await writeSSE(writer, encoder, 'done', { session_id: sessionId, awaiting_approval: true });
+    await writer.close();
+    return;
+  } else {
+    // Tool denied the action, stream explanation
+    const denialInput =
+      conversationInput +
+      `\n\n[Resultado de herramienta transfer]: La transferencia fue rechazada. Razón: ${toolResult.reason}`;
+
+    const denialStream = await callAzureResponsesStream({
+      input: denialInput,
+      instructions: systemInstruction,
+      maxOutputTokens: 1024,
+    });
+
+    await streamResponseToSSE(denialStream, writer, encoder);
+    await writeSSE(writer, encoder, 'done', { session_id: sessionId });
+    await writer.close();
+    return;
+  }
+}
+
 async function streamResponseToSSE(
   responseStream: ReadableStream<Uint8Array>,
   writer: WritableStreamDefaultWriter<Uint8Array>,
   encoder: TextEncoder
 ) {
   for await (const event of parseResponsesStream(responseStream)) {
-    // Handle different event types from Responses API
     if (event.type === 'response.output_text.delta') {
       const delta = event.delta || '';
       if (delta) {
@@ -388,7 +614,6 @@ async function streamResponseToSSE(
         await writeSSE(writer, encoder, 'token', { content: delta });
       }
     } else if (event.type === 'response.output_item.added') {
-      // New output item, could be message or function_call
       if (event.item?.type === 'message' && event.item?.content) {
         for (const part of event.item.content) {
           if (part.text) {
@@ -397,7 +622,6 @@ async function streamResponseToSSE(
         }
       }
     } else if (event.type === 'response.completed') {
-      // Final response
       const output = event.response?.output;
       if (Array.isArray(output)) {
         for (const item of output) {
@@ -414,73 +638,185 @@ async function streamResponseToSSE(
   }
 }
 
-async function handleResumeFlow(
-  sessionId: string,
-  threadId: string,
-  resume: { approved: boolean; reason?: string }
-): Promise<Response> {
-  const { stream, writer, encoder } = createSSEStream();
+// ============================================================================
+// Function Approve Handler (JSON)
+// ============================================================================
 
-  (async () => {
-    try {
-      const session = getSession(sessionId);
-      if (!session?.pendingProposal) {
-        await writeSSE(writer, encoder, 'error', {
-          error: 'NO_PENDING_PROPOSAL',
-          message: 'No hay propuesta pendiente para esta sesión',
-        });
-        await writer.close();
-        return;
-      }
+async function handleFunctionApprove(request: {
+  type: 'function_approve';
+  session_id: string;
+  execute_tx_signature?: string;
+}): Promise<Response> {
+  if (!request.session_id?.trim()) {
+    return jsonResponse({ error: { code: 'invalid_payload', message: 'session_id is required' } }, { status: 400 });
+  }
 
-      const { toolResult } = session.pendingProposal;
-      clearPendingProposal(sessionId);
+  const session = getSession(request.session_id);
+  if (!session) {
+    return jsonResponse({ error: { code: 'session_not_found', message: 'Session not found or expired' } }, { status: 404 });
+  }
 
-      const systemInstruction =
-        'Eres un asistente de guardrails para Solana. Responde al usuario sobre el resultado de su decisión.';
+  if (!session.pendingProposal) {
+    return jsonResponse({ error: { code: 'no_pending_proposal', message: 'No pending proposal for this session' } }, { status: 400 });
+  }
 
-      let responseInput: string;
+  const { toolArgs, toolName } = session.pendingProposal;
+  clearPendingProposal(request.session_id);
 
-      if (resume.approved) {
-        responseInput =
-          `El usuario APROBÓ la transferencia. Detalles de la acción preparada: ${JSON.stringify(toolResult)}. ` +
-          'Confirma al usuario que la transferencia está lista para ser firmada con su wallet. ' +
-          'Recuerda que NO se ejecutó on-chain todavía, solo está preparada.';
-      } else {
-        responseInput =
-          `El usuario RECHAZÓ la transferencia. ${resume.reason ? `Razón: ${resume.reason}` : ''} ` +
-          'Confirma al usuario que la transferencia fue cancelada y pregunta si necesita algo más.';
-      }
+  console.log(`[chat] Proposal approved: ${request.session_id}`);
 
-      const responseStream = await callAzureResponsesStream({
-        input: responseInput,
-        instructions: systemInstruction,
-        maxOutputTokens: 1024,
-      });
-
-      await streamResponseToSSE(responseStream, writer, encoder);
-      await writeSSE(writer, encoder, 'done', { sessionId, threadId, resumed: true, approved: resume.approved });
-    } catch (err) {
-      console.error('[chat] Resume error:', err);
-      await writeSSE(writer, encoder, 'error', {
-        error: 'RESUME_ERROR',
-        message: err instanceof Error ? err.message : 'Unknown error',
-      });
-    } finally {
-      try {
-        await writer.close();
-      } catch {
-        // Already closed
-      }
+  if (toolName === 'conditional_buy_sol') {
+    if (!request.execute_tx_signature) {
+      return jsonResponse(
+        {
+          error: {
+            code: 'missing_onchain_proof',
+            message: 'execute_tx_signature is required for oracle-gated conditional buy',
+          },
+        },
+        { status: 400 }
+      );
     }
-  })();
 
-  return new Response(stream, {
-    status: 200,
-    headers: {
-      'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
+    const proof = await verifyOracleExecutionTx({ execute_tx_signature: request.execute_tx_signature });
+    if (!proof.ok) {
+      return jsonResponse(
+        {
+          error: {
+            code: 'onchain_oracle_validation_failed',
+            message: proof.reason || 'On-chain oracle validation failed',
+          },
+        },
+        { status: 400 }
+      );
+    }
+
+    const buyArgs = toolArgs as ConditionalBuySolParams;
+    const response: { messages: AgentMessage[] } = {
+      messages: [
+        {
+          type: 'text',
+          content: `Aprobación on-chain validada. Compra condicional ejecutada (simulada): ${buyArgs.input_amount} USDC para SOL con target ${buyArgs.target_price_usd} USD.`,
+          execute: {
+            status: 'success',
+            tx_hash: request.execute_tx_signature,
+          },
+          timestamp: now(),
+        },
+      ],
+    };
+    return jsonResponse(response, { status: 200 });
+  }
+
+  const transferArgs = toolArgs as TransferParams;
+  if (!session.userAddress) {
+    return jsonResponse(
+      { error: { code: 'no_wallet', message: 'No wallet connected in session' } },
+      { status: 400 }
+    );
+  }
+
+  let unsignedTx: { txBase64: string; blockhash: string; lastValidBlockHeight: number };
+  try {
+    unsignedTx = await buildUnsignedSolTransferTx({
+      fromWallet: session.userAddress,
+      toWallet: transferArgs.recipient,
+      amountSol: transferArgs.amount,
+    });
+  } catch (e) {
+    return jsonResponse(
+      {
+        error: {
+          code: 'tx_build_failed',
+          message: e instanceof Error ? e.message : 'Failed to build transfer transaction',
+        },
+      },
+      { status: 500 }
+    );
+  }
+
+  const shortRecipient = `${transferArgs.recipient.slice(0, 4)}...${transferArgs.recipient.slice(-4)}`;
+
+  const response: { messages: AgentMessage[] } = {
+    messages: [
+      {
+        type: 'text',
+        content: `Transacción preparada. Revisa y firma en tu wallet para enviar ${transferArgs.amount} ${transferArgs.token || 'SOL'} a ${shortRecipient}.`,
+        execute: {
+          status: 'success',
+          tx_hash: unsignedTx.blockhash,
+        },
+        timestamp: now(),
+      },
+    ],
+  };
+
+  return jsonResponse(
+    {
+      ...response,
+      transaction: {
+        format: 'base64_versioned_transaction',
+        unsigned_tx_base64: unsignedTx.txBase64,
+        recent_blockhash: unsignedTx.blockhash,
+        last_valid_block_height: unsignedTx.lastValidBlockHeight,
+        network: 'devnet',
+      },
     },
-  });
+    { status: 200 }
+  );
+}
+
+// ============================================================================
+// Function Reject Handler (JSON)
+// ============================================================================
+
+async function handleFunctionReject(request: {
+  type: 'function_reject';
+  session_id: string;
+  reason?: string;
+}): Promise<Response> {
+  if (!request.session_id?.trim()) {
+    return jsonResponse({ error: { code: 'invalid_payload', message: 'session_id is required' } }, { status: 400 });
+  }
+
+  const session = getSession(request.session_id);
+  if (!session) {
+    return jsonResponse({ error: { code: 'session_not_found', message: 'Session not found or expired' } }, { status: 404 });
+  }
+
+  if (!session.pendingProposal) {
+    return jsonResponse({ error: { code: 'no_pending_proposal', message: 'No pending proposal for this session' } }, { status: 400 });
+  }
+
+  clearPendingProposal(request.session_id);
+
+  console.log(`[chat] Proposal rejected: ${request.session_id}${request.reason ? ` - ${request.reason}` : ''}`);
+
+  const response: { messages: AgentMessage[] } = {
+    messages: [
+      {
+        type: 'text',
+        content: 'Entendido, cancelé la transferencia. ¿Hay algo más en lo que pueda ayudarte?',
+        timestamp: now(),
+      },
+    ],
+  };
+
+  return jsonResponse(response, { status: 200 });
+}
+
+// ============================================================================
+// Exports for tests
+// ============================================================================
+
+export function normalizeMessages(input: unknown): { role: string; content: string }[] | null {
+  if (!Array.isArray(input) || input.length === 0) return null;
+  const normalized: { role: string; content: string }[] = [];
+  for (const item of input) {
+    if (!item || typeof item !== 'object') return null;
+    const msg = item as Record<string, unknown>;
+    if (typeof msg.role !== 'string' || typeof msg.content !== 'string') return null;
+    normalized.push({ role: msg.role, content: msg.content });
+  }
+  return normalized;
 }

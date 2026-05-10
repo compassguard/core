@@ -127,3 +127,22 @@ export const GetPricesResponseSchema = z.object({
   prices: z.record(z.number()),
   updated_at: z.string(),
 });
+
+// ============================================================================
+// SSE Schemas
+// ============================================================================
+
+export const SSEProposalSchema = z.object({
+  type: z.literal('function_call'),
+  function: z.object({
+    name: z.literal('transfer'),
+    params: TransferParamsSchema,
+  }),
+  display: z.object({
+    summary: z.string(),
+    fee_usd: z.number().optional(),
+    provider: z.string().optional(),
+  }),
+  risk: RiskInfoSchema,
+  timestamp: z.string(),
+});
