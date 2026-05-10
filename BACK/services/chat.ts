@@ -43,8 +43,10 @@ import {
   buildConditionalBuyCreateOrderTx,
   toConditionalBuyProposalPayload,
 } from './tools/conditionalBuySol';
-import { DEVNET_USDC_MINT, quoteOrcaUsdcToSol, type OrcaSwapParams } from './tools/orcaSwap';
-import { buildUnsignedOrcaSwapTx } from './tools/orcaSwapTx';
+import { DEVNET_USDC_MINT, quoteOrcaUsdcToSol, type OrcaSwapParams, type OrcaSwapQuote } from './tools/orcaSwap';
+import { buildUnsignedOrcaSwapTx, buildUnsignedOrcaSwapTxWithGuard } from './tools/orcaSwapTx';
+import { buildSwapGuardConfig, computeImpliedPrice, type SwapGuardConfig, type SwapGuardWarning } from './tools/swapGuard';
+import { buildSwapGuardInstructions, getGuardProgramId, getPythOracleFeed } from './tools/swapGuardOnChain';
 import {
   deriveActionApprovalAddress,
   deriveWalletSafetyAttestationAddress,
@@ -2115,7 +2117,7 @@ async function handleFunctionApprove(request: {
   }
 
   if (toolName === 'swap_orca_usdc_to_sol') {
-    const swapArgs = toolArgs as OrcaSwapParams & { quote?: unknown };
+    const swapArgs = toolArgs as OrcaSwapParams & { quote?: OrcaSwapQuote };
     if (!session.userAddress) {
       clearPendingProposal(request.session_id);
       return jsonResponse(
@@ -2124,16 +2126,142 @@ async function handleFunctionApprove(request: {
       );
     }
 
+    // =========================================================================
+    // SWAP GUARD ON-CHAIN: Build transaction with guard instructions
+    // =========================================================================
+    const swapGuardEnabled = process.env.SWAP_ORACLE_GUARD_ENABLED !== 'false';
+    // Import connection from centralized module to avoid rate limiting
+    const { getConnection } = await import('./solanaConnection');
+    const connection = getConnection();
+
+    // Get guard configuration from environment
+    const maxDeviationBps = Number(process.env.SWAP_GUARD_MAX_DEVIATION_BPS || '500');
+    const warningDeviationBps = Number(process.env.SWAP_GUARD_WARNING_DEVIATION_BPS || '150');
+    // DEVNET HACK: Pyth legacy price accounts have stale data (years old!)
+    // Use max u64 value to effectively disable staleness check on devnet
+    // For mainnet with Pyth Pull, use proper values like 60
+    const stalenessSeconds = Number(process.env.SWAP_GUARD_STALENESS_SECONDS || '9999999999');
+    const maxConfidenceBps = Number(process.env.SWAP_GUARD_MAX_CONFIDENCE_BPS || '10000');
+
     let unsigned;
+    let swapGuardConfig: SwapGuardConfig | null = null;
+    let swapGuardWarning: SwapGuardWarning | null = null;
+
     try {
-      unsigned = await buildUnsignedOrcaSwapTx({
-        userAddress: session.userAddress,
-        inputToken: swapArgs.input_token,
-        outputToken: swapArgs.output_token,
-        inputAmount: swapArgs.input_amount,
-        slippageBps: swapArgs.slippage_bps,
-      });
+      if (swapGuardEnabled) {
+        // Calculate implied price for guard validation
+        const inputIsUsdc = swapArgs.input_token === 'USDC';
+        const inputAmountBaseUnits = BigInt(
+          Math.round(swapArgs.input_amount * (inputIsUsdc ? 1_000_000 : 1_000_000_000))
+        );
+
+        // Get a fresh quote to estimate output
+        const quote = swapArgs.quote;
+        const estimatedOutputBaseUnits = quote 
+          ? BigInt(quote.estimated_output_base_units)
+          : inputAmountBaseUnits; // fallback
+        const minOutputBaseUnits = quote
+          ? BigInt(quote.min_output_base_units)
+          : estimatedOutputBaseUnits * BigInt(99) / BigInt(100);
+
+        // Calculate implied price in USD with e8 precision
+        // For USDC -> SOL: implied SOL price = USDC amount / SOL amount
+        const inputAmountFloat = swapArgs.input_amount;
+        const outputAmountFloat = inputIsUsdc
+          ? Number(estimatedOutputBaseUnits) / 1_000_000_000
+          : Number(estimatedOutputBaseUnits) / 1_000_000;
+
+        const impliedPriceUsd = inputIsUsdc
+          ? inputAmountFloat / outputAmountFloat  // SOL price in USD
+          : outputAmountFloat / inputAmountFloat; // SOL price in USD (inverted)
+
+        const quotedPriceUsdE8 = BigInt(Math.round(impliedPriceUsd * 100_000_000));
+
+        console.log(`[swapGuard ON-CHAIN] Building guarded swap tx: ${swapArgs.input_amount} ${swapArgs.input_token} -> ${swapArgs.output_token}`);
+        console.log(`[swapGuard ON-CHAIN] Implied price: $${impliedPriceUsd.toFixed(4)} (${quotedPriceUsdE8} e8)`);
+        console.log(`[swapGuard ON-CHAIN] Max deviation: ${maxDeviationBps} bps, Staleness: ${stalenessSeconds}s`);
+
+        // Build guard instructions
+        const expiresAtUnix = Math.floor(Date.now() / 1000) + 300; // 5 minutes
+        const guardInstructions = await buildSwapGuardInstructions(connection, {
+          userAddress: session.userAddress,
+          quotedPriceUsdE8,
+          inputAmountBaseUnits,
+          minOutputAmountBaseUnits: minOutputBaseUnits,
+          maxSlippageBps: swapArgs.slippage_bps ?? 100,
+          maxDeviationBps,
+          stalenessSeconds,
+          maxConfidenceBps,
+          expiresAtUnix,
+        });
+
+        // Collect all guard instructions
+        const ixList: web3.TransactionInstruction[] = [];
+        if (guardInstructions.initializePolicyIx) {
+          console.log('[swapGuard ON-CHAIN] Including initialize_policy instruction (first-time user)');
+          ixList.push(guardInstructions.initializePolicyIx);
+        }
+        ixList.push(guardInstructions.createApprovalIx);
+        ixList.push(guardInstructions.markExecutedIx);
+
+        console.log(`[swapGuard ON-CHAIN] Total guard instructions: ${ixList.length}`);
+
+        // Build combined transaction: guard + swap
+        unsigned = await buildUnsignedOrcaSwapTxWithGuard({
+          userAddress: session.userAddress,
+          inputToken: swapArgs.input_token,
+          outputToken: swapArgs.output_token,
+          inputAmount: swapArgs.input_amount,
+          slippageBps: swapArgs.slippage_bps,
+          guardInstructions: ixList,
+        });
+
+        // Build swap guard config for response
+        swapGuardConfig = {
+          program_id: getGuardProgramId().toBase58(),
+          oracle_feed: getPythOracleFeed().toBase58(),
+          quoted_price_usd_e8: Number(quotedPriceUsdE8),
+          warning_deviation_bps: warningDeviationBps,
+          max_deviation_bps: maxDeviationBps,
+          staleness_seconds: stalenessSeconds,
+          max_confidence_bps: maxConfidenceBps,
+          network: 'devnet',
+          on_chain_enforcement: true,
+          action_approval_pda: guardInstructions.actionApprovalPda.toBase58(),
+        };
+
+        // Check if we should show a warning (server-side estimate)
+        // The actual enforcement happens on-chain, but we can pre-warn the user
+        try {
+          const serverGuardResult = await buildSwapGuardConfig(impliedPriceUsd, swapArgs.input_token, swapArgs.output_token);
+          if (serverGuardResult.warning) {
+            swapGuardWarning = serverGuardResult.warning;
+            console.log(`[swapGuard ON-CHAIN] Pre-check warning: ${swapGuardWarning.message}`);
+          }
+          // Update config with oracle price from server check
+          if (serverGuardResult.config.oracle_price_usd_e8) {
+            swapGuardConfig.oracle_price_usd_e8 = serverGuardResult.config.oracle_price_usd_e8;
+            swapGuardConfig.deviation_bps = serverGuardResult.config.deviation_bps;
+          }
+        } catch (e) {
+          console.warn('[swapGuard ON-CHAIN] Server-side pre-check failed (non-blocking):', e);
+        }
+
+        console.log('[swapGuard ON-CHAIN] Transaction built successfully with on-chain guard');
+
+      } else {
+        // Guard disabled - build regular swap transaction
+        console.log('[swapGuard] Guard disabled, building regular swap tx');
+        unsigned = await buildUnsignedOrcaSwapTx({
+          userAddress: session.userAddress,
+          inputToken: swapArgs.input_token,
+          outputToken: swapArgs.output_token,
+          inputAmount: swapArgs.input_amount,
+          slippageBps: swapArgs.slippage_bps,
+        });
+      }
     } catch (e) {
+      console.error('[swapGuard ON-CHAIN] Error building guarded transaction:', e);
       updateSession(request.session_id, {
         pendingProposal: {
           ...proposal,
@@ -2144,11 +2272,21 @@ async function handleFunctionApprove(request: {
         {
           error: {
             code: 'orca_tx_build_failed',
-            message: e instanceof Error ? e.message : 'Failed to build Orca swap transaction',
+            message: e instanceof Error ? e.message : 'Failed to build Orca swap transaction with guard',
           },
         },
         { status: 500 }
       );
+    }
+
+    // Build message with optional warning
+    let messageContent = `Swap preparado: ${swapArgs.input_amount} ${swapArgs.input_token} → ${swapArgs.output_token}. `;
+    if (swapGuardEnabled) {
+      messageContent += `🛡️ Protegido con validación de precio on-chain. `;
+    }
+    messageContent += `Firma en tu wallet para ejecutar.`;
+    if (swapGuardWarning) {
+      messageContent += ` ⚠️ ${swapGuardWarning.message}`;
     }
 
     // Note: We don't set execute.status here because the transaction hasn't been signed/sent yet.
@@ -2169,13 +2307,15 @@ async function handleFunctionApprove(request: {
         recent_blockhash: string;
         last_valid_block_height: number;
         network: 'devnet';
-        execution_type: 'orca_swap';
+        execution_type: 'orca_swap_guarded' | 'orca_swap';
       };
+      swap_guard?: SwapGuardConfig;
+      swap_guard_warning?: SwapGuardWarning;
     } = {
       messages: [
         {
           type: 'text',
-          content: `Swap preparado: ${swapArgs.input_amount} ${displaySwapToken(swapArgs.input_token)} → ${displaySwapToken(swapArgs.output_token)}. Firma en tu wallet para ejecutar.`,
+          content: messageContent,
           timestamp: now(),
         },
       ],
@@ -2196,9 +2336,17 @@ async function handleFunctionApprove(request: {
         recent_blockhash: unsigned.recentBlockhash,
         last_valid_block_height: unsigned.lastValidBlockHeight,
         network: 'devnet',
-        execution_type: 'orca_swap',
+        execution_type: swapGuardEnabled ? 'orca_swap_guarded' : 'orca_swap',
       },
     };
+
+    // Include swap_guard metadata if available
+    if (swapGuardConfig) {
+      response.swap_guard = swapGuardConfig;
+      if (swapGuardWarning) {
+        response.swap_guard_warning = swapGuardWarning;
+      }
+    }
 
     updateSession(request.session_id, {
       pendingProposal: {
@@ -2206,6 +2354,11 @@ async function handleFunctionApprove(request: {
         state: 'awaiting_signature',
         recentBlockhash: unsigned.recentBlockhash,
         lastValidBlockHeight: unsigned.lastValidBlockHeight,
+        // Store swap guard info for later verification
+        toolArgs: {
+          ...swapArgs,
+          swap_guard: swapGuardConfig,
+        },
       },
     });
 

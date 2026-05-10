@@ -1,6 +1,9 @@
 # AgentActionGuard (Devnet)
 
-Smart contract de enforcement on-chain para acciones del agente, incluyendo ejecución protegida de transferencias SOL vía `guarded_transfer` y validación de condiciones oracle para `BUY_SOL_ORACLE_CONDITIONAL`.
+Smart contract de enforcement on-chain para acciones del agente, incluyendo:
+- `BUY_SOL_ORACLE_CONDITIONAL` con validación de precio oracle.
+- Guard de swap por desviación de precio vs oracle (`mark_executed_if_swap_price_within_band`).
+- Ejecución protegida de transferencias SOL vía `guarded_transfer`.
 
 ## Requisitos
 
@@ -58,6 +61,17 @@ PYTH_SOL_USD_FEED=ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b5
   - Coincidencia de `action_hash`, `recipient` y `amount`.
   - Expiración de `ActionApproval` y `WalletSafetyAttestation`.
 - La aprobación marca `ActionApproval.executed = true` en la transacción de `guarded_transfer`.
+
+## Flujo swap con price-band guard
+
+1. Front crea `create_action_approval` para acción de tipo swap (`SimulatedSwap`).
+2. Front ejecuta `mark_executed_if_swap_price_within_band` pasando:
+   - `quoted_price_usd_e8`
+   - `max_deviation_bps`
+   - `staleness_seconds`
+   - `max_confidence_bps`
+   - cuenta `oracle_price_feed` (Pyth SOL/USD)
+3. Si la desviación entre precio cotizado y oracle supera el umbral, la instrucción falla y no marca ejecución.
 
 ## Attestor model
 

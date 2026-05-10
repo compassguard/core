@@ -119,13 +119,23 @@ function toUint8Array(base64: string): Uint8Array {
   return bytes;
 }
 
-function decodeUnsignedTransaction(base64: string): web3.VersionedTransaction {
+type DecodedTransaction = web3.VersionedTransaction | web3.Transaction;
+
+function decodeUnsignedTransaction(base64: string): DecodedTransaction {
+  const bytes = toUint8Array(base64);
+  
+  // Try VersionedTransaction first (has version byte prefix)
   try {
-    return web3.VersionedTransaction.deserialize(toUint8Array(base64));
-  } catch (error) {
-    throw Object.assign(new Error(`Invalid unsigned transaction: ${getErrorMessage(error)}`), {
-      code: 'send_failed',
-    });
+    return web3.VersionedTransaction.deserialize(bytes);
+  } catch {
+    // Fallback to Legacy Transaction
+    try {
+      return web3.Transaction.from(bytes);
+    } catch (error) {
+      throw Object.assign(new Error(`Invalid unsigned transaction: ${getErrorMessage(error)}`), {
+        code: 'send_failed',
+      });
+    }
   }
 }
 
@@ -232,9 +242,29 @@ export function useWallet() {
     }
 
     const tx = decodeUnsignedTransaction(unsignedTxBase64);
+    const isVersioned = tx instanceof web3.VersionedTransaction;
+    
+    console.log('[useWallet] Transaction type:', isVersioned ? 'VersionedTransaction' : 'LegacyTransaction');
+    console.log('[useWallet] Transaction details:', {
+      isVersioned,
+      numSignatures: isVersioned ? (tx as web3.VersionedTransaction).signatures.length : (tx as web3.Transaction).signatures.length,
+      // @ts-ignore
+      numInstructions: isVersioned ? (tx as web3.VersionedTransaction).message.compiledInstructions?.length : (tx as web3.Transaction).instructions?.length,
+    });
 
     try {
-      const signResult = await provider.signAndSendTransaction(tx);
+      let signResult;
+      
+      if (isVersioned) {
+        // VersionedTransaction - use signAndSendTransaction directly
+        console.log('[useWallet] Signing VersionedTransaction...');
+        signResult = await provider.signAndSendTransaction(tx as web3.VersionedTransaction);
+      } else {
+        // Legacy Transaction - Phantom also supports this via signAndSendTransaction
+        console.log('[useWallet] Signing LegacyTransaction...');
+        signResult = await provider.signAndSendTransaction(tx as web3.Transaction);
+      }
+      
       const signature = typeof signResult === 'string' ? signResult : signResult?.signature;
 
       if (!signature) {
@@ -247,7 +277,15 @@ export function useWallet() {
       }
 
       return { tx_signature: signature };
-    } catch (error) {
+    } catch (error: any) {
+      console.error('[useWallet] signAndSendTransaction error:', error);
+      console.error('[useWallet] Error details:', {
+        message: error?.message,
+        code: error?.code,
+        name: error?.name,
+        stack: error?.stack,
+        raw: JSON.stringify(error, Object.getOwnPropertyNames(error)),
+      });
       const mapped = mapPhantomError(error);
       throwWithCode(mapped.code, mapped.message);
     }

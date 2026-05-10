@@ -95,8 +95,9 @@ const oracleLookup = new Map<string, OracleSnapshot>();
 const programOracleLookupTtlSec = Math.max(10, Math.floor(ORACLE_POLL_MS / 1000));
 
 function getConnection() {
-  const rpc = process.env.SOLANA_RPC_URL || clusterApiUrl('devnet');
-  return new Connection(rpc, 'confirmed');
+  // Use centralized connection to avoid rate limiting
+  const { getConnection: getCentralizedConnection } = require('./solanaConnection');
+  return getCentralizedConnection();
 }
 
 function getProgram(): PublicKey {

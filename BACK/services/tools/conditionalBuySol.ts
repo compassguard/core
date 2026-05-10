@@ -136,8 +136,9 @@ function getConfidence(config?: number): number {
 }
 
 function getSolanaConnection() {
-  const rpc = process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com';
-  return new web3.Connection(rpc, 'confirmed');
+  // Use centralized connection to avoid rate limiting
+  const { getConnection } = require('../solanaConnection');
+  return getConnection();
 }
 
 function nowUnixSeconds(): number {

@@ -8,6 +8,8 @@ const PYTH_PRICE_ACCOUNT_SIZE: usize = 3312;
 const PYTH_MAGIC: u32 = 0xa1b2c3d4;
 const PYTH_VERSION: u32 = 2;
 const PYTH_PRICE_TYPE: u32 = 3;
+const TARGET_PRICE_EXPONENT: i32 = -8;
+const BPS_DENOMINATOR: i128 = 10_000;
 
 fn read_pyth_price(data: &[u8]) -> Result<(i64, u64, i32, i64)> {
     // Validate minimum size
@@ -58,11 +60,71 @@ fn read_pyth_price(data: &[u8]) -> Result<(i64, u64, i32, i64)> {
     Ok((price, conf, expo, timestamp))
 }
 
+fn convert_price_to_e8(price_value: i64, price_expo: i32) -> Result<i128> {
+    let price_i128 = price_value as i128;
+    let oracle_price_e8 = if price_expo == TARGET_PRICE_EXPONENT {
+        price_i128
+    } else if price_expo < TARGET_PRICE_EXPONENT {
+        let shift = (TARGET_PRICE_EXPONENT - price_expo) as u32;
+        let factor = 10i128
+            .checked_pow(shift)
+            .ok_or(error!(GuardError::ArithmeticOverflow))?;
+        price_i128
+            .checked_div(factor)
+            .ok_or(error!(GuardError::ArithmeticOverflow))?
+    } else {
+        let shift = (price_expo - TARGET_PRICE_EXPONENT) as u32;
+        let factor = 10i128
+            .checked_pow(shift)
+            .ok_or(error!(GuardError::ArithmeticOverflow))?;
+        price_i128
+            .checked_mul(factor)
+            .ok_or(error!(GuardError::ArithmeticOverflow))?
+    };
+
+    Ok(oracle_price_e8)
+}
+
+fn compute_confidence_bps(price_conf: u64, price_value: i64) -> Result<u64> {
+    let price_abs = (price_value as i128).abs();
+    require!(price_abs > 0, GuardError::InvalidOraclePrice);
+
+    let conf_bps_i128 = (price_conf as i128)
+        .checked_mul(BPS_DENOMINATOR)
+        .ok_or(error!(GuardError::ArithmeticOverflow))?
+        .checked_div(price_abs)
+        .ok_or(error!(GuardError::ArithmeticOverflow))?;
+
+    Ok(conf_bps_i128 as u64)
+}
+
+fn compute_deviation_bps(quoted_price_e8: u64, oracle_price_e8: i128) -> Result<u64> {
+    require!(quoted_price_e8 > 0, GuardError::InvalidQuotedPrice);
+    require!(oracle_price_e8 > 0, GuardError::InvalidOraclePrice);
+
+    let quoted_i128 = quoted_price_e8 as i128;
+    let diff = quoted_i128
+        .checked_sub(oracle_price_e8)
+        .ok_or(error!(GuardError::ArithmeticOverflow))?
+        .abs();
+
+    let deviation_bps_i128 = diff
+        .checked_mul(BPS_DENOMINATOR)
+        .ok_or(error!(GuardError::ArithmeticOverflow))?
+        .checked_div(oracle_price_e8)
+        .ok_or(error!(GuardError::ArithmeticOverflow))?;
+
+    Ok(deviation_bps_i128 as u64)
+}
+
 #[program]
 pub mod agent_action_guard {
     use super::*;
 
-    pub fn initialize_policy(ctx: Context<InitializePolicy>, params: InitPolicyParams) -> Result<()> {
+    pub fn initialize_policy(
+        ctx: Context<InitializePolicy>,
+        params: InitPolicyParams,
+    ) -> Result<()> {
         let policy = &mut ctx.accounts.user_policy;
         policy.user = ctx.accounts.user.key();
         policy.max_transfer_lamports = params.max_transfer_lamports;
@@ -77,7 +139,11 @@ pub mod agent_action_guard {
 
     pub fn update_policy(ctx: Context<UpdatePolicy>, params: InitPolicyParams) -> Result<()> {
         let policy = &mut ctx.accounts.user_policy;
-        require_keys_eq!(policy.user, ctx.accounts.user.key(), GuardError::Unauthorized);
+        require_keys_eq!(
+            policy.user,
+            ctx.accounts.user.key(),
+            GuardError::Unauthorized
+        );
         policy.max_transfer_lamports = params.max_transfer_lamports;
         policy.max_swap_usd = params.max_swap_usd;
         policy.max_slippage_bps = params.max_slippage_bps;
@@ -87,7 +153,10 @@ pub mod agent_action_guard {
         Ok(())
     }
 
-    pub fn initialize_attestor_config(ctx: Context<InitializeAttestorConfig>, initial_attestor: Pubkey) -> Result<()> {
+    pub fn initialize_attestor_config(
+        ctx: Context<InitializeAttestorConfig>,
+        initial_attestor: Pubkey,
+    ) -> Result<()> {
         let config = &mut ctx.accounts.attestor_config;
         config.admin = ctx.accounts.admin.key();
         config.attestor = initial_attestor;
@@ -97,7 +166,11 @@ pub mod agent_action_guard {
 
     pub fn update_attestor(ctx: Context<UpdateAttestor>, attestor: Pubkey) -> Result<()> {
         let config = &mut ctx.accounts.attestor_config;
-        require_keys_eq!(config.admin, ctx.accounts.admin.key(), GuardError::Unauthorized);
+        require_keys_eq!(
+            config.admin,
+            ctx.accounts.admin.key(),
+            GuardError::Unauthorized
+        );
         config.attestor = attestor;
         Ok(())
     }
@@ -122,20 +195,37 @@ pub mod agent_action_guard {
         Ok(())
     }
 
-    pub fn create_action_approval(ctx: Context<CreateActionApproval>, params: CreateActionApprovalParams) -> Result<()> {
+    pub fn create_action_approval(
+        ctx: Context<CreateActionApproval>,
+        params: CreateActionApprovalParams,
+    ) -> Result<()> {
         let policy = &ctx.accounts.user_policy;
         require!(policy.enabled, GuardError::PolicyDisabled);
 
-        if params.action_type == ActionType::TransferSol as u8 || params.action_type == ActionType::TransferSolGuarded as u8 {
-            require!(params.input_amount <= policy.max_transfer_lamports, GuardError::TransferAmountTooHigh);
+        if params.action_type == ActionType::TransferSol as u8
+            || params.action_type == ActionType::TransferSolGuarded as u8
+        {
+            require!(
+                params.input_amount <= policy.max_transfer_lamports,
+                GuardError::TransferAmountTooHigh
+            );
         }
 
-        if params.action_type == ActionType::SimulatedSwap as u8 || params.action_type == ActionType::BuySol as u8 || params.action_type == ActionType::BuySolOracleConditional as u8 {
-            require!(params.max_slippage_bps <= policy.max_slippage_bps, GuardError::SlippageTooHigh);
+        if params.action_type == ActionType::SimulatedSwap as u8
+            || params.action_type == ActionType::BuySol as u8
+            || params.action_type == ActionType::BuySolOracleConditional as u8
+        {
+            require!(
+                params.max_slippage_bps <= policy.max_slippage_bps,
+                GuardError::SlippageTooHigh
+            );
         }
 
         if params.action_type == ActionType::PrivateTransfer as u8 {
-            require!(policy.allow_private_actions, GuardError::PrivateActionsDisabled);
+            require!(
+                policy.allow_private_actions,
+                GuardError::PrivateActionsDisabled
+            );
         }
 
         let now = Clock::get()?.unix_timestamp;
@@ -162,7 +252,11 @@ pub mod agent_action_guard {
 
     pub fn revoke_action_approval(ctx: Context<MutateApproval>) -> Result<()> {
         let approval = &mut ctx.accounts.action_approval;
-        require_keys_eq!(approval.user, ctx.accounts.user.key(), GuardError::Unauthorized);
+        require_keys_eq!(
+            approval.user,
+            ctx.accounts.user.key(),
+            GuardError::Unauthorized
+        );
         require!(!approval.executed, GuardError::AlreadyExecuted);
         approval.revoked = true;
         Ok(())
@@ -170,7 +264,11 @@ pub mod agent_action_guard {
 
     pub fn mark_executed(ctx: Context<MutateApproval>) -> Result<()> {
         let approval = &mut ctx.accounts.action_approval;
-        require_keys_eq!(approval.user, ctx.accounts.user.key(), GuardError::Unauthorized);
+        require_keys_eq!(
+            approval.user,
+            ctx.accounts.user.key(),
+            GuardError::Unauthorized
+        );
         check_approval_active(approval)?;
         approval.executed = true;
         Ok(())
@@ -182,10 +280,21 @@ pub mod agent_action_guard {
         max_confidence_bps: u64,
     ) -> Result<()> {
         let approval = &mut ctx.accounts.action_approval;
-        require_keys_eq!(approval.user, ctx.accounts.user.key(), GuardError::Unauthorized);
+        require_keys_eq!(
+            approval.user,
+            ctx.accounts.user.key(),
+            GuardError::Unauthorized
+        );
         check_approval_active(approval)?;
-        require!(approval.action_type == ActionType::BuySolOracleConditional as u8, GuardError::InvalidActionType);
-        require_keys_eq!(approval.oracle_feed, ctx.accounts.oracle_price_feed.key(), GuardError::OracleFeedMismatch);
+        require!(
+            approval.action_type == ActionType::BuySolOracleConditional as u8,
+            GuardError::InvalidActionType
+        );
+        require_keys_eq!(
+            approval.oracle_feed,
+            ctx.accounts.oracle_price_feed.key(),
+            GuardError::OracleFeedMismatch
+        );
 
         let current_time = Clock::get()?.unix_timestamp;
 
@@ -198,47 +307,81 @@ pub mod agent_action_guard {
         require!(age <= staleness_seconds as i64, GuardError::OracleDataStale);
 
         // Convert to e8 for consistent compare
-        let oracle_price_e8: i128 = if price_expo == -8 {
-            price_value as i128
-        } else if price_expo < -8 {
-            let factor = 10i128.pow((-8 - price_expo) as u32);
-            (price_value as i128) / factor
-        } else {
-            let factor = 10i128.pow((price_expo + 8) as u32);
-            (price_value as i128) * factor
-        };
+        let oracle_price_e8 = convert_price_to_e8(price_value, price_expo)?;
 
         require!(oracle_price_e8 > 0, GuardError::InvalidOraclePrice);
-        require!(oracle_price_e8 as u64 <= approval.target_price_usd_e8, GuardError::PriceConditionNotMet);
+        require!(
+            oracle_price_e8 as u64 <= approval.target_price_usd_e8,
+            GuardError::PriceConditionNotMet
+        );
 
         // confidence bps relative to price
-        let price_abs = (price_value as i128).abs();
-        require!(price_abs > 0, GuardError::InvalidOraclePrice);
-        let conf_bps = ((price_conf as i128) * 10_000 / price_abs) as u64;
-        require!(conf_bps <= max_confidence_bps, GuardError::OracleConfidenceTooHigh);
+        let conf_bps = compute_confidence_bps(price_conf, price_value)?;
+        require!(
+            conf_bps <= max_confidence_bps,
+            GuardError::OracleConfidenceTooHigh
+        );
 
         approval.executed = true;
         Ok(())
     }
 
-    pub fn guarded_transfer(ctx: Context<GuardedTransfer>, params: GuardedTransferParams) -> Result<()> {
+    pub fn guarded_transfer(
+        ctx: Context<GuardedTransfer>,
+        params: GuardedTransferParams,
+    ) -> Result<()> {
         let policy = &ctx.accounts.user_policy;
         require!(policy.enabled, GuardError::PolicyDisabled);
 
         let approval = &mut ctx.accounts.action_approval;
         check_approval_active(approval)?;
-        require_keys_eq!(approval.user, ctx.accounts.user.key(), GuardError::ActionApprovalUserMismatch);
-        require!(approval.action_type == ActionType::TransferSol as u8 || approval.action_type == ActionType::TransferSolGuarded as u8, GuardError::InvalidActionType);
-        require_keys_eq!(approval.recipient, params.recipient, GuardError::ActionApprovalRecipientMismatch);
-        require!(approval.input_amount == params.amount_lamports, GuardError::ApprovalAmountMismatch);
-        require!(approval.action_hash == params.action_hash, GuardError::ActionApprovalActionHashMismatch);
+        require_keys_eq!(
+            approval.user,
+            ctx.accounts.user.key(),
+            GuardError::ActionApprovalUserMismatch
+        );
+        require!(
+            approval.action_type == ActionType::TransferSol as u8
+                || approval.action_type == ActionType::TransferSolGuarded as u8,
+            GuardError::InvalidActionType
+        );
+        require_keys_eq!(
+            approval.recipient,
+            params.recipient,
+            GuardError::ActionApprovalRecipientMismatch
+        );
+        require!(
+            approval.input_amount == params.amount_lamports,
+            GuardError::ApprovalAmountMismatch
+        );
+        require!(
+            approval.action_hash == params.action_hash,
+            GuardError::ActionApprovalActionHashMismatch
+        );
 
         let attestation = &ctx.accounts.wallet_safety_attestation;
-        require!(attestation.active, GuardError::WalletSafetyAttestationRevoked);
-        require!(attestation.expires_at > Clock::get()?.unix_timestamp, GuardError::WalletSafetyAttestationExpired);
-        require_keys_eq!(attestation.user, ctx.accounts.user.key(), GuardError::WalletSafetyAttestationUserMismatch);
-        require_keys_eq!(attestation.recipient, params.recipient, GuardError::WalletSafetyAttestationRecipientMismatch);
-        require!(attestation.action_hash == params.action_hash, GuardError::WalletSafetyAttestationActionHashMismatch);
+        require!(
+            attestation.active,
+            GuardError::WalletSafetyAttestationRevoked
+        );
+        require!(
+            attestation.expires_at > Clock::get()?.unix_timestamp,
+            GuardError::WalletSafetyAttestationExpired
+        );
+        require_keys_eq!(
+            attestation.user,
+            ctx.accounts.user.key(),
+            GuardError::WalletSafetyAttestationUserMismatch
+        );
+        require_keys_eq!(
+            attestation.recipient,
+            params.recipient,
+            GuardError::WalletSafetyAttestationRecipientMismatch
+        );
+        require!(
+            attestation.action_hash == params.action_hash,
+            GuardError::WalletSafetyAttestationActionHashMismatch
+        );
 
         let cpi_context = CpiContext::new(
             ctx.accounts.system_program.to_account_info(),
@@ -252,12 +395,70 @@ pub mod agent_action_guard {
         approval.executed = true;
         Ok(())
     }
+
+    /// Oracle-gated swap execution safety check.
+    ///
+    /// Compares the quoted swap price against Pyth oracle price and rejects
+    /// execution when deviation exceeds max_deviation_bps.
+    pub fn mark_executed_if_swap_price_within_band(
+        ctx: Context<MarkExecutedIfPriceBelow>,
+        quoted_price_usd_e8: u64,
+        max_deviation_bps: u16,
+        staleness_seconds: u64,
+        max_confidence_bps: u64,
+    ) -> Result<()> {
+        let approval = &mut ctx.accounts.action_approval;
+        require_keys_eq!(
+            approval.user,
+            ctx.accounts.user.key(),
+            GuardError::Unauthorized
+        );
+        check_approval_active(approval)?;
+        require!(
+            approval.action_type == ActionType::SimulatedSwap as u8,
+            GuardError::InvalidActionType
+        );
+        require_keys_eq!(
+            approval.oracle_feed,
+            ctx.accounts.oracle_price_feed.key(),
+            GuardError::OracleFeedMismatch
+        );
+
+        let current_time = Clock::get()?.unix_timestamp;
+
+        let oracle_data = ctx.accounts.oracle_price_feed.try_borrow_data()?;
+        let (price_value, price_conf, price_expo, price_timestamp) = read_pyth_price(&oracle_data)?;
+
+        let age = current_time.saturating_sub(price_timestamp);
+        require!(age <= staleness_seconds as i64, GuardError::OracleDataStale);
+
+        let oracle_price_e8 = convert_price_to_e8(price_value, price_expo)?;
+        require!(oracle_price_e8 > 0, GuardError::InvalidOraclePrice);
+
+        let conf_bps = compute_confidence_bps(price_conf, price_value)?;
+        require!(
+            conf_bps <= max_confidence_bps,
+            GuardError::OracleConfidenceTooHigh
+        );
+
+        let deviation_bps = compute_deviation_bps(quoted_price_usd_e8, oracle_price_e8)?;
+        require!(
+            deviation_bps <= max_deviation_bps as u64,
+            GuardError::PriceDeviationTooHigh
+        );
+
+        approval.executed = true;
+        Ok(())
+    }
 }
 
 fn check_approval_active(approval: &ActionApproval) -> Result<()> {
     require!(!approval.executed, GuardError::AlreadyExecuted);
     require!(!approval.revoked, GuardError::ApprovalRevoked);
-    require!(approval.expires_at > Clock::get()?.unix_timestamp, GuardError::ApprovalExpired);
+    require!(
+        approval.expires_at > Clock::get()?.unix_timestamp,
+        GuardError::ApprovalExpired
+    );
     Ok(())
 }
 
@@ -569,6 +770,12 @@ pub enum GuardError {
     OracleConfidenceTooHigh,
     #[msg("Invalid oracle price")]
     InvalidOraclePrice,
+    #[msg("Invalid quoted swap price")]
+    InvalidQuotedPrice,
+    #[msg("Swap price deviation above allowed threshold")]
+    PriceDeviationTooHigh,
+    #[msg("Arithmetic overflow")]
+    ArithmeticOverflow,
     #[msg("Action approval user mismatch")]
     ActionApprovalUserMismatch,
     #[msg("Action approval recipient mismatch")]
@@ -589,4 +796,35 @@ pub enum GuardError {
     WalletSafetyAttestationRevoked,
     #[msg("Wallet safety attestation is expired")]
     AttestationExpired,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn computes_deviation_bps_within_band() {
+        // oracle=100, quoted=101 => 1%
+        let oracle_e8 = 10_000_000_000i128;
+        let quoted_e8 = 10_100_000_000u64;
+        let deviation = compute_deviation_bps(quoted_e8, oracle_e8).unwrap();
+        assert_eq!(deviation, 100);
+    }
+
+    #[test]
+    fn computes_deviation_bps_above_band() {
+        // oracle=95, quoted=140 => 47.36%
+        let oracle_e8 = 9_500_000_000i128;
+        let quoted_e8 = 14_000_000_000u64;
+        let deviation = compute_deviation_bps(quoted_e8, oracle_e8).unwrap();
+        assert!(deviation > 3000);
+    }
+
+    #[test]
+    fn converts_price_to_e8_with_negative_exponent() {
+        // 95.123456 with expo=-6 => 95_123_456, convert to e8 => 9_512_345_600
+        let price = 95_123_456i64;
+        let converted = convert_price_to_e8(price, -6).unwrap();
+        assert_eq!(converted, 9_512_345_600i128);
+    }
 }

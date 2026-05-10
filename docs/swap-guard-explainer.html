@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Swap Guard Oracle - Proteccion On-Chain</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            color: #e4e4e4;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        .container { max-width: 900px; margin: 0 auto; }
+        h1 {
+            text-align: center;
+            font-size: 2.2rem;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #00d9ff, #9945FF);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .subtitle { text-align: center; color: #888; margin-bottom: 40px; }
+        .section {
+            background: rgba(255,255,255,0.05);
+            border-radius: 16px;
+            padding: 25px;
+            margin-bottom: 25px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .section h2 {
+            color: #00d9ff;
+            margin-bottom: 15px;
+            font-size: 1.3rem;
+        }
+        .highlight {
+            background: rgba(153, 69, 255, 0.2);
+            border-left: 4px solid #9945FF;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        .success { border-left-color: #00c853; background: rgba(0, 200, 83, 0.1); }
+        .warning { border-left-color: #ffc107; background: rgba(255, 193, 7, 0.1); }
+        code {
+            background: #0d1117;
+            padding: 3px 8px;
+            border-radius: 4px;
+            color: #79c0ff;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.85rem;
+        }
+        .tx-flow {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 15px;
+        }
+        .tx-step {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 12px 15px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 10px;
+            border-left: 3px solid #9945FF;
+        }
+        .tx-step.guard { border-left-color: #00d9ff; }
+        .tx-step.swap { border-left-color: #00c853; }
+        .step-num {
+            width: 28px;
+            height: 28px;
+            background: linear-gradient(135deg, #9945FF, #00d9ff);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.85rem;
+            flex-shrink: 0;
+        }
+        .step-content { flex: 1; }
+        .step-title { font-weight: bold; margin-bottom: 3px; }
+        .step-desc { font-size: 0.85rem; color: #aaa; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px; }
+        .stat-card {
+            background: rgba(0,0,0,0.2);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .stat-value { font-size: 1.5rem; font-weight: bold; color: #00d9ff; }
+        .stat-label { font-size: 0.8rem; color: #888; margin-top: 5px; }
+        .footer { text-align: center; margin-top: 40px; color: #666; font-size: 0.85rem; }
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+        .badge-live { background: rgba(0, 200, 83, 0.2); color: #00c853; }
+        .badge-onchain { background: rgba(153, 69, 255, 0.2); color: #9945FF; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🛡️ Swap Guard Oracle</h1>
+        <p class="subtitle">Proteccion de precio on-chain para swaps en Solana <span class="badge badge-live">LIVE</span></p>
+        
+        <!-- Que es -->
+        <div class="section">
+            <h2>¿Que es?</h2>
+            <p>Un <strong>smart contract en Solana</strong> que valida el precio de tu swap contra el oraculo Pyth <strong>antes</strong> de ejecutar el intercambio. Si el precio cotizado difiere mucho del precio de mercado, la transaccion falla y tus tokens quedan protegidos.</p>
+            
+            <div class="highlight success">
+                <strong>✅ Garantia On-Chain:</strong> La validacion ocurre dentro de Solana, no en un servidor. Es trustless y verificable.
+            </div>
+        </div>
+
+        <!-- Como funciona -->
+        <div class="section">
+            <h2>¿Como funciona?</h2>
+            <p>Cuando apruebas un swap, se ejecuta <strong>una sola transaccion atomica</strong> con estas instrucciones:</p>
+            
+            <div class="tx-flow">
+                <div class="tx-step guard">
+                    <div class="step-num">1</div>
+                    <div class="step-content">
+                        <div class="step-title">initialize_policy</div>
+                        <div class="step-desc">Crea tu perfil de usuario (solo la primera vez)</div>
+                    </div>
+                </div>
+                <div class="tx-step guard">
+                    <div class="step-num">2</div>
+                    <div class="step-content">
+                        <div class="step-title">create_action_approval</div>
+                        <div class="step-desc">Registra los detalles del swap que quieres hacer</div>
+                    </div>
+                </div>
+                <div class="tx-step guard">
+                    <div class="step-num">3</div>
+                    <div class="step-content">
+                        <div class="step-title">mark_executed_if_swap_price_within_band <span class="badge badge-onchain">GUARD</span></div>
+                        <div class="step-desc">Lee precio de Pyth oracle y valida que la desviacion sea &lt; 5%</div>
+                    </div>
+                </div>
+                <div class="tx-step swap">
+                    <div class="step-num">4</div>
+                    <div class="step-content">
+                        <div class="step-title">Orca Whirlpools Swap</div>
+                        <div class="step-desc">Solo se ejecuta SI el guard paso. Intercambia tus tokens.</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="highlight warning">
+                <strong>⚠️ Atomicidad:</strong> Si el paso 3 falla (precio malo), los pasos 1, 2 y 4 se revierten automaticamente. Tus tokens nunca se mueven.
+            </div>
+        </div>
+
+        <!-- Smart Contract -->
+        <div class="section">
+            <h2>Smart Contract</h2>
+            <div class="grid">
+                <div class="stat-card">
+                    <div class="stat-value" style="font-size: 0.9rem;">ETLBetVBp...yg6s</div>
+                    <div class="stat-label">Program ID (Devnet)</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">5%</div>
+                    <div class="stat-label">Max Desviacion</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">7</div>
+                    <div class="stat-label">Instrucciones en TX</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">1</div>
+                    <div class="stat-label">Firma Requerida</div>
+                </div>
+            </div>
+            
+            <p style="margin-top: 20px; font-size: 0.9rem; color: #aaa;">
+                <strong>Verificalo tu mismo:</strong> Busca la transaccion en 
+                <a href="https://solscan.io/?cluster=devnet" style="color: #00d9ff;" target="_blank">Solscan Devnet</a> 
+                y veras las instrucciones del guard antes del swap.
+            </p>
+        </div>
+
+        <!-- Flujo visual -->
+        <div class="section">
+            <h2>Flujo de Proteccion</h2>
+            <pre style="background: #0d1117; padding: 20px; border-radius: 10px; overflow-x: auto; font-size: 0.8rem; line-height: 1.6;">
+Usuario          App              Smart Contract         Pyth Oracle
+   │              │                     │                     │
+   │  "Swap 10    │                     │                     │
+   │   USDC→SOL"  │                     │                     │
+   │─────────────►│                     │                     │
+   │              │                     │                     │
+   │   Aprobar    │                     │                     │
+   │─────────────►│                     │                     │
+   │              │                     │                     │
+   │   Firmar     │  TX Atomica         │                     │
+   │◄─────────────│────────────────────►│                     │
+   │              │                     │                     │
+   │              │                     │  Lee precio SOL/USD │
+   │              │                     │────────────────────►│
+   │              │                     │◄────────────────────│
+   │              │                     │                     │
+   │              │                     │  ┌───────────────┐  │
+   │              │                     │  │ Quoted: $141  │  │
+   │              │                     │  │ Oracle: $142  │  │
+   │              │                     │  │ Desv: 0.7%    │  │
+   │              │                     │  │ Max: 5%       │  │
+   │              │                     │  │ ✅ PASS       │  │
+   │              │                     │  └───────────────┘  │
+   │              │                     │                     │
+   │              │  Swap ejecutado     │                     │
+   │◄─────────────│◄────────────────────│                     │
+   │              │                     │                     │
+   │  ✅ Exito!   │                     │                     │
+            </pre>
+        </div>
+
+        <!-- Que pasa si falla -->
+        <div class="section">
+            <h2>¿Que pasa si el precio es malo?</h2>
+            <pre style="background: #0d1117; padding: 20px; border-radius: 10px; overflow-x: auto; font-size: 0.8rem; line-height: 1.6; border-left: 4px solid #ff5757;">
+Smart Contract verifica:
+   │
+   │  Quoted: $130
+   │  Oracle: $142
+   │  Desviacion: 8.5%
+   │  Max permitido: 5%
+   │
+   └──► ❌ ERROR: PriceDeviationTooHigh
+   
+   Resultado:
+   ┌─────────────────────────────────┐
+   │ • TX completa REVERTIDA        │
+   │ • Tus USDC siguen en tu wallet │
+   │ • No pagaste gas (simulacion)  │
+   │ • Protegido contra mal precio  │
+   └─────────────────────────────────┘
+            </pre>
+        </div>
+
+        <div class="footer">
+            <p>Swap Guard Oracle - Smart Contract en Solana Devnet</p>
+            <p style="margin-top: 8px;">
+                <code>ETLBetVBpHeG3pKKqpCaRQYfQ2opMNEKCsrQUyqgyg6s</code>
+            </p>
+        </div>
+    </div>
+</body>
+</html>

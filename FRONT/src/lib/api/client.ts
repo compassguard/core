@@ -265,6 +265,25 @@ export type TransactionPayload = {
   execution_type?: string;
 };
 
+export type SwapGuard = {
+  program_id: string;
+  oracle_feed: string;
+  quoted_price_usd_e8: number;
+  oracle_price_usd_e8?: number;
+  deviation_bps?: number;
+  warning_deviation_bps: number;
+  max_deviation_bps: number;
+  staleness_seconds: number;
+  max_confidence_bps: number;
+  network: 'devnet' | 'mainnet-beta';
+};
+
+export type SwapGuardWarning = {
+  code: 'price_deviation_warning';
+  message: string;
+  deviation_bps: number;
+};
+
 export type ApproveResponse = {
   messages: AgentMessage[];
   proposal_state?: {
@@ -279,6 +298,8 @@ export type ApproveResponse = {
     slippage_bps: number;
     quote: unknown;
   };
+  swap_guard?: SwapGuard;
+  swap_guard_warning?: SwapGuardWarning;
 };
 
 export type AgentMessageResponse = {

@@ -1,4 +1,4 @@
-import { Connection, PublicKey } from '@solana/web3.js';
+import { PublicKey, Connection } from '@solana/web3.js';
 
 import { createHash } from 'node:crypto';
 

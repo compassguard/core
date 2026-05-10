@@ -157,6 +157,12 @@ type PersistedStoreShape = {
   conversationOrder: string[];
 };
 
+export type SwapGuardWarningState = {
+  code: 'price_deviation_warning';
+  message: string;
+  deviation_bps: number;
+} | null;
+
 type ChatStore = {
   schemaVersion: number;
   activeConversationId: string | null;
@@ -167,6 +173,7 @@ type ChatStore = {
   messages: ChatMessage[];
   pendingProposal: PendingProposal | null;
   proposalUiState: ProposalUiState | null;
+  swapGuardWarning: SwapGuardWarningState;
   status: ChatStatus;
   streamingContent: string;
 
@@ -204,6 +211,7 @@ type ChatStore = {
   setPendingProposal: (proposal: PendingProposal | null) => void;
   setProposalFromSSE: (proposal: Extract<AgentMessage, { type: 'function_call' }>) => void;
   setProposalUiState: (state: ProposalUiState | null) => void;
+  setSwapGuardWarning: (warning: SwapGuardWarningState) => void;
   completeProposal: (status: 'success' | 'confirmed' | 'failed', execute?: ExecuteInfo) => void;
 
   // Status actions
@@ -470,6 +478,7 @@ export const useChatStore = create<ChatStore>()(
         messages: [makeWelcomeMessage()],
         pendingProposal: null,
         proposalUiState: null,
+        swapGuardWarning: null,
         status: 'idle',
         streamingContent: '',
 
@@ -955,6 +964,8 @@ export const useChatStore = create<ChatStore>()(
 
         setProposalUiState: (proposalUiState) => set({ proposalUiState }),
 
+        setSwapGuardWarning: (swapGuardWarning) => set({ swapGuardWarning }),
+
         completeProposal: (status, execute) => {
           set((state) => {
             const activeConversationId = state.activeConversationId;
@@ -994,6 +1005,7 @@ export const useChatStore = create<ChatStore>()(
                 },
                 pendingProposal: null,
                 proposalUiState: status === 'success' ? 'confirmed' : 'failed',
+                swapGuardWarning: null,
                 status: 'idle',
               };
             }
@@ -1014,6 +1026,7 @@ export const useChatStore = create<ChatStore>()(
               },
               pendingProposal: null,
               proposalUiState: status === 'success' ? 'confirmed' : 'failed',
+              swapGuardWarning: null,
               status: 'idle',
             };
           });

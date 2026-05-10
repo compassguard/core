@@ -4,6 +4,7 @@ import type { OrcaSwapParams, SwapParams } from '@/types/api';
 import { useAgentMessage } from '@/hooks/useAgentMessage';
 import { useChatStore } from '@/stores/chatStore';
 import { RiskInlineAlert } from './RiskInlineAlert';
+import { SwapGuardWarning } from './SwapGuardWarning';
 
 export function SwapProposalCard({
   proposal,
@@ -25,6 +26,7 @@ export function SwapProposalCard({
     : (params as SwapParams).token_out;
   const { approveProposal, rejectProposal } = useAgentMessage();
   const uiState = useChatStore((state) => state.proposalUiState) ?? proposal.uiState;
+  const swapGuardWarning = useChatStore((state) => state.swapGuardWarning);
   const busy =
     uiState === 'preparing_transaction' ||
     uiState === 'awaiting_signature' ||
@@ -67,6 +69,8 @@ export function SwapProposalCard({
       </div>
 
       <RiskInlineAlert risk={proposal.risk} />
+
+      {swapGuardWarning && <SwapGuardWarning warning={swapGuardWarning} />}
 
       <div className="mt-5 flex flex-col gap-3 sm:flex-row">
         <button

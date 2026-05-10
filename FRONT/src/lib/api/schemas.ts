@@ -157,6 +157,29 @@ export const TransactionPayloadSchema = z.object({
   onchain_guardrail: OnchainGuardrailSchema.optional(),
 });
 
+// Swap guard metadata for oracle price validation
+export const SwapGuardSchema = z.object({
+  program_id: z.string(),
+  oracle_feed: z.string(),
+  quoted_price_usd_e8: z.number(),
+  oracle_price_usd_e8: z.number().optional(),
+  deviation_bps: z.number().optional(),
+  warning_deviation_bps: z.number(),
+  max_deviation_bps: z.number(),
+  staleness_seconds: z.number(),
+  max_confidence_bps: z.number(),
+  network: z.enum(['devnet', 'mainnet-beta']),
+  on_chain_enforcement: z.boolean().optional(),
+  action_approval_pda: z.string().optional(),
+});
+
+// Warning info when swap passes but price is not ideal
+export const SwapGuardWarningSchema = z.object({
+  code: z.literal('price_deviation_warning'),
+  message: z.string(),
+  deviation_bps: z.number(),
+});
+
 export const AgentMessageResponseSchema = z.object({
   messages: z.array(AgentMessageSchema),
   transaction: TransactionPayloadSchema.optional(),
@@ -179,6 +202,8 @@ export const FunctionApproveResponseSchema = AgentMessageResponseSchema.extend({
     last_valid_block_height: z.number().int(),
     network: z.enum(['devnet', 'mainnet-beta']),
   }).optional(),
+  swap_guard: SwapGuardSchema.optional(),
+  swap_guard_warning: SwapGuardWarningSchema.optional(),
 });
 
 export const ChatFunctionResultSchema = z.object({
