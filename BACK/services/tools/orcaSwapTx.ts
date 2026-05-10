@@ -9,6 +9,53 @@ import { Percentage } from '@orca-so/common-sdk';
 import { DEVNET_SOL_MINT, DEVNET_SOL_USDC_POOL, DEVNET_USDC_MINT } from './orcaSwap';
 import { getConnection, getRpcUrl } from '../solanaConnection';
 
+/**
+ * Parse simulation error logs to provide a human-readable error message.
+ */
+function parseSimulationError(
+  logs: string[],
+  err: unknown,
+  inputAmount: number,
+  inputToken: string
+): string {
+  const logsText = logs.join('\n');
+  
+  // Check for insufficient funds error
+  const insufficientMatch = logsText.match(/Transfer: insufficient lamports (\d+), need (\d+)/);
+  if (insufficientMatch) {
+    const available = Number(insufficientMatch[1]) / 1e9;
+    const needed = Number(insufficientMatch[2]) / 1e9;
+    return `INSUFFICIENT_FUNDS: Tu wallet tiene ${available.toFixed(4)} SOL pero el swap necesita ${needed.toFixed(4)} SOL (incluyendo fees). Reduce el monto o agrega fondos.`;
+  }
+  
+  // Check for insufficient token balance
+  if (logsText.includes('insufficient funds') || logsText.includes('Insufficient')) {
+    return `INSUFFICIENT_FUNDS: No tenés suficiente ${inputToken} para este swap de ${inputAmount} ${inputToken}.`;
+  }
+  
+  // Check for oracle/guard errors
+  if (logsText.includes('PriceDeviationTooHigh')) {
+    return `PRICE_GUARD_FAILED: El precio del swap difiere demasiado del precio del oráculo. Intentá de nuevo o ajustá el slippage.`;
+  }
+  
+  if (logsText.includes('OracleDataStale')) {
+    return `ORACLE_STALE: Los datos del oráculo de precio están desactualizados. Intentá de nuevo en unos segundos.`;
+  }
+  
+  if (logsText.includes('OracleConfidenceTooHigh')) {
+    return `ORACLE_UNCERTAIN: El oráculo de precio tiene baja confianza. Esperá a que el mercado se estabilice.`;
+  }
+  
+  // Check for slippage errors
+  if (logsText.includes('slippage') || logsText.includes('AmountOutBelowMinimum')) {
+    return `SLIPPAGE_EXCEEDED: El precio cambió más de lo permitido. Aumentá el slippage o intentá con un monto menor.`;
+  }
+  
+  // Generic error with context
+  const errStr = typeof err === 'object' ? JSON.stringify(err) : String(err);
+  return `SWAP_FAILED: La transacción no se pudo completar. Error: ${errStr}`;
+}
+
 type WalletStub = {
   publicKey: web3.PublicKey;
   signTransaction: <T extends web3.Transaction | web3.VersionedTransaction>(tx: T) => Promise<T>;
@@ -252,25 +299,24 @@ export async function buildUnsignedOrcaSwapTxWithGuard(params: {
   }
 
   // Simulate the transaction to catch errors early
-  try {
-    console.log('[orcaSwapTx] Simulating transaction...');
-    const simulation = await connection.simulateTransaction(versionedTx, {
-      sigVerify: false,
-      replaceRecentBlockhash: true,
-    });
+  console.log('[orcaSwapTx] Simulating transaction...');
+  const simulation = await connection.simulateTransaction(versionedTx, {
+    sigVerify: false,
+    replaceRecentBlockhash: true,
+  });
+  
+  if (simulation.value.err) {
+    console.error('[orcaSwapTx] Simulation failed:', JSON.stringify(simulation.value.err));
+    console.error('[orcaSwapTx] Simulation logs:', simulation.value.logs);
     
-    if (simulation.value.err) {
-      console.error('[orcaSwapTx] Simulation failed:', JSON.stringify(simulation.value.err));
-      console.error('[orcaSwapTx] Simulation logs:', simulation.value.logs);
-      throw new Error(`Transaction simulation failed: ${JSON.stringify(simulation.value.err)}`);
-    }
+    // Parse simulation logs to provide a human-readable error
+    const logs = simulation.value.logs || [];
+    const errorMessage = parseSimulationError(logs, simulation.value.err, params.inputAmount, params.inputToken);
     
-    console.log('[orcaSwapTx] Simulation successful, units consumed:', simulation.value.unitsConsumed);
-  } catch (simError: any) {
-    console.error('[orcaSwapTx] Simulation error:', simError.message);
-    // Log but don't throw - let the user try anyway
-    // The real error will come from Phantom/Solana
+    throw new Error(errorMessage);
   }
+  
+  console.log('[orcaSwapTx] Simulation successful, units consumed:', simulation.value.unitsConsumed);
   
   const serialized = versionedTx.serialize();
   const base64Tx = Buffer.from(serialized).toString('base64');
