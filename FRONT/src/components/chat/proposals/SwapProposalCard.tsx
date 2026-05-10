@@ -5,6 +5,7 @@ import { useAgentMessage } from '@/hooks/useAgentMessage';
 import { useChatStore } from '@/stores/chatStore';
 import { RiskInlineAlert } from './RiskInlineAlert';
 import { SwapGuardWarning } from './SwapGuardWarning';
+import { SwapGuardBypassWarning } from './SwapGuardBypassWarning';
 
 export function SwapProposalCard({
   proposal,
@@ -27,6 +28,7 @@ export function SwapProposalCard({
   const { approveProposal, rejectProposal } = useAgentMessage();
   const uiState = useChatStore((state) => state.proposalUiState) ?? proposal.uiState;
   const swapGuardWarning = useChatStore((state) => state.swapGuardWarning);
+  const guardRejection = useChatStore((state) => state.guardRejection);
   const busy =
     uiState === 'preparing_transaction' ||
     uiState === 'awaiting_signature' ||
@@ -35,6 +37,7 @@ export function SwapProposalCard({
   const done = uiState === 'confirmed';
   const failed = uiState === 'failed';
   const cancelled = uiState === 'cancelled';
+  const guardRejected = uiState === 'guard_rejected';
   const confirmLabel = blockReason
     ? blockReason === 'session_expired'
       ? 'Sesión expirada'
@@ -72,6 +75,13 @@ export function SwapProposalCard({
 
       {swapGuardWarning && <SwapGuardWarning warning={swapGuardWarning} />}
 
+      {guardRejected && guardRejection && (
+        <div className="mt-4">
+          <SwapGuardBypassWarning guardRejection={guardRejection} />
+        </div>
+      )}
+
+      {!guardRejected && (
       <div className="mt-5 flex flex-col gap-3 sm:flex-row">
         <button
           onClick={rejectProposal}
@@ -81,7 +91,7 @@ export function SwapProposalCard({
           Cancel
         </button>
         <button
-          onClick={approveProposal}
+          onClick={() => approveProposal()}
           disabled={disabled || busy || done || failed || cancelled}
           className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-on-primary disabled:opacity-50 ${disabled ? 'bg-warning' : proposal.risk.level === 'critical' ? 'bg-error-text hover:bg-error-text/90' : 'bg-primary hover:bg-primary-hover'}`}
         >
@@ -89,6 +99,7 @@ export function SwapProposalCard({
           {busy ? 'Executing…' : done ? 'Confirmed' : failed ? 'Failed' : cancelled ? 'Cancelled' : confirmLabel}
         </button>
       </div>
+      )}
       {disabled ? (
         <p className="mt-2 text-xs text-warning">
           {blockReason === 'proposal_stale'

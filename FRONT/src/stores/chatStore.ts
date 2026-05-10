@@ -216,6 +216,16 @@ export type SwapGuardWarningState = {
   deviation_bps: number;
 } | null;
 
+export type GuardRejectionState = {
+  reason: string;
+  deviation_bps: number;
+  max_allowed_bps: number;
+  oracle_price_usd: number;
+  quoted_price_usd: number;
+  can_bypass: boolean;
+  warning_message: string;
+} | null;
+
 type ChatStore = {
   schemaVersion: number;
   activeConversationId: string | null;
@@ -227,6 +237,7 @@ type ChatStore = {
   pendingProposal: PendingProposal | null;
   proposalUiState: ProposalUiState | null;
   swapGuardWarning: SwapGuardWarningState;
+  guardRejection: GuardRejectionState;
   status: ChatStatus;
   streamingContent: string;
 
@@ -271,6 +282,7 @@ type ChatStore = {
   setProposalFromSSE: (proposal: Extract<AgentMessage, { type: 'function_call' }>) => void;
   setProposalUiState: (state: ProposalUiState | null) => void;
   setSwapGuardWarning: (warning: SwapGuardWarningState) => void;
+  setGuardRejection: (rejection: GuardRejectionState) => void;
   completeProposal: (status: 'success' | 'confirmed' | 'failed', execute?: ExecuteInfo) => void;
 
   // Status actions
@@ -538,6 +550,7 @@ export const useChatStore = create<ChatStore>()(
         pendingProposal: null,
         proposalUiState: null,
         swapGuardWarning: null,
+        guardRejection: null,
         status: 'idle',
         streamingContent: '',
 
@@ -955,6 +968,12 @@ export const useChatStore = create<ChatStore>()(
                 : null,
             };
 
+            // Only update pendingProposal if there's a new function_call
+            // Otherwise preserve the existing one (important for guard rejection flow)
+            const nextPendingProposal = pendingProposal ?? state.pendingProposal;
+            const nextProposalUiState = functionCall ? 'pending' : state.proposalUiState;
+            const nextStatus = functionCall ? 'awaiting_approval' : (state.pendingProposal ? state.status : 'idle');
+
             return {
               messages: nextMessages,
               conversationsById: {
@@ -969,9 +988,9 @@ export const useChatStore = create<ChatStore>()(
                 ensureConversationOrder(state.conversationOrder, activeConversationId)
               ).conversationOrder,
               streamingContent: '',
-              status: functionCall ? 'awaiting_approval' : 'idle',
-              pendingProposal,
-              proposalUiState: functionCall ? 'pending' : null,
+              status: nextStatus,
+              pendingProposal: nextPendingProposal,
+              proposalUiState: nextProposalUiState,
             };
           });
         },
@@ -1103,6 +1122,8 @@ export const useChatStore = create<ChatStore>()(
 
         setSwapGuardWarning: (swapGuardWarning) => set({ swapGuardWarning }),
 
+        setGuardRejection: (guardRejection) => set({ guardRejection }),
+
         completeProposal: (status, execute) => {
           set((state) => {
             const activeConversationId = state.activeConversationId;
@@ -1143,6 +1164,7 @@ export const useChatStore = create<ChatStore>()(
                 pendingProposal: null,
                 proposalUiState: status === 'success' ? 'confirmed' : 'failed',
                 swapGuardWarning: null,
+                guardRejection: null,
                 status: 'idle',
               };
             }
@@ -1164,6 +1186,7 @@ export const useChatStore = create<ChatStore>()(
               pendingProposal: null,
               proposalUiState: status === 'success' ? 'confirmed' : 'failed',
               swapGuardWarning: null,
+              guardRejection: null,
               status: 'idle',
             };
           });

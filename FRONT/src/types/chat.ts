@@ -45,6 +45,7 @@ export type ProposalUiState =
   | 'pending'
   | 'preparing_transaction'
   | 'awaiting_signature'
+  | 'guard_rejected'
   | 'submitted'
   | 'confirming'
   | 'confirmed'

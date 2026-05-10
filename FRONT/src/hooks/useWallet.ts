@@ -143,6 +143,8 @@ function mapPhantomError(error: unknown): { code: PhantomExecutionErrorCode; mes
   const message = getErrorMessage(error) || 'Phantom execution failed';
   const lower = message.toLowerCase();
 
+  console.log('[mapPhantomError] Mapping error:', { message, lower });
+
   if (lower.includes('user rejected') || lower.includes('user denied') || lower.includes('denied')) {
     return { code: 'user_rejected', message: 'El usuario rechazó la firma en Phantom.' };
   }
@@ -157,6 +159,21 @@ function mapPhantomError(error: unknown): { code: PhantomExecutionErrorCode; mes
 
   if (lower.includes('blockhash') || lower.includes('expired')) {
     return { code: 'blockhash_expired', message: 'La transacción venció; vuelve a aprobar para regenerarla.' };
+  }
+
+  // Insufficient funds errors
+  if (lower.includes('insufficient') || lower.includes('not enough') || lower.includes('0x1')) {
+    // Try to extract more specific info from the error
+    const insufficientMatch = message.match(/insufficient.*?(\d+\.?\d*)/i);
+    if (insufficientMatch) {
+      return { code: 'send_failed', message: `Fondos insuficientes. ${message}` };
+    }
+    return { code: 'send_failed', message: 'Fondos insuficientes para completar esta transacción.' };
+  }
+
+  // Custom program errors (like 0x1 which often means insufficient funds in token programs)
+  if (lower.includes('custom program error') || lower.includes('program error')) {
+    return { code: 'send_failed', message: `Error del programa: ${message}` };
   }
 
   return { code: 'send_failed', message };
@@ -253,6 +270,53 @@ export function useWallet() {
     });
 
     try {
+      // Pre-simulate to get better error messages before Phantom shows its generic "Unexpected error"
+      const connection = new web3.Connection(
+        process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://api.devnet.solana.com',
+        'confirmed'
+      );
+      
+      console.log('[useWallet] Pre-simulating transaction...');
+      try {
+        const simResult = await connection.simulateTransaction(tx as web3.VersionedTransaction, {
+          sigVerify: false,
+          replaceRecentBlockhash: true,
+        });
+        
+        if (simResult.value.err) {
+          console.error('[useWallet] Simulation failed:', simResult.value.err);
+          console.error('[useWallet] Simulation logs:', simResult.value.logs);
+          
+          // Parse simulation error for better messages
+          const logs = simResult.value.logs?.join('\n') || '';
+          const errStr = JSON.stringify(simResult.value.err);
+          
+          // Check for insufficient funds
+          if (logs.includes('insufficient') || logs.includes('Insufficient') || 
+              logs.includes('Transfer: insufficient lamports') ||
+              errStr.includes('InsufficientFunds') || errStr.includes('0x1')) {
+            throwWithCode('send_failed', 'Fondos insuficientes. No tenés suficiente balance para completar este swap.');
+          }
+          
+          // Check for token account issues
+          if (logs.includes('TokenAccountNotFoundError') || logs.includes('AccountNotFound')) {
+            throwWithCode('send_failed', 'No se encontró la cuenta del token. Puede que no tengas este token en tu wallet.');
+          }
+          
+          // Generic simulation failure with logs
+          const lastLog = simResult.value.logs?.slice(-3).join(' | ') || errStr;
+          throwWithCode('send_failed', `La transacción falló en simulación: ${lastLog}`);
+        }
+        console.log('[useWallet] Simulation successful, proceeding to sign...');
+      } catch (simError: any) {
+        // If simulation itself throws, check if it's our throwWithCode or a network error
+        if (simError?.code === 'send_failed') {
+          throw simError; // Re-throw our formatted error
+        }
+        console.warn('[useWallet] Simulation check failed, proceeding anyway:', simError?.message);
+        // Continue to Phantom - let it handle the error
+      }
+      
       let signResult;
       
       if (isVersioned) {

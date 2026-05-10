@@ -238,11 +238,21 @@ export const AgentMessageResponseSchema = z.object({
   }).optional(),
 });
 
+export const GuardRejectionSchema = z.object({
+  reason: z.string(),
+  deviation_bps: z.number(),
+  max_allowed_bps: z.number(),
+  oracle_price_usd: z.number(),
+  quoted_price_usd: z.number(),
+  can_bypass: z.boolean(),
+  warning_message: z.string(),
+});
+
 export const FunctionApproveResponseSchema = AgentMessageResponseSchema.extend({
   proposal_state: z.object({
-    state: z.literal('awaiting_signature'),
-    expires_at: z.string(),
-  }),
+    state: z.enum(['awaiting_signature', 'guard_rejected_awaiting_bypass', 'cancelled']),
+    expires_at: z.string().optional(),
+  }).optional(),
   transaction: TransactionPayloadSchema.extend({
     recent_blockhash: z.string(),
     last_valid_block_height: z.number().int(),
@@ -250,6 +260,9 @@ export const FunctionApproveResponseSchema = AgentMessageResponseSchema.extend({
   }).optional(),
   swap_guard: SwapGuardSchema.optional(),
   swap_guard_warning: SwapGuardWarningSchema.optional(),
+  guard_rejection: GuardRejectionSchema.optional(),
+  risk_accepted: z.boolean().optional(),
+  guard_bypassed: z.boolean().optional(),
 });
 
 export const GetHistoryResponseSchema = z.object({

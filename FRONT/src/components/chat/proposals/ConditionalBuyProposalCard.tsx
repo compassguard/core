@@ -78,7 +78,7 @@ export function ConditionalBuyProposalCard({
           Cancel
         </button>
         <button
-          onClick={approveProposal}
+          onClick={() => approveProposal()}
           disabled={disabled || busy || done || failed || cancelled}
           className={`flex-1 rounded-xl px-4 py-3 text-sm font-semibold text-on-primary disabled:opacity-50 ${
             disabled ? 'bg-warning' : proposal.risk.level === 'critical' ? 'bg-error-text hover:bg-error-text/90' : 'bg-primary hover:bg-primary-hover'

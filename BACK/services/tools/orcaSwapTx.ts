@@ -10,50 +10,99 @@ import { DEVNET_SOL_MINT, DEVNET_SOL_USDC_POOL, DEVNET_USDC_MINT } from './orcaS
 import { getConnection, getRpcUrl } from '../solanaConnection';
 
 /**
- * Parse simulation error logs to provide a human-readable error message.
+ * Structured error info for guard rejections that can be bypassed.
+ */
+export type GuardRejectionError = {
+  type: 'PRICE_DEVIATION_TOO_HIGH';
+  canBypass: true;
+  deviationBps: number;
+  maxAllowedBps: number;
+  message: string;
+};
+
+export type SimulationErrorResult = {
+  isGuardRejection: boolean;
+  guardRejection?: GuardRejectionError;
+  errorMessage: string;
+};
+
+/**
+ * Parse simulation error logs to provide structured error info.
+ * Returns special structure for guard rejections that can be bypassed.
  */
 function parseSimulationError(
   logs: string[],
   err: unknown,
   inputAmount: number,
-  inputToken: string
-): string {
+  inputToken: string,
+  maxDeviationBps?: number
+): SimulationErrorResult {
   const logsText = logs.join('\n');
   
-  // Check for insufficient funds error
+  // Check for PriceDeviationTooHigh - this is bypassable
+  if (logsText.includes('PriceDeviationTooHigh')) {
+    console.log('[orcaSwapTx] Detected PriceDeviationTooHigh - guard rejection is bypassable');
+    return {
+      isGuardRejection: true,
+      guardRejection: {
+        type: 'PRICE_DEVIATION_TOO_HIGH',
+        canBypass: true,
+        deviationBps: 0, // Will be calculated by caller with actual values
+        maxAllowedBps: maxDeviationBps || 500,
+        message: 'El precio del swap difiere significativamente del precio de mercado (oráculo). Ejecutar sin protección podría resultar en pérdidas.',
+      },
+      errorMessage: 'PRICE_GUARD_REJECTED: El guard on-chain rechazó la transacción por desviación de precio.',
+    };
+  }
+  
+  // Check for insufficient funds error - NOT bypassable
   const insufficientMatch = logsText.match(/Transfer: insufficient lamports (\d+), need (\d+)/);
   if (insufficientMatch) {
     const available = Number(insufficientMatch[1]) / 1e9;
     const needed = Number(insufficientMatch[2]) / 1e9;
-    return `INSUFFICIENT_FUNDS: Tu wallet tiene ${available.toFixed(4)} SOL pero el swap necesita ${needed.toFixed(4)} SOL (incluyendo fees). Reduce el monto o agrega fondos.`;
+    return {
+      isGuardRejection: false,
+      errorMessage: `INSUFFICIENT_FUNDS: Tu wallet tiene ${available.toFixed(4)} SOL pero el swap necesita ${needed.toFixed(4)} SOL (incluyendo fees). Reduce el monto o agrega fondos.`,
+    };
   }
   
-  // Check for insufficient token balance
+  // Check for insufficient token balance - NOT bypassable
   if (logsText.includes('insufficient funds') || logsText.includes('Insufficient')) {
-    return `INSUFFICIENT_FUNDS: No tenés suficiente ${inputToken} para este swap de ${inputAmount} ${inputToken}.`;
+    return {
+      isGuardRejection: false,
+      errorMessage: `INSUFFICIENT_FUNDS: No tenés suficiente ${inputToken} para este swap de ${inputAmount} ${inputToken}.`,
+    };
   }
   
-  // Check for oracle/guard errors
-  if (logsText.includes('PriceDeviationTooHigh')) {
-    return `PRICE_GUARD_FAILED: El precio del swap difiere demasiado del precio del oráculo. Intentá de nuevo o ajustá el slippage.`;
-  }
-  
+  // Check for other oracle/guard errors - NOT bypassable
   if (logsText.includes('OracleDataStale')) {
-    return `ORACLE_STALE: Los datos del oráculo de precio están desactualizados. Intentá de nuevo en unos segundos.`;
+    return {
+      isGuardRejection: false,
+      errorMessage: 'ORACLE_STALE: Los datos del oráculo de precio están desactualizados. Intentá de nuevo en unos segundos.',
+    };
   }
   
   if (logsText.includes('OracleConfidenceTooHigh')) {
-    return `ORACLE_UNCERTAIN: El oráculo de precio tiene baja confianza. Esperá a que el mercado se estabilice.`;
+    return {
+      isGuardRejection: false,
+      errorMessage: 'ORACLE_UNCERTAIN: El oráculo de precio tiene baja confianza. Esperá a que el mercado se estabilice.',
+    };
   }
   
-  // Check for slippage errors
+  // Check for slippage errors - NOT bypassable
   if (logsText.includes('slippage') || logsText.includes('AmountOutBelowMinimum')) {
-    return `SLIPPAGE_EXCEEDED: El precio cambió más de lo permitido. Aumentá el slippage o intentá con un monto menor.`;
+    return {
+      isGuardRejection: false,
+      errorMessage: 'SLIPPAGE_EXCEEDED: El precio cambió más de lo permitido. Aumentá el slippage o intentá con un monto menor.',
+    };
   }
   
-  // Generic error with context
+  // Generic error - NOT bypassable
   const errStr = typeof err === 'object' ? JSON.stringify(err) : String(err);
-  return `SWAP_FAILED: La transacción no se pudo completar. Error: ${errStr}`;
+  return {
+    isGuardRejection: false,
+    errorMessage: `SWAP_FAILED: La transacción no se pudo completar. Error: ${errStr}`,
+  };
 }
 
 type WalletStub = {
@@ -70,6 +119,11 @@ export type OrcaSwapTxResult = {
   estimatedOutputBaseUnits: string;
   minOutputBaseUnits: string;
 };
+
+export type OrcaSwapTxWithGuardResult = 
+  | { success: true; tx: OrcaSwapTxResult }
+  | { success: false; guardRejection: GuardRejectionError; quotedPriceUsd: number; oraclePriceUsd: number }
+  | { success: false; error: string };
 
 export async function buildUnsignedOrcaSwapTx(params: {
   userAddress: string;
@@ -166,6 +220,8 @@ export async function buildUnsignedOrcaSwapTx(params: {
  * 4. Orca swap instructions
  * 
  * If any instruction fails, the entire transaction fails atomically.
+ * 
+ * Returns structured result instead of throwing, so caller can handle guard rejections.
  */
 export async function buildUnsignedOrcaSwapTxWithGuard(params: {
   userAddress: string;
@@ -174,12 +230,15 @@ export async function buildUnsignedOrcaSwapTxWithGuard(params: {
   inputAmount: number;
   slippageBps?: number;
   guardInstructions: web3.TransactionInstruction[];
-}): Promise<OrcaSwapTxResult> {
+  quotedPriceUsd?: number;
+  oraclePriceUsd?: number;
+  maxDeviationBps?: number;
+}): Promise<OrcaSwapTxWithGuardResult> {
   const supportedPair =
     (params.inputToken === 'USDC' && params.outputToken === 'SOL') ||
     (params.inputToken === 'SOL' && params.outputToken === 'USDC');
   if (!supportedPair) {
-    throw new Error('unsupported_swap_pair');
+    return { success: false, error: 'unsupported_swap_pair' };
   }
   
   const connection = getConnection();
@@ -309,11 +368,39 @@ export async function buildUnsignedOrcaSwapTxWithGuard(params: {
     console.error('[orcaSwapTx] Simulation failed:', JSON.stringify(simulation.value.err));
     console.error('[orcaSwapTx] Simulation logs:', simulation.value.logs);
     
-    // Parse simulation logs to provide a human-readable error
+    // Parse simulation logs to get structured error info
     const logs = simulation.value.logs || [];
-    const errorMessage = parseSimulationError(logs, simulation.value.err, params.inputAmount, params.inputToken);
+    const errorResult = parseSimulationError(
+      logs, 
+      simulation.value.err, 
+      params.inputAmount, 
+      params.inputToken,
+      params.maxDeviationBps
+    );
     
-    throw new Error(errorMessage);
+    // If it's a guard rejection (PriceDeviationTooHigh), return structured info for bypass
+    if (errorResult.isGuardRejection && errorResult.guardRejection) {
+      console.log('[orcaSwapTx] Guard rejection detected - returning bypassable error');
+      console.log(`[orcaSwapTx] quotedPriceUsd=${params.quotedPriceUsd}, oraclePriceUsd=${params.oraclePriceUsd}`);
+      
+      // Calculate actual deviation if we have both prices
+      if (params.quotedPriceUsd && params.oraclePriceUsd && params.oraclePriceUsd > 0) {
+        const deviation = Math.abs(params.quotedPriceUsd - params.oraclePriceUsd) / params.oraclePriceUsd;
+        errorResult.guardRejection.deviationBps = Math.round(deviation * 10000);
+        console.log(`[orcaSwapTx] Calculated deviation: ${errorResult.guardRejection.deviationBps} bps`);
+      }
+      
+      return {
+        success: false,
+        guardRejection: errorResult.guardRejection,
+        quotedPriceUsd: params.quotedPriceUsd || 0,
+        oraclePriceUsd: params.oraclePriceUsd || 0,
+      };
+    }
+    
+    // Non-bypassable error
+    console.log('[orcaSwapTx] Non-bypassable error:', errorResult.errorMessage);
+    return { success: false, error: errorResult.errorMessage };
   }
   
   console.log('[orcaSwapTx] Simulation successful, units consumed:', simulation.value.unitsConsumed);
@@ -322,11 +409,14 @@ export async function buildUnsignedOrcaSwapTxWithGuard(params: {
   const base64Tx = Buffer.from(serialized).toString('base64');
 
   return {
-    unsignedTxBase64: base64Tx,
-    recentBlockhash: blockhash,
-    lastValidBlockHeight,
-    isVersioned: true, // Now using VersionedTransaction
-    estimatedOutputBaseUnits: quote.estimatedAmountOut.toString(),
-    minOutputBaseUnits: quote.otherAmountThreshold.toString(),
+    success: true,
+    tx: {
+      unsignedTxBase64: base64Tx,
+      recentBlockhash: blockhash,
+      lastValidBlockHeight,
+      isVersioned: true,
+      estimatedOutputBaseUnits: quote.estimatedAmountOut.toString(),
+      minOutputBaseUnits: quote.otherAmountThreshold.toString(),
+    },
   };
 }

@@ -8,6 +8,7 @@ import {
   getHistory,
   ApiClientError,
   type SwapGuardWarning,
+  type GuardRejection,
 } from '@/lib/api/client';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useChatStore } from '@/stores/chatStore';
@@ -62,6 +63,7 @@ export function useAgentMessage() {
   const setProposalUiState = useChatStore((state) => state.setProposalUiState);
   const setPendingProposal = useChatStore((state) => state.setPendingProposal);
   const setSwapGuardWarning = useChatStore((state) => state.setSwapGuardWarning);
+  const setGuardRejection = useChatStore((state) => state.setGuardRejection);
   const completeProposal = useChatStore((state) => state.completeProposal);
   const canApproveProposal = useChatStore((state) => state.canApproveProposal);
   const setConversationExpired = useChatStore((state) => state.setConversationExpired);
@@ -191,21 +193,53 @@ export function useAgentMessage() {
     setConversationExpired,
   ]);
 
-  const approveProposal = useCallback(async () => {
+  const approveProposal = useCallback(async (acceptRisk?: boolean) => {
     const currentSessionId = useChatStore.getState().sessionId;
     const proposal = useChatStore.getState().pendingProposal;
-    const canApprove = canApproveProposal();
-    if (!proposal || !currentSessionId || !canApprove) return;
+    const guardRejectionState = useChatStore.getState().guardRejection;
+    const currentStatus = useChatStore.getState().status;
+    
+    console.log(`[approveProposal] Called with acceptRisk=${acceptRisk}`);
+    console.log(`[approveProposal] sessionId=${currentSessionId}, proposal=${!!proposal}, guardRejection=${!!guardRejectionState}`);
+    console.log(`[approveProposal] status=${currentStatus}, canApproveProposal()=${canApproveProposal()}`);
+    
+    // For guard rejection bypass, we only need sessionId (backend has all proposal data)
+    const isBypassingGuard = guardRejectionState && acceptRisk === true;
+    
+    // Allow approval if: normal approval OR accepting risk after guard rejection
+    const canApprove = canApproveProposal() || isBypassingGuard;
+    console.log(`[approveProposal] canApprove=${canApprove}, isBypassingGuard=${isBypassingGuard}`);
+    
+    // For normal flow: need proposal + sessionId + canApprove
+    // For bypass flow: only need sessionId (proposal data is in backend session)
+    if (!currentSessionId || (!isBypassingGuard && (!proposal || !canApprove))) {
+      console.log(`[approveProposal] BLOCKED: proposal=${!!proposal}, sessionId=${!!currentSessionId}, canApprove=${canApprove}, isBypassingGuard=${isBypassingGuard}`);
+      return;
+    }
 
     setCurrentWalletAddress(userAddress || null);
     setStatus('executing');
     setProposalUiState('preparing_transaction');
 
     try {
-      const response = await postApprove(currentSessionId);
+      console.log(`[chat] Approving proposal, acceptRisk=${acceptRisk}`);
+      const response = await postApprove(currentSessionId, acceptRisk);
       if (response.messages.length > 0) {
         addAgentMessages(response.messages);
       }
+
+      // Check if guard rejected the transaction (bypassable)
+      if (response.guard_rejection && response.proposal_state?.state === 'guard_rejected_awaiting_bypass') {
+        console.log('[chat] Guard rejected transaction, awaiting bypass decision');
+        console.log('[chat] guard_rejection:', JSON.stringify(response.guard_rejection));
+        setGuardRejection(response.guard_rejection);
+        setProposalUiState('guard_rejected');
+        setStatus('idle');
+        return;
+      }
+
+      // Clear guard rejection if we got past it (bypass accepted or normal flow)
+      setGuardRejection(null);
 
       // Store swap guard warning if present (for UI to display)
       if (response.swap_guard_warning) {
@@ -213,6 +247,15 @@ export function useAgentMessage() {
         setSwapGuardWarning(response.swap_guard_warning);
       } else {
         setSwapGuardWarning(null);
+      }
+
+      // Check if proposal was cancelled (user declined bypass)
+      if (response.proposal_state?.state === 'cancelled') {
+        console.log('[chat] Proposal cancelled');
+        setProposalUiState('cancelled');
+        setPendingProposal(null);
+        setStatus('idle');
+        return;
       }
 
       if (!response.transaction?.unsigned_tx_base64) {
@@ -223,13 +266,34 @@ export function useAgentMessage() {
         return;
       }
 
+      // Log if this was a bypassed transaction
+      if (response.guard_bypassed) {
+        console.log('[chat] Transaction built WITHOUT guard protection (user accepted risk)');
+      }
+
       setProposalUiState('awaiting_signature');
 
-      const expectedUserAddress = proposal.execution?.expected_user_address;
-      const signResult = await signAndSendPreparedTransaction(
-        response.transaction.unsigned_tx_base64,
-        expectedUserAddress ?? userAddress,
-      );
+      // For bypass flow, proposal might be null, so get expected address from response or use current user
+      const expectedUserAddress = proposal?.execution?.expected_user_address ?? userAddress;
+      console.log('[chat] Sending TX to wallet for signature, expectedUserAddress:', expectedUserAddress);
+      console.log('[chat] TX base64 length:', response.transaction.unsigned_tx_base64.length);
+      
+      let signResult;
+      try {
+        signResult = await signAndSendPreparedTransaction(
+          response.transaction.unsigned_tx_base64,
+          expectedUserAddress,
+        );
+        console.log('[chat] TX signed and sent successfully:', signResult.tx_signature);
+      } catch (signError) {
+        console.error('[chat] signAndSendPreparedTransaction failed:', signError);
+        console.error('[chat] Sign error details:', {
+          message: (signError as Error)?.message,
+          code: (signError as SignAndSendError)?.code,
+          name: (signError as Error)?.name,
+        });
+        throw signError; // Re-throw to be handled by outer catch
+      }
 
       setProposalUiState('submitted');
       postFunctionResult(currentSessionId, signResult.tx_signature, 'submitted').catch((callbackError) => {
@@ -290,6 +354,7 @@ export function useAgentMessage() {
     setProposalUiState,
     setPendingProposal,
     setSwapGuardWarning,
+    setGuardRejection,
     signAndSendPreparedTransaction,
     queryClient,
   ]);

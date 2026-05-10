@@ -7,6 +7,7 @@
 export type SolanaNetwork = 'devnet' | 'mainnet-beta';
 export type ProposalState =
   | 'awaiting_approval'
+  | 'guard_rejected_awaiting_bypass'
   | 'preparing_transaction'
   | 'awaiting_signature'
   | 'submitted'
@@ -14,6 +15,15 @@ export type ProposalState =
   | 'confirmed'
   | 'failed'
   | 'cancelled';
+
+export type GuardRejectionInfo = {
+  reason: string;
+  deviationBps: number;
+  maxAllowedBps: number;
+  oraclePriceUsd: number;
+  quotedPriceUsd: number;
+  warningMessage: string;
+};
 
 export type SessionFunctionExecution = {
   mode: 'phantom_sign_and_send' | 'phantom_execute_then_optional_backend_proof';
@@ -96,6 +106,8 @@ export type PendingProposal = {
   actionType?: string;
   actionCreatedAt?: string;
   actionExpiresAt?: string;
+  // Guard rejection info for bypass flow
+  guardRejection?: GuardRejectionInfo;
 };
 
 export type SessionState = {

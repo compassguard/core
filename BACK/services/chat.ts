@@ -94,6 +94,7 @@ type ChatRequest =
       type: 'function_approve';
       session_id: string;
       action_hash?: string;
+      accept_risk?: boolean;
     }
   | {
       type: 'function_result';
@@ -2234,6 +2235,7 @@ async function handleFunctionApprove(request: {
   type: 'function_approve';
   session_id: string;
   action_hash?: string;
+  accept_risk?: boolean;
 }): Promise<Response> {
   if (!request.session_id?.trim()) {
     return jsonResponse({ error: { code: 'invalid_payload', message: 'session_id is required' } }, { status: 400 });
@@ -2252,6 +2254,111 @@ async function handleFunctionApprove(request: {
   if (isProposalExpired(pendingProposal)) {
     clearPendingProposal(request.session_id);
     return jsonResponse({ error: { code: 'proposal_expired', message: 'Pending proposal expired' } }, { status: 400 });
+  }
+
+  // =========================================================================
+  // BYPASS FLOW: Handle guard rejection bypass
+  // =========================================================================
+  if (pendingProposal.state === 'guard_rejected_awaiting_bypass') {
+    if (!request.accept_risk) {
+      console.log(`[swapGuard BYPASS] User declined bypass for session ${request.session_id}`);
+      clearPendingProposal(request.session_id);
+      return jsonResponse({
+        messages: [
+          {
+            type: 'text',
+            content: 'Swap cancelado. El guard de precio protegió tu transacción.',
+            timestamp: now(),
+          },
+        ],
+        proposal_state: { state: 'cancelled' },
+      }, { status: 200 });
+    }
+
+    // User accepted risk - build unguarded transaction
+    console.log(`[swapGuard BYPASS] User ACCEPTED risk for session ${request.session_id}`);
+    console.log(`[swapGuard BYPASS] guardRejection=${JSON.stringify(pendingProposal.guardRejection)}`);
+
+    const swapArgs = pendingProposal.toolArgs as OrcaSwapParams;
+    if (!session.userAddress) {
+      clearPendingProposal(request.session_id);
+      return jsonResponse({ error: { code: 'no_wallet', message: 'No wallet connected in session' } }, { status: 400 });
+    }
+
+    try {
+      // Build swap WITHOUT guard instructions
+      console.log(`[swapGuard BYPASS] Building UNGUARDED swap tx: ${swapArgs.input_amount} ${swapArgs.input_token} -> ${swapArgs.output_token}`);
+      const unsigned = await buildUnsignedOrcaSwapTx({
+        userAddress: session.userAddress,
+        inputToken: swapArgs.input_token,
+        outputToken: swapArgs.output_token,
+        inputAmount: swapArgs.input_amount,
+        slippageBps: swapArgs.slippage_bps,
+      });
+
+      console.log(`[swapGuard BYPASS] Unguarded tx built successfully`);
+
+      // Update session state
+      updateSession(request.session_id, {
+        pendingProposal: {
+          ...pendingProposal,
+          state: 'awaiting_signature',
+          recentBlockhash: unsigned.recentBlockhash,
+          lastValidBlockHeight: unsigned.lastValidBlockHeight,
+        },
+      });
+
+      const deviationPercent = pendingProposal.guardRejection 
+        ? (pendingProposal.guardRejection.deviationBps / 100).toFixed(2)
+        : '?';
+
+      return jsonResponse({
+        messages: [
+          {
+            type: 'alert',
+            severity: 'warning',
+            content: `⚠️ Swap SIN protección de precio (desviación: ${deviationPercent}%). Firma en tu wallet para ejecutar.`,
+            timestamp: now(),
+          },
+        ],
+        proposal_state: {
+          state: 'awaiting_signature',
+          expires_at: new Date(pendingProposal.expiresAt).toISOString(),
+        },
+        swap_execution: {
+          provider: 'orca_whirlpools_devnet',
+          pair: `${swapArgs.input_token}/${swapArgs.output_token}`,
+          input_amount: swapArgs.input_amount,
+          slippage_bps: swapArgs.slippage_bps ?? 100,
+          quote: (swapArgs as any).quote ?? null,
+        },
+        transaction: {
+          format: unsigned.isVersioned ? 'base64_versioned_transaction' : 'base64_legacy_transaction',
+          unsigned_tx_base64: unsigned.unsignedTxBase64,
+          recent_blockhash: unsigned.recentBlockhash,
+          last_valid_block_height: unsigned.lastValidBlockHeight,
+          network: 'devnet',
+          execution_type: 'orca_swap_unguarded',
+        },
+        risk_accepted: true,
+        guard_bypassed: true,
+      }, { status: 200 });
+
+    } catch (e) {
+      console.error('[swapGuard BYPASS] Failed to build unguarded tx:', e);
+      updateSession(request.session_id, {
+        pendingProposal: {
+          ...pendingProposal,
+          state: 'failed',
+        },
+      });
+      return jsonResponse({
+        error: {
+          code: 'bypass_tx_build_failed',
+          message: e instanceof Error ? e.message : 'Failed to build unguarded swap transaction',
+        },
+      }, { status: 500 });
+    }
   }
 
   const {
@@ -2519,15 +2626,102 @@ async function handleFunctionApprove(request: {
 
         console.log(`[swapGuard ON-CHAIN] Total guard instructions: ${ixList.length}`);
 
+        // Get oracle price for comparison (for error reporting if guard rejects)
+        let oraclePriceUsd = impliedPriceUsd; // fallback
+        try {
+          const serverGuardResult = await buildSwapGuardConfig(impliedPriceUsd, swapArgs.input_token, swapArgs.output_token);
+          if (serverGuardResult.config.oracle_price_usd_e8) {
+            oraclePriceUsd = serverGuardResult.config.oracle_price_usd_e8 / 100_000_000;
+          }
+        } catch (e) {
+          console.warn('[swapGuard ON-CHAIN] Could not fetch oracle price for comparison:', e);
+        }
+
         // Build combined transaction: guard + swap
-        unsigned = await buildUnsignedOrcaSwapTxWithGuard({
+        const txResult = await buildUnsignedOrcaSwapTxWithGuard({
           userAddress: session.userAddress,
           inputToken: swapArgs.input_token,
           outputToken: swapArgs.output_token,
           inputAmount: swapArgs.input_amount,
           slippageBps: swapArgs.slippage_bps,
           guardInstructions: ixList,
+          quotedPriceUsd: impliedPriceUsd,
+          oraclePriceUsd,
+          maxDeviationBps,
         });
+
+        // Check if guard rejected the transaction (bypassable)
+        if (!txResult.success) {
+          if ('guardRejection' in txResult && txResult.guardRejection) {
+            console.log(`[swapGuard ON-CHAIN] Guard REJECTED transaction - deviation too high`);
+            console.log(`[swapGuard ON-CHAIN] deviationBps=${txResult.guardRejection.deviationBps}, maxAllowed=${txResult.guardRejection.maxAllowedBps}`);
+            console.log(`[swapGuard ON-CHAIN] quotedPrice=$${txResult.quotedPriceUsd.toFixed(2)}, oraclePrice=$${txResult.oraclePriceUsd.toFixed(2)}`);
+
+            // Store rejection info in session for bypass flow
+            updateSession(request.session_id, {
+              pendingProposal: {
+                ...proposal,
+                state: 'guard_rejected_awaiting_bypass',
+                guardRejection: {
+                  reason: txResult.guardRejection.type,
+                  deviationBps: txResult.guardRejection.deviationBps,
+                  maxAllowedBps: txResult.guardRejection.maxAllowedBps,
+                  oraclePriceUsd: txResult.oraclePriceUsd,
+                  quotedPriceUsd: txResult.quotedPriceUsd,
+                  warningMessage: txResult.guardRejection.message,
+                },
+              },
+            });
+
+            // Return structured response for frontend to show bypass option
+            const deviationPercent = (txResult.guardRejection.deviationBps / 100).toFixed(2);
+            return jsonResponse({
+              messages: [
+                {
+                  type: 'alert',
+                  severity: 'warning',
+                  content: `El guard on-chain rechazó esta transacción porque el precio difiere ${deviationPercent}% del oráculo (máximo permitido: ${txResult.guardRejection.maxAllowedBps / 100}%).`,
+                  timestamp: now(),
+                },
+              ],
+              proposal_state: {
+                state: 'guard_rejected_awaiting_bypass',
+                expires_at: new Date(proposal.expiresAt).toISOString(),
+              },
+              guard_rejection: {
+                reason: txResult.guardRejection.type,
+                deviation_bps: txResult.guardRejection.deviationBps,
+                max_allowed_bps: txResult.guardRejection.maxAllowedBps,
+                oracle_price_usd: txResult.oraclePriceUsd,
+                quoted_price_usd: txResult.quotedPriceUsd,
+                can_bypass: true,
+                warning_message: `El precio del swap ($${txResult.quotedPriceUsd.toFixed(2)}) difiere ${deviationPercent}% del precio de mercado ($${txResult.oraclePriceUsd.toFixed(2)}). Ejecutar sin protección podría resultar en pérdidas.`,
+              },
+            }, { status: 200 });
+          }
+
+          // Non-bypassable error (has 'error' property)
+          const errorMsg = 'error' in txResult ? txResult.error : 'Failed to build Orca swap transaction with guard';
+          console.error('[swapGuard ON-CHAIN] Non-bypassable error:', errorMsg);
+          updateSession(request.session_id, {
+            pendingProposal: {
+              ...proposal,
+              state: 'failed',
+            },
+          });
+          return jsonResponse(
+            {
+              error: {
+                code: 'orca_tx_build_failed',
+                message: errorMsg,
+              },
+            },
+            { status: 500 }
+          );
+        }
+
+        // Success - extract transaction
+        unsigned = txResult.tx;
 
         // Build swap guard config for response
         swapGuardConfig = {

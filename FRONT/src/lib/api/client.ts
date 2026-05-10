@@ -290,11 +290,21 @@ export type SwapGuardWarning = {
   deviation_bps: number;
 };
 
+export type GuardRejection = {
+  reason: string;
+  deviation_bps: number;
+  max_allowed_bps: number;
+  oracle_price_usd: number;
+  quoted_price_usd: number;
+  can_bypass: boolean;
+  warning_message: string;
+};
+
 export type ApproveResponse = {
   messages: AgentMessage[];
   proposal_state?: {
-    state: 'awaiting_signature';
-    expires_at: string;
+    state: 'awaiting_signature' | 'guard_rejected_awaiting_bypass' | 'cancelled';
+    expires_at?: string;
   };
   transaction?: TransactionPayload;
   swap_execution?: {
@@ -306,6 +316,9 @@ export type ApproveResponse = {
   };
   swap_guard?: SwapGuard;
   swap_guard_warning?: SwapGuardWarning;
+  guard_rejection?: GuardRejection;
+  risk_accepted?: boolean;
+  guard_bypassed?: boolean;
 };
 
 export type AgentMessageResponse = {
@@ -323,10 +336,10 @@ export type AgentMessageResponse = {
 /**
  * Approve a pending proposal (JSON response)
  */
-export function postApprove(sessionId: string): Promise<ApproveResponse> {
+export function postApprove(sessionId: string, acceptRisk?: boolean): Promise<ApproveResponse> {
   return postJson(
     '/api/chat',
-    { type: 'function_approve', session_id: sessionId },
+    { type: 'function_approve', session_id: sessionId, accept_risk: acceptRisk },
     FunctionApproveResponseSchema
   ) as Promise<ApproveResponse>;
 }
