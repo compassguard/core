@@ -239,8 +239,25 @@ function handleSSEEvent(event: string, data: unknown, callbacks: ChatStreamCallb
 // JSON Chat Client (for approve/reject)
 // ============================================================================
 
+export type TransactionPayload = {
+  format: 'base64_versioned_transaction' | 'base64_legacy_transaction';
+  unsigned_tx_base64: string;
+  recent_blockhash?: string;
+  last_valid_block_height?: number;
+  network?: string;
+  execution_type?: string;
+};
+
 export type AgentMessageResponse = {
   messages: AgentMessage[];
+  transaction?: TransactionPayload;
+  swap_execution?: {
+    provider: string;
+    pair: string;
+    input_amount: number;
+    slippage_bps: number;
+    quote: unknown;
+  };
 };
 
 /**

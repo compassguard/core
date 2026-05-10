@@ -31,6 +31,13 @@ export type SwapParams = {
   slippage_bps?: number;
 };
 
+export type OrcaSwapParams = {
+  input_token: 'USDC' | 'SOL';
+  output_token: 'USDC' | 'SOL';
+  input_amount: number;
+  slippage_bps?: number;
+};
+
 export type TransferParams = {
   amount: number;
   token: string;
@@ -53,8 +60,8 @@ export type AgentMessage =
   | {
       type: 'function_call';
       function: {
-        name: 'swap' | 'transfer' | 'stake';
-        params: SwapParams | TransferParams | StakeParams;
+        name: 'swap' | 'transfer' | 'stake' | 'swap_orca_usdc_to_sol';
+        params: SwapParams | TransferParams | StakeParams | OrcaSwapParams;
       };
       display: {
         summary: string;

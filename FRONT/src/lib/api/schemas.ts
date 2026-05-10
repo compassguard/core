@@ -39,6 +39,13 @@ export const StakeParamsSchema = z.object({
   validator: z.string(),
 });
 
+export const OrcaSwapParamsSchema = z.object({
+  input_token: z.enum(['USDC', 'SOL']),
+  output_token: z.enum(['USDC', 'SOL']),
+  input_amount: z.number().positive(),
+  slippage_bps: z.number().optional(),
+});
+
 export const AgentMessageSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('text'),
@@ -49,8 +56,8 @@ export const AgentMessageSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('function_call'),
     function: z.object({
-      name: z.enum(['swap', 'transfer', 'stake']),
-      params: z.union([SwapParamsSchema, TransferParamsSchema, StakeParamsSchema]),
+      name: z.enum(['swap', 'transfer', 'stake', 'swap_orca_usdc_to_sol']),
+      params: z.union([SwapParamsSchema, TransferParamsSchema, StakeParamsSchema, OrcaSwapParamsSchema]),
     }),
     display: z.object({
       summary: z.string(),
@@ -69,8 +76,26 @@ export const AgentMessageSchema = z.discriminatedUnion('type', [
   }),
 ]);
 
+// Transaction payload schema returned by backend on approve
+export const TransactionPayloadSchema = z.object({
+  format: z.enum(['base64_versioned_transaction', 'base64_legacy_transaction']),
+  unsigned_tx_base64: z.string(),
+  recent_blockhash: z.string().optional(),
+  last_valid_block_height: z.number().optional(),
+  network: z.string().optional(),
+  execution_type: z.string().optional(),
+});
+
 export const AgentMessageResponseSchema = z.object({
   messages: z.array(AgentMessageSchema),
+  transaction: TransactionPayloadSchema.optional(),
+  swap_execution: z.object({
+    provider: z.string(),
+    pair: z.string(),
+    input_amount: z.number(),
+    slippage_bps: z.number(),
+    quote: z.unknown().nullable(),
+  }).optional(),
 });
 
 export const TokenBalanceSchema = z.object({
@@ -135,8 +160,17 @@ export const GetPricesResponseSchema = z.object({
 export const SSEProposalSchema = z.object({
   type: z.literal('function_call'),
   function: z.object({
-    name: z.literal('transfer'),
-    params: TransferParamsSchema,
+    name: z.enum(['transfer', 'swap_orca_usdc_to_sol', 'conditional_buy_sol']),
+    params: z.union([
+      TransferParamsSchema,
+      OrcaSwapParamsSchema,
+      z.object({
+        input_token: z.literal('USDC'),
+        input_amount: z.number().positive(),
+        target_price_usd: z.number().positive(),
+        min_sol_out: z.number().optional(),
+      }),
+    ]),
   }),
   display: z.object({
     summary: z.string(),

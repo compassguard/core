@@ -165,13 +165,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   completeProposal: (status, execute) => {
     // Add result message if there's execute info
     if (execute) {
+      // Build explorer URL if we have a real tx_hash
+      const explorerUrl = execute.tx_hash 
+        ? `https://explorer.solana.com/tx/${execute.tx_hash}?cluster=devnet`
+        : undefined;
+      
       const resultMessage: AgentChatMessage = {
         id: id('agent'),
         role: 'agent',
         type: 'text',
         content: status === 'success' 
-          ? `Transferencia ejecutada exitosamente.${execute.tx_hash ? ` TX: ${execute.tx_hash.slice(0, 8)}...` : ''}`
-          : `Error en la transferencia: ${execute.error || 'Error desconocido'}`,
+          ? `Transacción ejecutada exitosamente.${execute.tx_hash ? ` [Ver en Explorer](${explorerUrl})` : ''}`
+          : `Error en la transacción: ${execute.error || 'Error desconocido'}`,
         execute,
         timestamp: new Date().toISOString(),
       };
