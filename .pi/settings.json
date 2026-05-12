@@ -1,0 +1,98 @@
+{
+  "defaultModel": "gpt-5.4-mini",
+  "defaultProvider": "openai-codex",
+  "subagents": {
+    "agentOverrides": {
+      "delegate": {
+        "model": "gpt-5.4-mini",
+        "thinking": "low",
+        "fallbackModels": ["gpt-5.4"]
+      },
+      "context-builder": {
+        "model": "gpt-5.3-codex",
+        "thinking": "medium",
+        "fallbackModels": ["gpt-5.3-codex"]
+      },
+      "scout": {
+        "model": "gpt-5.3-codex",
+        "thinking": "medium",
+        "fallbackModels": ["gpt-5.3-codex"]
+      },
+      "researcher": {
+        "model": "gpt-5.4",
+        "thinking": "medium",
+        "fallbackModels": ["gpt-5.5"]
+      },
+      "reviewer": {
+        "model": "gpt-5.3-codex",
+        "thinking": "medium",
+        "fallbackModels": ["gpt-5.3-codex", "gpt-5.5"]
+      },
+      "worker": {
+        "model": "gpt-5.3-codex",
+        "thinking": "medium",
+        "fallbackModels": ["gpt-5.3-codex"]
+      },
+      "planner": {
+        "model": "gpt-5.4",
+        "thinking": "medium",
+        "fallbackModels": ["gpt-5.5"]
+      },
+      "oracle": {
+        "model": "gpt-5.5",
+        "thinking": "high",
+        "fallbackModels": ["gpt-5.5-pro"]
+      },
+      "sdd-init": {
+        "model": "gpt-5.4-mini",
+        "thinking": "low",
+        "fallbackModels": ["gpt-5.4"]
+      },
+      "sdd-explore": {
+        "model": "gpt-5.3-codex",
+        "thinking": "medium",
+        "fallbackModels": ["gpt-5.3-codex"]
+      },
+      "sdd-proposal": {
+        "model": "gpt-5.4",
+        "thinking": "medium",
+        "fallbackModels": ["gpt-5.5"]
+      },
+      "sdd-spec": {
+        "model": "gpt-5.4",
+        "thinking": "medium",
+        "fallbackModels": ["gpt-5.5"]
+      },
+      "sdd-design": {
+        "model": "gpt-5.5",
+        "thinking": "high",
+        "fallbackModels": ["gpt-5.5-pro"]
+      },
+      "sdd-tasks": {
+        "model": "gpt-5.4",
+        "thinking": "medium",
+        "fallbackModels": ["gpt-5.5"]
+      },
+      "sdd-apply": {
+        "model": "gpt-5.3-codex",
+        "thinking": "high",
+        "fallbackModels": ["gpt-5.5"]
+      },
+      "sdd-verify": {
+        "model": "gpt-5.5",
+        "thinking": "high",
+        "fallbackModels": ["gpt-5.5-pro"]
+      },
+      "sdd-archive": {
+        "model": "gpt-5.4-mini",
+        "thinking": "low",
+        "fallbackModels": ["gpt-5.4"]
+      },
+      "sdd-onboard": {
+        "model": "gpt-5.4",
+        "thinking": "medium",
+        "fallbackModels": ["gpt-5.5"]
+      }
+    }
+  }
+}

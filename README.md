@@ -1,8 +1,20 @@
-# Wallet Copilot — Separación FRONT / BACK en Next.js
+# Wallet Copilot — Separación front / back en Next.js
 
 Este proyecto está organizado como una **Next.js fullstack app** deployable en Vercel, pero mantiene una separación física clara entre frontend y backend.
 
 La idea es tener el código separado para trabajar ordenadamente, pero que a nivel de deploy funcione como **una sola aplicación Next**.
+
+## Documentación rápida
+
+| Necesitás | Leé |
+|---|---|
+| APIs internas y contratos | `docs/api-reference.md` |
+| Scripts, tests, aliases y workflow | `docs/development-workflow.md` |
+| Direcciones devnet/on-chain | `docs/onchain-deployments.md` |
+| Índice de specs por feature | `docs/README.md` |
+| Frontend | `front/README.md` |
+| Backend | `back/README.md` |
+| Código compartido | `shared/README.md` |
 
 ---
 
@@ -20,26 +32,36 @@ La idea es tener el código separado para trabajar ordenadamente, pero que a niv
 │       ├── risk-score/route.ts
 │       └── helius/transactions/route.ts
 │
-├── FRONT/
+├── front/
+│   ├── README.md
+│   ├── docs/
 │   └── src/
 │       ├── App.tsx
 │       ├── components/
 │       ├── hooks/
 │       ├── lib/
-│       ├── pages/
-│       └── index.css
+│       ├── providers/
+│       ├── stores/
+│       ├── styles/
+│       └── types/
 │
-├── BACK/
-│   └── services/
-│       ├── jupiter.ts
-│       ├── birdeye.ts
-│       ├── riskScore.ts
-│       ├── helius.ts
-│       └── upstream.ts
+├── back/
+│   ├── README.md
+│   ├── services/
+│   ├── solana/
+│   └── sdd/
 │
 ├── shared/
 │   └── README.md
 │
+├── docs/
+│   ├── README.md
+│   └── <feature-name>/
+│       ├── functional-spec.md
+│       ├── technical-spec.md
+│       └── task.json
+│
+├── app/
 ├── package.json
 ├── next.config.mjs
 ├── tsconfig.json
@@ -48,9 +70,9 @@ La idea es tener el código separado para trabajar ordenadamente, pero que a niv
 
 ---
 
-## Qué es `FRONT/`
+## Qué es `front/`
 
-`FRONT/` contiene todo el código de interfaz y lógica client-side.
+`front/` contiene todo el código de interfaz y lógica client-side.
 
 Ahí viven:
 
@@ -65,11 +87,14 @@ Ahí viven:
 Ejemplo:
 
 ```txt
-FRONT/src/App.tsx
-FRONT/src/components/
-FRONT/src/hooks/
-FRONT/src/lib/
-FRONT/src/pages/
+front/src/App.tsx
+front/src/components/
+front/src/hooks/
+front/src/lib/
+front/src/providers/
+front/src/stores/
+front/src/styles/
+front/src/types/
 ```
 
 El frontend **no debe contener secrets ni API keys privadas**.
@@ -78,13 +103,13 @@ Si una integración necesita una API key, el frontend debe llamar a una ruta int
 
 ---
 
-## Qué es `BACK/`
+## Qué es `back/`
 
-`BACK/` contiene la lógica server-side reutilizable.
+`back/` contiene la lógica server-side reutilizable.
 
 Esta carpeta no levanta un servidor separado. No hay un `server.js` corriendo aparte.
 
-En cambio, `BACK/services/*` contiene funciones que son usadas por las rutas API de Next en `app/api/*`.
+En cambio, `back/services/*` contiene funciones que son usadas por las rutas API de Next en `app/api/*`.
 
 Ejemplo:
 
@@ -95,14 +120,14 @@ app/api/birdeye/token-security/route.ts
 usa:
 
 ```txt
-BACK/services/birdeye.ts
+back/services/birdeye.ts
 ```
 
 De esta forma mantenemos separación física:
 
 ```txt
-FRONT/ -> UI
-BACK/  -> lógica backend
+front/ -> UI
+back/  -> lógica backend
 ```
 
 pero el deploy sigue siendo una sola aplicación Next en Vercel.
@@ -127,10 +152,10 @@ app/page.tsx
 importa el frontend real desde:
 
 ```txt
-FRONT/src/App.tsx
+front/src/App.tsx
 ```
 
-Es decir, Next renderiza la página desde `app/page.tsx`, pero el código visual está en `FRONT/`.
+Es decir, Next renderiza la página desde `app/page.tsx`, pero el código visual está en `front/`.
 
 ### Backend entrypoints
 
@@ -140,14 +165,16 @@ Las APIs públicas internas viven en:
 app/api/*/route.ts
 ```
 
-Por ejemplo:
+La referencia canónica está en `docs/api-reference.md`. Resumen actual:
 
-```txt
-app/api/jupiter/quote/route.ts
-app/api/birdeye/token-security/route.ts
-app/api/risk-score/route.ts
-app/api/helius/transactions/route.ts
-```
+| Área | Rutas |
+|---|---|
+| Chat/agent | `/api/chat` |
+| Conditional orders | `/api/conditional-orders`, `/api/conditional-orders/[orderPda]` |
+| Wallet | `/api/wallet/balances`, `/api/wallet/transactions`, `/api/wallet/allocation` |
+| Quotes/prices | `/api/quotes/usdc-sol`, `/api/jupiter/quote`, `/api/prices` |
+| Risk/providers | `/api/birdeye/token-security`, `/api/risk-score`, `/api/helius/transactions` |
+| Network | `/api/network/status` |
 
 Estas rutas son las que Vercel convierte en funciones server-side.
 
@@ -158,7 +185,7 @@ Estas rutas son las que Vercel convierte en funciones server-side.
 Ejemplo con Birdeye:
 
 ```txt
-FRONT/src/lib/risk/providers/BirdeyeTokenSecurityProvider.ts
+front/src/lib/risk/providers/BirdeyeTokenSecurityProvider.ts
 ```
 
 llama a:
@@ -176,7 +203,7 @@ app/api/birdeye/token-security/route.ts
 Ese route handler llama a:
 
 ```txt
-BACK/services/birdeye.ts
+back/services/birdeye.ts
 ```
 
 Y recién ahí se usa la API key privada desde variables de entorno del servidor.
@@ -187,7 +214,7 @@ Resumen:
 Browser
   -> /api/birdeye/token-security
     -> app/api/birdeye/token-security/route.ts
-      -> BACK/services/birdeye.ts
+      -> back/services/birdeye.ts
         -> Birdeye API externa
 ```
 
@@ -208,26 +235,16 @@ Esta estructura permite:
 
 ## Variables de entorno
 
-Las variables privadas del backend deben configurarse en Vercel o en `.env.local` en la raíz.
+Las variables privadas del backend deben configurarse en Vercel o en `.env.local` en la raíz. La matriz completa vive en `back/README.md`.
 
-Ejemplos:
+Grupos principales:
 
-```txt
-BIRDEYE_API_KEY=
-BIRDEYE_API_URL=https://public-api.birdeye.so
-
-HELIUS_API_KEY=
-HELIUS_API_URL=https://api.helius.xyz
-
-RISK_SCORE_API_KEY=
-RISK_SCORE_API_URL=
-
-JUPITER_API_URL=https://lite-api.jup.ag/swap/v1
-
-# Store externo para sesiones de chat en Vercel
-CHAT_SESSION_REDIS_REST_URL=
-CHAT_SESSION_REDIS_REST_TOKEN=
-```
+| Grupo | Variables típicas | Uso |
+|---|---|---|
+| Agent/LLM | `OPENAI_API_KEY`, `OPENAI_CHAT_MODEL`, `OPENAI_API_URL` | Chat agentic y opiniones textuales. |
+| Providers | `BIRDEYE_*`, `HELIUS_*`, `RISK_SCORE_*`, `JUPITER_API_URL` | Datos externos y scoring server-side. |
+| Chat store | `CHAT_SESSION_REDIS_REST_*`, `UPSTASH_REDIS_REST_*`, `KV_REST_API_*` | Persistencia de sesiones en Vercel. |
+| Solana/devnet | Ver `docs/onchain-deployments.md` y `.env.example` | Program IDs, mints, feeds y keeper opcional. |
 
 El frontend solo puede usar variables públicas con prefijo:
 
@@ -235,65 +252,37 @@ El frontend solo puede usar variables públicas con prefijo:
 NEXT_PUBLIC_*
 ```
 
-No poner secrets en `FRONT/`.
-
-Para el store de sesiones también se aceptan las variables estándar de Upstash/Vercel KV:
-`UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` o `KV_REST_API_URL` / `KV_REST_API_TOKEN`.
+No poner secrets en `front/`.
 
 ---
 
 ## Contract deployment addresses
 
-Devnet contracts and on-chain accounts used by the current demo deployment:
+Las direcciones devnet están documentadas en `docs/onchain-deployments.md`.
 
-| Name | Network | Address |
-| --- | --- | --- |
-| AgentActionGuard program | devnet | `4K9mRmHmbFGgDN8Luhx5hPRHwuEZ5kQm2VNpMUr1gaBV` |
-| AgentActionGuard attestor config PDA | devnet | `AZuL6voaDa58HHx9Pw7goWRmQxndehkwQsvV8Hbz9huM` |
-| Wallet safety attestor authority | devnet | `7sSydc547d2fZ4FMbJVezSVjXK1btAjwU9H2wDWjeKnW` |
-| ConditionalEscrowBuy program | devnet | `FDwvY7eqeCNn27haATZJbqfnACJTr9YveG6yy9RcUt7u` |
-| devUSDC mint (`USDC_TEST_MINT`) | devnet | `BRjpCHtyQLNCo8gqRUr8jtdAj5AjPYQaoqbvcZiHok1k` |
-| Treasury devUSDC ATA (`TREASURY_USDC_ATA`) | devnet | `36o9VaNwtfWiAJGfYKao3ZbxmFAye8brMjLEhE4Jv1TC` |
-| Pyth SOL/USD feed (`PYTH_SOL_USD_FEED`) | devnet | `7UVimffxr9ow1uXYxsr4LHAcV58mLzhmwaeKvJ1pjLiE` |
-| Orca SOL/devUSDC Whirlpool pool | devnet | `3KBZiL2g8C7tiJ32hTv5v3KM7aK9htpqTw4cTXz1HvPt` |
-| SPL Token program | devnet | `TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA` |
-| Associated Token program | devnet | `ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL` |
+Resumen:
 
-No mainnet contract deployment is configured for this demo.
+- AgentActionGuard program: `4K9mRmHmbFGgDN8Luhx5hPRHwuEZ5kQm2VNpMUr1gaBV`
+- ConditionalEscrowBuy program: `FDwvY7eqeCNn27haATZJbqfnACJTr9YveG6yy9RcUt7u`
+- No hay deployment mainnet configurado para esta demo.
 
 ---
 
 ## Scripts
 
-Instalar dependencias:
+La guía completa está en `docs/development-workflow.md`.
 
-```bash
-npm install --registry=https://registry.npmjs.org
-```
+| Comando | Qué hace |
+|---|---|
+| `npm install --registry=https://registry.npmjs.org` | Instala dependencias. |
+| `npm run dev` | Levanta la app Next completa. |
+| `npm run build` | Build de producción. |
+| `npm test` | Tests frontend (`front/src`). |
+| `npm run test:back` | Tests backend/API (`back/services`, `app/api`). |
+| `npm run lint` | Lint de `app`, `front/src`, `back/services`. |
+| `npm run bootstrap:conditional` | Bootstrap devnet de conditional escrow. |
 
-Correr en desarrollo:
-
-```bash
-npm run dev
-```
-
-Build de producción:
-
-```bash
-npm run build
-```
-
-Correr tests:
-
-```bash
-npm run test
-```
-
-Lint:
-
-```bash
-npm run lint
-```
+`dev:front`, `dev:back` y `build:front` son aliases de conveniencia: no representan deploys separados.
 
 ---
 
@@ -309,7 +298,7 @@ Root Directory: ./
 Build Command: npm run build
 ```
 
-No hay que deployar `FRONT/` y `BACK/` por separado.
+No hay que deployar `front/` y `back/` por separado.
 
 Vercel detecta:
 
@@ -321,9 +310,9 @@ Vercel detecta:
 ## Regla de oro
 
 ```txt
-FRONT/ = código que puede correr en el navegador
-BACK/  = lógica server-side reutilizable
+front/ = código que puede correr en el navegador
+back/  = lógica server-side reutilizable
 app/   = entrypoints oficiales de Next para páginas y APIs
 ```
 
-Si algo necesita una API key privada, va en `BACK/services/*` y se expone mediante `app/api/*/route.ts`.
+Si algo necesita una API key privada, va en `back/services/*` y se expone mediante `app/api/*/route.ts`.

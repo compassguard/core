@@ -260,7 +260,7 @@ async function main() {
   let keeperKeypairJson;
   if (!programAccount?.executable) {
     console.log('\nACTION REQUIRED: deploy the program first:');
-    console.log('  cd BACK/solana/conditional-escrow-buy');
+    console.log('  cd back/solana/conditional-escrow-buy');
     console.log('  anchor deploy --provider.cluster devnet');
   }
   if (!admin) {

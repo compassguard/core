@@ -3,7 +3,7 @@
 Version: 1
 Status: Planned
 Date: 2026-05-09
-Source: user clarification + current FRONT/BACK contract review
+Source: user clarification + current front/back contract review
 
 ## Alcance
 
@@ -16,7 +16,7 @@ Incluye:
 - preparacion de transaccion por backend cuando haga falta
 - firma y envio desde Phantom en frontend
 - estados visuales de firma, envio, confirmacion y error
-- correccion del drift actual entre contracts FRONT/BACK
+- correccion del drift actual entre contracts front/back
 
 No incluye:
 

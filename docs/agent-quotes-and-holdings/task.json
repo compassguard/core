@@ -4,7 +4,7 @@
   "goal": "Dar al agente acceso backend-managed en devnet a la cotizacion USDC/SOL y a los holdings reales de la wallet del usuario, sin depender de precios mockeados ni de balances solo-SOL.",
   "context": {
     "source": "explorer_handoff",
-    "summary": "El chat backend hoy tiene herramientas de accion pero no herramientas de contexto. app/api/prices/route.ts sigue mockeado, app/api/wallet/balances/route.ts devuelve solo SOL nativo, existe infraestructura devnet para Orca USDC/SOL y el frontend ya consume contratos de balances y precios via FRONT/src/lib/api/client.ts y schemas asociados."
+    "summary": "El chat backend hoy tiene herramientas de accion pero no herramientas de contexto. app/api/prices/route.ts sigue mockeado, app/api/wallet/balances/route.ts devuelve solo SOL nativo, existe infraestructura devnet para Orca USDC/SOL y el frontend ya consume contratos de balances y precios via front/src/lib/api/client.ts y schemas asociados."
   },
   "acceptanceCriteria": [
     "El agente puede consultar holdings reales de wallet mediante una capacidad backend-managed de solo lectura.",
@@ -16,11 +16,11 @@
     "No se exponen API keys ni llamadas directas a providers desde frontend."
   ],
   "constraints": [
-    "Mantener la arquitectura FRONT -> app/api -> BACK/services para accesos a providers.",
+    "Mantener la arquitectura front -> app/api -> back/services para accesos a providers.",
     "La feature debe funcionar exclusivamente en Solana devnet.",
     "No usar GET /api/prices mockeado como fuente de verdad para el agente.",
     "No inventar balances, precios ni valuaciones faltantes.",
-    "Mantener alineado el contrato TokenBalance/GetBalancesResponse con FRONT/src/types/api.ts y FRONT/src/lib/api/schemas.ts.",
+    "Mantener alineado el contrato TokenBalance/GetBalancesResponse con front/src/types/api.ts y front/src/lib/api/schemas.ts.",
     "La cotizacion de esta feature se define como quote USDC/SOL compatible con devnet.",
     "La red y los mints usados para holdings y quote deben ser devnet y consistentes dentro de una misma consulta."
   ],
@@ -37,7 +37,7 @@
       "title": "Definir configuracion compartida devnet y mints canonicos",
       "description": "Crear una configuracion backend compartida para SOL y USDC de devnet, de modo que holdings y quote usen la misma fuente de verdad y rechacen cualquier red distinta de devnet.",
       "filesToCreate": [
-        "BACK/services/solanaNetworkConfig.ts"
+        "back/services/solanaNetworkConfig.ts"
       ],
       "filesToModify": [],
       "dependencies": [],
@@ -48,7 +48,7 @@
       ],
       "status": "completed",
       "evidence": [
-        "Added BACK/services/solanaNetworkConfig.ts with shared devnet configuration, stable network resolver and reusable mint/program helpers."
+        "Added back/services/solanaNetworkConfig.ts with shared devnet configuration, stable network resolver and reusable mint/program helpers."
       ]
     },
     {
@@ -56,7 +56,7 @@
       "title": "Implementar servicio backend de holdings reales",
       "description": "Crear un servicio backend que valide address y devnet, consulte SOL nativo y cuentas SPL del owner en devnet, y normalice la respuesta al contrato TokenBalance con updated_at.",
       "filesToCreate": [
-        "BACK/services/walletHoldings.ts"
+        "back/services/walletHoldings.ts"
       ],
       "filesToModify": [],
       "dependencies": [
@@ -69,7 +69,7 @@
       ],
       "status": "completed",
       "evidence": [
-        "Implemented BACK/services/walletHoldings.ts with address validation, native + SPL lookup via RPC, and normalized holdings response with network/updated_at."
+        "Implemented back/services/walletHoldings.ts with address validation, native + SPL lookup via RPC, and normalized holdings response with network/updated_at."
       ]
     },
     {
@@ -77,7 +77,7 @@
       "title": "Implementar servicio backend de quote USDC/SOL",
       "description": "Crear un servicio backend que resuelva los mints devnet del par, consulte un proveedor/servicio compatible con devnet y normalice una respuesta compacta para el agente y para API routes.",
       "filesToCreate": [
-        "BACK/services/priceQuote.ts"
+        "back/services/priceQuote.ts"
       ],
       "filesToModify": [],
       "dependencies": [
@@ -91,7 +91,7 @@
       ],
       "status": "completed",
       "evidence": [
-        "Implemented BACK/services/priceQuote.ts with devnet USDC/SOL pair validation and normalized quote output.",
+        "Implemented back/services/priceQuote.ts with devnet USDC/SOL pair validation and normalized quote output.",
         "Disabled fallback pricing for the read-only agent quote path and validate provider mints against configured devnet mints."
       ]
     },
@@ -142,10 +142,10 @@
     {
       "id": "T6",
       "title": "Agregar herramientas read-only de contexto al chat backend",
-      "description": "Extender BACK/services/chat.ts para registrar y resolver get_wallet_holdings y get_usdc_sol_quote como herramientas de solo lectura disponibles para el agente.",
+      "description": "Extender back/services/chat.ts para registrar y resolver get_wallet_holdings y get_usdc_sol_quote como herramientas de solo lectura disponibles para el agente.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/services/chat.ts"
+        "back/services/chat.ts"
       ],
       "dependencies": [
         "T2",
@@ -158,7 +158,7 @@
       ],
       "status": "completed",
       "evidence": [
-        "Updated BACK/services/chat.ts with get_wallet_holdings and get_usdc_sol_quote tools and read-only handlers."
+        "Updated back/services/chat.ts with get_wallet_holdings and get_usdc_sol_quote tools and read-only handlers."
       ]
     },
     {
@@ -167,10 +167,10 @@
       "description": "Actualizar tipos, schemas y cliente HTTP del frontend para reflejar holdings completos y la nueva superficie de quote, manteniendo compatibilidad con el contrato base de balances.",
       "filesToCreate": [],
       "filesToModify": [
-        "FRONT/src/types/api.ts",
-        "FRONT/src/lib/api/schemas.ts",
-        "FRONT/src/lib/api/client.ts",
-        "FRONT/src/hooks/useWalletBalances.ts"
+        "front/src/types/api.ts",
+        "front/src/lib/api/schemas.ts",
+        "front/src/lib/api/client.ts",
+        "front/src/hooks/useWalletBalances.ts"
       ],
       "dependencies": [
         "T4",
@@ -183,7 +183,7 @@
       ],
       "status": "completed",
       "evidence": [
-        "Updated FRONT/src/types/api.ts, FRONT/src/lib/api/schemas.ts, FRONT/src/lib/api/client.ts, and useWalletBalances hook for real holdings + quote contract."
+        "Updated front/src/types/api.ts, front/src/lib/api/schemas.ts, front/src/lib/api/client.ts, and useWalletBalances hook for real holdings + quote contract."
       ]
     },
     {
@@ -194,9 +194,9 @@
       "filesToModify": [
         "app/api/wallet/balances/route.ts",
         "app/api/quotes/usdc-sol/route.ts",
-        "BACK/services/chat.ts",
-        "BACK/services/walletHoldings.ts",
-        "BACK/services/priceQuote.ts"
+        "back/services/chat.ts",
+        "back/services/walletHoldings.ts",
+        "back/services/priceQuote.ts"
       ],
       "dependencies": [
         "T4",
@@ -213,8 +213,8 @@
       "status": "completed",
       "evidence": [
         "Added/updated route/service/chat/frontend tests for invalid inputs, SPL balances, quote normalization, read-only tool catalog, and timeout handling.",
-        "Ran frontend validation with Codex runtime Node: vitest run --no-cache FRONT/src/lib/api/__tests__/client.test.ts FRONT/src/lib/api/__tests__/schemas.test.ts (2 files, 17 tests passed).",
-        "Ran backend/API validation with Codex runtime Node: vitest run --no-cache --config vitest.back.config.ts app/api/quotes/usdc-sol/route.test.ts app/api/wallet/balances/route.test.ts BACK/services/__tests__/walletHoldings.test.ts BACK/services/__tests__/priceQuote.test.ts BACK/services/__tests__/chat.test.ts (5 files, 36 tests passed).",
+        "Ran frontend validation with Codex runtime Node: vitest run --no-cache front/src/lib/api/__tests__/client.test.ts front/src/lib/api/__tests__/schemas.test.ts (2 files, 17 tests passed).",
+        "Ran backend/API validation with Codex runtime Node: vitest run --no-cache --config vitest.back.config.ts app/api/quotes/usdc-sol/route.test.ts app/api/wallet/balances/route.test.ts back/services/__tests__/walletHoldings.test.ts back/services/__tests__/priceQuote.test.ts back/services/__tests__/chat.test.ts (5 files, 36 tests passed).",
         "Ran npm run build with Codex runtime Node and temporary node_modules symlink; Next build completed successfully with pre-existing lint warning in app/layout.tsx."
       ]
     }

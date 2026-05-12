@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint app FRONT/src BACK/services",
+    "lint": "eslint app front/src back/services",
     "test": "vitest --run",
     "test:back": "vitest --config vitest.back.config.ts --run",
     "test:watch": "vitest",
@@ -16,7 +16,7 @@
     "dev:back": "next dev",
     "build:front": "next build",
     "test:front": "vitest --run",
-    "lint:front": "eslint FRONT/src"
+    "lint:front": "eslint front/src"
   },
   "dependencies": {
     "@coral-xyz/anchor": "~0.32.1",

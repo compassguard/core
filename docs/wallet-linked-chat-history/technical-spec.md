@@ -6,7 +6,7 @@ La feature mantiene el backend como fuente de verdad del transcript y agrega ide
 
 ## Componentes
 
-### `FRONT/src/hooks/useWallet.ts`
+### `front/src/hooks/useWallet.ts`
 
 - Sigue siendo la fuente de verdad del estado de conexion.
 - Debe exponer un estado suficientemente estable para diferenciar:
@@ -14,7 +14,7 @@ La feature mantiene el backend como fuente de verdad del transcript y agrega ide
   - wallet resuelta y desconectada
 - El cambio de wallet debe ser observable por la capa de chat para reinicializar o recargar el scope correcto.
 
-### `FRONT/src/stores/chatStore.ts`
+### `front/src/stores/chatStore.ts`
 
 - Debe evolucionar desde persistencia global minima a persistencia scopiada por wallet.
 - Modelo persistido sugerido:
@@ -38,7 +38,7 @@ Reglas:
 - Desconectar wallet debe vaciar el runtime activo sin borrar necesariamente los bootstraps persistidos de otras wallets.
 - La migracion debe invalidar el viejo `sessionId` global para impedir que siga rehidratando sesiones de otra wallet.
 
-### `FRONT/src/hooks/useAgentMessage.ts`
+### `front/src/hooks/useAgentMessage.ts`
 
 - Debe esperar a que la wallet este resuelta antes de intentar hidratar.
 - Debe leer la referencia persistida solo para la wallet conectada.
@@ -51,7 +51,7 @@ Reglas:
 - Debe seguir enviando `user_address` en `user_message`.
 - Debe propagar `user_address` en `function_approve`, `function_reject` y `function_result` para alinear enforcement de todas las acciones sensibles.
 
-### `FRONT/src/lib/api/client.ts`
+### `front/src/lib/api/client.ts`
 
 - Debe extender el contrato cliente para que `get_history` reciba `user_address` opcional y lo envie cuando exista wallet conectada.
 - Debe alinear tambien `function_approve`, `function_reject` y `function_result` con el contrato backend si hoy no incluyen `user_address`.
@@ -78,7 +78,7 @@ type ChatRequest =
 - Sigue siendo proxy del frontend al backend.
 - No requiere cambio de comportamiento propio si ya forwardea el body completo, pero debe preservarse el nuevo `user_address` en requests de hidracion y acciones.
 
-### `BACK/services/chat.ts`
+### `back/services/chat.ts`
 
 - `handleGetHistory` debe tratar `user_address` como obligatorio para sesiones con `session.userAddress`.
 - Si `session.userAddress` existe y `request.user_address` falta o no coincide, debe responder `session_not_found`.
@@ -86,7 +86,7 @@ type ChatRequest =
 - `function_approve`, `function_reject` y `function_result` deben usar el mismo criterio de acceso por wallet, no solo `get_history`.
 - `handleUserMessage` puede conservar la logica actual de crear sesion nueva al detectar mismatch, porque protege continuidad sin mezclar wallets.
 
-### `BACK/services/chatSessionStore.ts`
+### `back/services/chatSessionStore.ts`
 
 - `SessionState.userAddress` sigue siendo el campo fuente para ownership de sesion.
 - No se requiere indice multi-sesion por usuario para esta feature.

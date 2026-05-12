@@ -2,7 +2,7 @@
 
 ## Arquitectura propuesta
 
-Implementar una capa de persistencia local sobre el store de chat de Zustand en `FRONT/src/stores/chatStore.ts`, siguiendo el patron ya usado en `settingsStore`. La persistencia se limita al frontend y modela conversaciones como snapshots UI versionadas.
+Implementar una capa de persistencia local sobre el store de chat de Zustand en `front/src/stores/chatStore.ts`, siguiendo el patron ya usado en `settingsStore`. La persistencia se limita al frontend y modela conversaciones como snapshots UI versionadas.
 
 ## Componentes
 

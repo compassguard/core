@@ -7,7 +7,7 @@ Feature: `agent-action-guard-guarded-transfer`
 
 ## Architecture
 
-This spec extends the existing Anchor program at `BACK/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs`.
+This spec extends the existing Anchor program at `back/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs`.
 
 Primary additions:
 
@@ -15,7 +15,7 @@ Primary additions:
 - one `WalletSafetyAttestation` PDA
 - one `upsert_wallet_safety_attestation` instruction
 - one `guarded_transfer` instruction
-- Anchor tests under `BACK/solana/agent-action-guard/tests/`
+- Anchor tests under `back/solana/agent-action-guard/tests/`
 - regenerated IDL and typed client output needed by tests
 
 This spec is a dependency of `docs/wallet-safety-validation-onchain-enforcement/`, but it does not own the backend or frontend migration to use the new instruction at runtime.

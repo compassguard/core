@@ -1,4 +1,4 @@
-import { getUsdcSolQuote, type UsdcSolQuoteResult } from '../../../../BACK/services/priceQuote';
+import { getUsdcSolQuote, type UsdcSolQuoteResult } from '../../../../back/services/priceQuote';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

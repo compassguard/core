@@ -9,9 +9,9 @@ Source: user request + explorer handoff
 
 La feature sigue la arquitectura existente del proyecto:
 
-1. `BACK/services/*` contiene integraciones con providers y normalizacion.
+1. `back/services/*` contiene integraciones con providers y normalizacion.
 2. `app/api/*` expone contratos HTTP internos para frontend o capas servidoras.
-3. `BACK/services/chat.ts` agrega herramientas de solo lectura para el agente.
+3. `back/services/chat.ts` agrega herramientas de solo lectura para el agente.
 
 Se proponen dos capacidades separadas:
 
@@ -36,7 +36,7 @@ Un prefetch opcional puede agregarse despues como optimizacion, pero no es el co
 
 ### Holdings service
 
-Crear un servicio backend dedicado, por ejemplo `BACK/services/walletHoldings.ts`, que:
+Crear un servicio backend dedicado, por ejemplo `back/services/walletHoldings.ts`, que:
 
 - valide `address` y `network`
 - obtenga SOL nativo via RPC
@@ -45,7 +45,7 @@ Crear un servicio backend dedicado, por ejemplo `BACK/services/walletHoldings.ts
 - excluya cuentas vacias o dust no parseable segun reglas documentadas
 - devuelva `updated_at`
 
-Debe seguir el patron defensivo ya usado en `BACK/services/transactionHistory.ts`:
+Debe seguir el patron defensivo ya usado en `back/services/transactionHistory.ts`:
 
 - timeout/abort
 - validacion de inputs
@@ -54,7 +54,7 @@ Debe seguir el patron defensivo ya usado en `BACK/services/transactionHistory.ts
 
 ### Quote service
 
-Agregar un servicio backend dedicado, por ejemplo `BACK/services/priceQuote.ts`, que:
+Agregar un servicio backend dedicado, por ejemplo `back/services/priceQuote.ts`, que:
 
 - resuelva mints canonicos SOL/USDC para `devnet`
 - reutilice o envuelva el servicio devnet existente de Orca USDC/SOL cuando este disponible
@@ -84,7 +84,7 @@ Decision sobre `app/api/prices/route.ts`:
 
 ### Chat tools
 
-Agregar en `BACK/services/chat.ts` dos herramientas read-only:
+Agregar en `back/services/chat.ts` dos herramientas read-only:
 
 - `get_wallet_holdings`
 - `get_usdc_sol_quote`
@@ -117,7 +117,7 @@ type AgentWalletHoldingsResult = {
 
 Notas:
 
-- `TokenBalance` debe mantenerse alineado con `FRONT/src/types/api.ts`.
+- `TokenBalance` debe mantenerse alineado con `front/src/types/api.ts`.
 - `total_usd` puede quedar en `0` o con suma parcial si no existe valuacion confiable para todos los tokens; esto debe documentarse y no inferirse.
 - `updated_at` debe ser ISO.
 
@@ -178,7 +178,7 @@ Tratamiento de edge cases:
 Fuente de verdad:
 
 - proveedor/servicio backend compatible con `devnet`
-- el repo ya tiene referencia devnet en `BACK/services/tools/orcaSwap.ts` con:
+- el repo ya tiene referencia devnet en `back/services/tools/orcaSwap.ts` con:
   - `DEVNET_USDC_MINT = BRjpCHtyQLNCo8gqRUr8jtdAj5AjPYQaoqbvcZiHok1k`
   - `DEVNET_SOL_MINT = So11111111111111111111111111111111111111112`
   - `provider = orca_whirlpools_devnet`
@@ -241,7 +241,7 @@ Freshness:
 ### Regression
 
 - el frontend sigue parseando `GetBalancesResponse`
-- `FRONT/src/lib/api/client.ts` y `FRONT/src/lib/api/schemas.ts` quedan alineados con el backend
+- `front/src/lib/api/client.ts` y `front/src/lib/api/schemas.ts` quedan alineados con el backend
 - la feature no depende de `GET /api/prices` mockeado
 
 ## Verificacion

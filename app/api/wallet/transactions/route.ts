@@ -3,7 +3,7 @@ import {
   validateBeforeCursor,
   validateWalletAddress,
   fetchWalletTransactions,
-} from '../../../../BACK/services/transactionHistory';
+} from '../../../../back/services/transactionHistory';
 // NOTE: keep relative import to avoid path alias gaps in vitest transforms.
 
 export const runtime = 'nodejs';

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Verification script for Next fullstack FRONT/BACK split
+# Verification script for Next fullstack front/back split
 
 set -e
 

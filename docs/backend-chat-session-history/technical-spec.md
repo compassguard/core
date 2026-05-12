@@ -4,11 +4,11 @@
 
 La sesion de chat pasa a ser backend-first:
 
-- `BACK/services/chatSessionStore.ts` mantiene el estado completo de la sesion en memoria con TTL.
-- `BACK/services/chat.ts` deja de ser efectivamente stateless y usa el transcript de la sesion para construir el input del LLM y para registrar eventos de la conversacion.
+- `back/services/chatSessionStore.ts` mantiene el estado completo de la sesion en memoria con TTL.
+- `back/services/chat.ts` deja de ser efectivamente stateless y usa el transcript de la sesion para construir el input del LLM y para registrar eventos de la conversacion.
 - `app/api/chat/route.ts` sigue exponiendo un unico endpoint `POST /api/chat`, ahora con un tipo adicional de lectura de historial.
-- `FRONT/src/stores/chatStore.ts` se simplifica para manejar estado UI en memoria y persistir solo `session_id` activo.
-- `FRONT/src/hooks/useAgentMessage.ts` rehidrata la sesion desde backend al montar o al detectar un `session_id` persistido.
+- `front/src/stores/chatStore.ts` se simplifica para manejar estado UI en memoria y persistir solo `session_id` activo.
+- `front/src/hooks/useAgentMessage.ts` rehidrata la sesion desde backend al montar o al detectar un `session_id` persistido.
 
 ## Componentes
 
@@ -39,7 +39,7 @@ Notas:
 
 ### Chat service
 
-`BACK/services/chat.ts` debe:
+`back/services/chat.ts` debe:
 
 1. Resolver o crear sesion.
 2. Agregar el mensaje de usuario al transcript antes de invocar al LLM.
@@ -84,7 +84,7 @@ Reglas:
 
 ### Frontend store and hydration
 
-`FRONT/src/stores/chatStore.ts` debe pasar a un modelo minimo persistido:
+`front/src/stores/chatStore.ts` debe pasar a un modelo minimo persistido:
 
 ```ts
 type PersistedChatBootstrap = {

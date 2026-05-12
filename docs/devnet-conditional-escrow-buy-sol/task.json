@@ -40,9 +40,9 @@
       "title": "Scaffold the dedicated Anchor program for conditional escrow settlement",
       "description": "Create the new program workspace or equivalent extension point, define the crate structure, and establish the base account/instruction modules for vault config, order state, escrow authority, and settlement lifecycle.",
       "filesToCreate": [
-        "BACK/solana/conditional-escrow-buy/Anchor.toml",
-        "BACK/solana/conditional-escrow-buy/Cargo.toml",
-        "BACK/solana/conditional-escrow-buy/programs/conditional-escrow-buy/src/lib.rs"
+        "back/solana/conditional-escrow-buy/Anchor.toml",
+        "back/solana/conditional-escrow-buy/Cargo.toml",
+        "back/solana/conditional-escrow-buy/programs/conditional-escrow-buy/src/lib.rs"
       ],
       "filesToModify": [],
       "dependencies": [],
@@ -52,7 +52,7 @@
       ],
       "status": "completed",
       "evidence": [
-        "Created and verified Anchor workspace files: BACK/solana/conditional-escrow-buy/Anchor.toml, BACK/solana/conditional-escrow-buy/Cargo.toml, and program lib scaffold in BACK/solana/conditional-escrow-buy/programs/conditional-escrow-buy/src/lib.rs."
+        "Created and verified Anchor workspace files: back/solana/conditional-escrow-buy/Anchor.toml, back/solana/conditional-escrow-buy/Cargo.toml, and program lib scaffold in back/solana/conditional-escrow-buy/programs/conditional-escrow-buy/src/lib.rs."
       ]
     },
     {
@@ -61,7 +61,7 @@
       "description": "Define PDA seeds, config accounts, escrow token authority, escrow token account derivation, and SOL vault derivation. Include admin bootstrap and pause/config safety checks for devnet.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/solana/conditional-escrow-buy/programs/conditional-escrow-buy/src/lib.rs"
+        "back/solana/conditional-escrow-buy/programs/conditional-escrow-buy/src/lib.rs"
       ],
       "dependencies": [
         "T1"
@@ -83,11 +83,11 @@
       "title": "Implement order creation and escrow deposit",
       "description": "Add create_order_and_deposit or equivalent instruction so the user can create the order and move USDC_TEST from their ATA into PDA escrow in a self-custodial Phantom-signed flow.",
       "filesToCreate": [
-        "FRONT/src/hooks/useConditionalOrders.ts",
-        "FRONT/src/components/wallet/ConditionalOrdersPanel.tsx"
+        "front/src/hooks/useConditionalOrders.ts",
+        "front/src/components/wallet/ConditionalOrdersPanel.tsx"
       ],
       "filesToModify": [
-        "BACK/solana/conditional-escrow-buy/programs/conditional-escrow-buy/src/lib.rs"
+        "back/solana/conditional-escrow-buy/programs/conditional-escrow-buy/src/lib.rs"
       ],
       "dependencies": [
         "T2"
@@ -109,7 +109,7 @@
       "description": "Add on-chain validation for the expected oracle feed, price freshness, confidence threshold, and required USDC calculation using checked u128 math and e8 normalization.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/solana/conditional-escrow-buy/programs/conditional-escrow-buy/src/lib.rs"
+        "back/solana/conditional-escrow-buy/programs/conditional-escrow-buy/src/lib.rs"
       ],
       "dependencies": [
         "T2"
@@ -130,7 +130,7 @@
       "description": "Implement the execution path that validates lifecycle state, computes required USDC, transfers escrowed USDC_TEST to treasury, pays SOL from the prefunded vault PDA to the recipient, and records execution results atomically.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/solana/conditional-escrow-buy/programs/conditional-escrow-buy/src/lib.rs"
+        "back/solana/conditional-escrow-buy/programs/conditional-escrow-buy/src/lib.rs"
       ],
       "dependencies": [
         "T3",
@@ -154,7 +154,7 @@
       "description": "Add the user-authorized cancellation and post-expiry reclaim logic so open orders can safely return escrowed USDC_TEST and close or mark order state consistently.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/solana/conditional-escrow-buy/programs/conditional-escrow-buy/src/lib.rs"
+        "back/solana/conditional-escrow-buy/programs/conditional-escrow-buy/src/lib.rs"
       ],
       "dependencies": [
         "T3"
@@ -174,7 +174,7 @@
       "title": "Add program unit and integration tests",
       "description": "Cover vault bootstrap, order creation/deposit, oracle gating, successful execution, insufficient escrow, insufficient SOL vault liquidity, cancellation, expiry, and reclaim paths.",
       "filesToCreate": [
-        "BACK/solana/conditional-escrow-buy/tests/conditional-escrow-buy.ts"
+        "back/solana/conditional-escrow-buy/tests/conditional-escrow-buy.ts"
       ],
       "filesToModify": [],
       "dependencies": [
@@ -190,7 +190,7 @@
       "evidence": [
         "Partial only: added Rust unit tests under cfg(test) in lib.rs for required_usdc rounding, pyth normalization, confidence calc, and invalid oracle price behavior.",
         "Blocked: cargo is not installed in this environment, so Rust tests and Anchor integration tests were not executed.",
-        "Missing: BACK/solana/conditional-escrow-buy/tests/conditional-escrow-buy.ts integration test file is still not implemented."
+        "Missing: back/solana/conditional-escrow-buy/tests/conditional-escrow-buy.ts integration test file is still not implemented."
       ]
     },
     {
@@ -199,7 +199,7 @@
       "description": "Add scripts or operational helpers to configure devnet placeholders, initialize vault config, derive PDAs, fund the SOL vault, and document required environment variables for local/demo operation.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/solana/conditional-escrow-buy/README.md",
+        "back/solana/conditional-escrow-buy/README.md",
         ".env.example"
       ],
       "dependencies": [
@@ -211,7 +211,7 @@
       ],
       "status": "completed",
       "evidence": [
-        "Updated BACK/solana/conditional-escrow-buy/README.md and .env.example with conditional escrow bootstrap placeholders and keeper controls."
+        "Updated back/solana/conditional-escrow-buy/README.md and .env.example with conditional escrow bootstrap placeholders and keeper controls."
       ]
     },
     {
@@ -220,11 +220,11 @@
       "description": "Replace the simulated conditional_buy_sol contract with a real escrow-order proposal shape and an approve response that returns a Phantom-ready unsigned transaction for create_order_and_deposit.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/services/tools/conditionalBuySol.ts",
-        "BACK/services/chat.ts",
-        "FRONT/src/types/api.ts",
-        "FRONT/src/lib/api/schemas.ts",
-        "FRONT/src/lib/api/client.ts"
+        "back/services/tools/conditionalBuySol.ts",
+        "back/services/chat.ts",
+        "front/src/types/api.ts",
+        "front/src/lib/api/schemas.ts",
+        "front/src/lib/api/client.ts"
       ],
       "dependencies": [
         "T3",
@@ -237,7 +237,7 @@
       ],
       "status": "completed",
       "evidence": [
-        "Updated conditional-buy tool payloads in BACK/services/tools/conditionalBuySol.ts and chat approval flow in BACK/services/chat.ts to emit unsigned create_order_and_deposit tx for Phantom."
+        "Updated conditional-buy tool payloads in back/services/tools/conditionalBuySol.ts and chat approval flow in back/services/chat.ts to emit unsigned create_order_and_deposit tx for Phantom."
       ]
     },
     {
@@ -246,8 +246,8 @@
       "description": "Add backend services that index on-chain orders, expose list/detail APIs for frontend consumption, and optionally trigger execute_order when observed conditions appear favorable, while deferring final truth to the program. The MVP indexer polls program accounts every 15 seconds, filters per user by Order.user, refreshes observed oracle executability every 10 seconds, triggers execute_order as a permissionless caller with backoff after repeated failures, and exposes derived observed_executable separately from confirmed on-chain status.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/services/chat.ts",
-        "BACK/services/onchainApproval.ts",
+        "back/services/chat.ts",
+        "back/services/onchainApproval.ts",
         "app/api/conditional-orders/route.ts",
         "app/api/conditional-orders/[orderPda]/route.ts"
       ],
@@ -265,7 +265,7 @@
       ],
       "status": "completed",
       "evidence": [
-        "Added BACK/services/conditionalOrders.ts indexer + oracle watcher + keeper execute sender.",
+        "Added back/services/conditionalOrders.ts indexer + oracle watcher + keeper execute sender.",
         "Added API routes app/api/conditional-orders and app/api/conditional-orders/[orderPda] for list/detail/trigger."
       ]
     },
@@ -275,10 +275,10 @@
       "description": "Wire the proposal approval UX so ConditionalBuyProposalCard and related state logic request the unsigned create/deposit transaction, pass it to Phantom injected, and surface order identifiers and escrow status after confirmation.",
       "filesToCreate": [],
       "filesToModify": [
-        "FRONT/src/hooks/useWallet.ts",
-        "FRONT/src/hooks/useAgentMessage.ts",
-        "FRONT/src/stores/chatStore.ts",
-        "FRONT/src/components/chat/proposals/ConditionalBuyProposalCard.tsx"
+        "front/src/hooks/useWallet.ts",
+        "front/src/hooks/useAgentMessage.ts",
+        "front/src/stores/chatStore.ts",
+        "front/src/components/chat/proposals/ConditionalBuyProposalCard.tsx"
       ],
       "dependencies": [
         "T9"
@@ -290,7 +290,7 @@
       ],
       "status": "completed",
       "evidence": [
-        "Updated ConditionalBuyProposalCard and proposal contracts/apis in FRONT; frontend approve path still uses useWallet signAndSendPreparedTransaction for Phantom injected signatures."
+        "Updated ConditionalBuyProposalCard and proposal contracts/apis in front; frontend approve path still uses useWallet signAndSendPreparedTransaction for Phantom injected signatures."
       ]
     },
     {
@@ -298,13 +298,13 @@
       "title": "Build order detail and monitoring UI",
       "description": "Add quiet data-product surfaces for order summary, escrow balances, oracle condition, SOL vault status, and execution timeline in desktop and mobile layouts.",
       "filesToCreate": [
-        "FRONT/src/hooks/useConditionalOrders.ts",
-        "FRONT/src/components/wallet/ConditionalOrdersPanel.tsx"
+        "front/src/hooks/useConditionalOrders.ts",
+        "front/src/components/wallet/ConditionalOrdersPanel.tsx"
       ],
       "filesToModify": [
-        "FRONT/src/components/chat/proposals/ConditionalBuyProposalCard.tsx",
-        "FRONT/src/components/layout/RightPanel.tsx",
-        "FRONT/src/components/layout/MobileShell.tsx"
+        "front/src/components/chat/proposals/ConditionalBuyProposalCard.tsx",
+        "front/src/components/layout/RightPanel.tsx",
+        "front/src/components/layout/MobileShell.tsx"
       ],
       "dependencies": [
         "T10",
@@ -316,8 +316,8 @@
       ],
       "status": "completed",
       "evidence": [
-        "Added FRONT/src/hooks/useConditionalOrders.ts polling hook backed by GET /api/conditional-orders?user=<wallet>.",
-        "Added FRONT/src/components/wallet/ConditionalOrdersPanel.tsx with order, escrow, oracle condition, vault address, expiry, observed executability, and manual trigger action.",
+        "Added front/src/hooks/useConditionalOrders.ts polling hook backed by GET /api/conditional-orders?user=<wallet>.",
+        "Added front/src/components/wallet/ConditionalOrdersPanel.tsx with order, escrow, oracle condition, vault address, expiry, observed executability, and manual trigger action.",
         "Wired ConditionalOrdersPanel into RightPanel and MobileShell for desktop/mobile visibility.",
         "Validation command run: npm run build (passed after cleaning stale .next cache; existing app/layout.tsx Fast Refresh warning remains)."
       ]
@@ -328,9 +328,9 @@
       "description": "Cover schema changes, approve behavior, Phantom unsigned transaction flow, order list/detail parsing, and UX state transitions for creation, cancellation, and observed execution outcomes.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/services/__tests__/chat.test.ts",
-        "FRONT/src/lib/api/__tests__/schemas.test.ts",
-        "FRONT/src/hooks/__tests__/useWallet.test.ts"
+        "back/services/__tests__/chat.test.ts",
+        "front/src/lib/api/__tests__/schemas.test.ts",
+        "front/src/hooks/__tests__/useWallet.test.ts"
       ],
       "dependencies": [
         "T10",
@@ -344,11 +344,11 @@
       ],
       "status": "completed",
       "evidence": [
-        "Added FRONT/src/lib/api/__tests__/schemas.test.ts coverage for conditional order schemas and trigger schema.",
-        "Added and validated BACK/services/__tests__/conditionalBuySol.test.ts for proposal math/eval and unsigned tx builder output.",
-        "Added vitest.back.config.ts and package script `npm run test:back` for reproducible BACK service tests.",
-        "Validation command run: npm run test:back -- BACK/services/__tests__/chat.test.ts BACK/services/__tests__/conditionalBuySol.test.ts (14 passed).",
-        "Validation command run: npm test -- FRONT/src/lib/api/__tests__/schemas.test.ts FRONT/src/hooks/__tests__/useWallet.test.ts FRONT/src/hooks/__tests__/useAgentMessage.test.tsx (15 passed).",
+        "Added front/src/lib/api/__tests__/schemas.test.ts coverage for conditional order schemas and trigger schema.",
+        "Added and validated back/services/__tests__/conditionalBuySol.test.ts for proposal math/eval and unsigned tx builder output.",
+        "Added vitest.back.config.ts and package script `npm run test:back` for reproducible back service tests.",
+        "Validation command run: npm run test:back -- back/services/__tests__/chat.test.ts back/services/__tests__/conditionalBuySol.test.ts (14 passed).",
+        "Validation command run: npm test -- front/src/lib/api/__tests__/schemas.test.ts front/src/hooks/__tests__/useWallet.test.ts front/src/hooks/__tests__/useAgentMessage.test.tsx (15 passed).",
         "Validation command run: npm run build (passed after cleaning stale .next cache; pre-existing ESLint Fast Refresh warning in app/layout.tsx remains).",
         "No dedicated frontend integration test added yet for conditional proposal approve path."
       ]
@@ -359,7 +359,7 @@
       "description": "Validate the full demo path in devnet: bootstrap config, fund SOL vault, create order with Phantom, observe keeper/manual execution, and verify settlement balances and UI states end to end.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/solana/conditional-escrow-buy/README.md",
+        "back/solana/conditional-escrow-buy/README.md",
         "docs/devnet-conditional-escrow-buy-sol/functional-spec.md",
         "docs/devnet-conditional-escrow-buy-sol/technical-spec.md"
       ],

@@ -6,8 +6,8 @@ Este proyecto es una app enfocada en **guardrails para actividades en Solana**.
 La idea principal es permitir operaciones comunes del usuario, pero con una capa extra de validacion y seguridad antes de ejecutar acciones on-chain.
 
 Arquitectura actual (alto nivel):
-- `FRONT`: experiencia de usuario y flujos de operacion.
-- `BACK`: servicios y reglas server-side (integrados en Next API routes), con validaciones previas y consultas a proveedores externos.
+- `front`: experiencia de usuario y flujos de operacion.
+- `back`: servicios y reglas server-side (integrados en Next API routes), con validaciones previas y consultas a proveedores externos.
 
 ## Objetivo del guardrail
 

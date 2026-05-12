@@ -43,9 +43,12 @@ pnpm-debug.log*
 *.tmp
 *.temp
 .cache
+*.tsbuildinfo
 
 # Anchor/Solana build artifacts
 **/target/
 **/.anchor/
 **/test-ledger/
 .vercel
+# Local Pi runtime state
+.atl/

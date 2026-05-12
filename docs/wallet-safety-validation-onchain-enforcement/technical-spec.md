@@ -42,13 +42,13 @@ Referencia de dependencia:
 
 ### Componentes
 
-- Programa Solana: `BACK/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs`
-- Servicio backend de preparación/verificación: `BACK/services/chat.ts`
-- Servicio backend de verificación on-chain: `BACK/services/onchainApproval.ts`
-- Tool de transferencia y scoring: `BACK/services/tools/transfer.ts`
-- Estado de proposal: `BACK/services/chatSessionStore.ts`
-- Contratos frontend API: `FRONT/src/lib/api/client.ts`, `FRONT/src/lib/api/schemas.ts`, `FRONT/src/types/api.ts`
-- UI de proposal: `FRONT/src/components/chat/proposals/SendProposalCard.tsx`, `FRONT/src/hooks/useAgentMessage.ts`, `FRONT/src/hooks/useWallet.ts`
+- Programa Solana: `back/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs`
+- Servicio backend de preparación/verificación: `back/services/chat.ts`
+- Servicio backend de verificación on-chain: `back/services/onchainApproval.ts`
+- Tool de transferencia y scoring: `back/services/tools/transfer.ts`
+- Estado de proposal: `back/services/chatSessionStore.ts`
+- Contratos frontend API: `front/src/lib/api/client.ts`, `front/src/lib/api/schemas.ts`, `front/src/types/api.ts`
+- UI de proposal: `front/src/components/chat/proposals/SendProposalCard.tsx`, `front/src/hooks/useAgentMessage.ts`, `front/src/hooks/useWallet.ts`
 
 ### Modelo lógico
 
@@ -245,7 +245,7 @@ El backend debe usar serialización canónica JSON y `sha256`.
 
 ### Preparación de proposal
 
-`BACK/services/tools/transfer.ts` sigue siendo dueño del análisis de negocio y riesgo, pero ahora debe producir metadata suficiente para:
+`back/services/tools/transfer.ts` sigue siendo dueño del análisis de negocio y riesgo, pero ahora debe producir metadata suficiente para:
 
 - `action_hash`
 - expiry de approval
@@ -255,7 +255,7 @@ El backend debe usar serialización canónica JSON y `sha256`.
 
 ### `function_approve`
 
-`BACK/services/chat.ts` debe cambiar de preparar una tx directa con `SystemProgram.transfer` a preparar una tx `guarded_transfer`.
+`back/services/chat.ts` debe cambiar de preparar una tx directa con `SystemProgram.transfer` a preparar una tx `guarded_transfer`.
 
 Contrato esperado:
 
@@ -269,7 +269,7 @@ Contrato esperado:
 
 ### Verificación posterior
 
-`BACK/services/onchainApproval.ts` debe dejar de validar solo:
+`back/services/onchainApproval.ts` debe dejar de validar solo:
 
 - que la tx esté confirmada
 - que exista una instrucción del programa en logs

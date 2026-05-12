@@ -31,10 +31,10 @@ Necesitamos una policy on-chain que compare el precio implícito del swap contra
 
 ### Affected modules / ownership boundaries
 - On-chain:
-  - `BACK/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs`
+  - `back/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs`
 - Backend:
-  - `BACK/services/chat.ts` (function_approve / function_result integration)
-  - `BACK/services/onchainApproval.ts` o módulo de verificación equivalente
+  - `back/services/chat.ts` (function_approve / function_result integration)
+  - `back/services/onchainApproval.ts` o módulo de verificación equivalente
 - Frontend:
   - Hook de approve/execute para enviar la instrucción correcta y cuentas oracle
 
