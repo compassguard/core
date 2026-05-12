@@ -37,7 +37,7 @@
       "title": "Implement backend public history service",
       "description": "Add or extend a backend service that fetches recent public Solana transactions for a wallet address from a backend-managed provider, applies defensive validation, and normalizes results into TxHistoryItem records with optional next_cursor.",
       "filesToCreate": [
-        "BACK/services/transactionHistory.ts"
+        "back/services/transactionHistory.ts"
       ],
       "filesToModify": [],
       "dependencies": [],
@@ -52,7 +52,7 @@
         {
           "type": "implementation",
           "date": "2026-05-10",
-          "details": "Implemented BACK/services/transactionHistory.ts with Solana RPC-backed signature lookup, validation, timeout/abort flow, limit normalization, cursor handling, and schema-only normalization."
+          "details": "Implemented back/services/transactionHistory.ts with Solana RPC-backed signature lookup, validation, timeout/abort flow, limit normalization, cursor handling, and schema-only normalization."
         },
         {
           "type": "tests",
@@ -107,8 +107,8 @@
       "description": "Update the frontend client and history hook so the History tab can request limit and before cursor values, cache correctly by address and cursor state, and expose enough state to support load-more behavior.",
       "filesToCreate": [],
       "filesToModify": [
-        "FRONT/src/lib/api/client.ts",
-        "FRONT/src/hooks/useTransactionHistory.ts"
+        "front/src/lib/api/client.ts",
+        "front/src/hooks/useTransactionHistory.ts"
       ],
       "dependencies": [
         "T2"
@@ -123,12 +123,12 @@
         {
           "type": "implementation",
           "date": "2026-05-10",
-          "details": "Updated FRONT/src/lib/api/client.ts query serialization and FRONT/src/hooks/useTransactionHistory.ts to use cursor-based infinite query keyed by address."
+          "details": "Updated front/src/lib/api/client.ts query serialization and front/src/hooks/useTransactionHistory.ts to use cursor-based infinite query keyed by address."
         },
         {
           "type": "tests",
           "date": "2026-05-10",
-          "details": "Added FRONT/src/hooks/useTransactionHistory.test.ts validating page requests and wallet-change request refresh behavior."
+          "details": "Added front/src/hooks/useTransactionHistory.test.ts validating page requests and wallet-change request refresh behavior."
         },
         {
           "type": "integration_fix",
@@ -143,7 +143,7 @@
       "description": "Improve the History view in DesktopShell so it renders loading, empty, error, populated list, explorer links, and load-more controls, and adds copy clarifying that the view currently shows public on-chain activity while Umbra private history is a later consent-based integration.",
       "filesToCreate": [],
       "filesToModify": [
-        "FRONT/src/components/layout/DesktopShell.tsx"
+        "front/src/components/layout/DesktopShell.tsx"
       ],
       "dependencies": [
         "T3"
@@ -160,12 +160,12 @@
         {
           "type": "implementation",
           "date": "2026-05-10",
-          "details": "Updated FRONT/src/components/layout/DesktopShell.tsx with loading/empty/error/load-more states, explorer links, and explicit public-vs-private (Umbra) privacy copy."
+          "details": "Updated front/src/components/layout/DesktopShell.tsx with loading/empty/error/load-more states, explorer links, and explicit public-vs-private (Umbra) privacy copy."
         },
         {
           "type": "tests",
           "date": "2026-05-10",
-          "details": "Added FRONT/src/components/layout/DesktopShell.test.tsx covering state rendering and load-more callback path."
+          "details": "Added front/src/components/layout/DesktopShell.test.tsx covering state rendering and load-more callback path."
         },
         {
           "type": "integration_fix",
@@ -186,8 +186,8 @@
       "filesToCreate": [],
       "filesToModify": [
         "app/api/wallet/transactions/route.ts",
-        "FRONT/src/hooks/useTransactionHistory.ts",
-        "FRONT/src/components/layout/DesktopShell.tsx"
+        "front/src/hooks/useTransactionHistory.ts",
+        "front/src/components/layout/DesktopShell.tsx"
       ],
       "dependencies": [
         "T2",
@@ -226,8 +226,8 @@
       "filesToCreate": [],
       "filesToModify": [
         "app/api/wallet/transactions/route.ts",
-        "BACK/services/transactionHistory.ts",
-        "FRONT/src/components/layout/DesktopShell.tsx"
+        "back/services/transactionHistory.ts",
+        "front/src/components/layout/DesktopShell.tsx"
       ],
       "dependencies": [
         "T1",

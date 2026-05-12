@@ -4,7 +4,7 @@
   "goal": "Vincular la rehidratacion y la persistencia local del chat activo a la wallet conectada para impedir leakage cross-wallet y forzar enforcement backend por user_address en get_history y acciones sensibles.",
   "context": {
     "source": "explorer_handoff",
-    "summary": "La wallet se resuelve solo en cliente desde FRONT/src/hooks/useWallet.ts. El frontend hidrata el chat al montar desde useAgentMessage llamando getHistory(sessionId) sin user_address. FRONT/src/lib/api/client.ts omite user_address en get_history y hoy persiste un sessionId global en FRONT/src/stores/chatStore.ts bajo wallet-copilot-chat-history. El backend ya soporta user_address en get_history y acciones sensibles, tiene SessionState.userAddress y cuenta con guardas de wallet mismatch, pero handleGetHistory solo aplica la proteccion cuando user_address viene en el request."
+    "summary": "La wallet se resuelve solo en cliente desde front/src/hooks/useWallet.ts. El frontend hidrata el chat al montar desde useAgentMessage llamando getHistory(sessionId) sin user_address. front/src/lib/api/client.ts omite user_address en get_history y hoy persiste un sessionId global en front/src/stores/chatStore.ts bajo wallet-copilot-chat-history. El backend ya soporta user_address en get_history y acciones sensibles, tiene SessionState.userAddress y cuenta con guardas de wallet mismatch, pero handleGetHistory solo aplica la proteccion cuando user_address viene en el request."
   },
   "acceptanceCriteria": [
     "Con una wallet conectada, la app rehidrata el chat activo solo desde la referencia persistida de esa wallet.",
@@ -34,10 +34,10 @@
     {
       "id": "T1",
       "title": "Alinear contrato cliente-backend para wallet-bound history",
-      "description": "Actualizar tipos y helpers de FRONT/src/lib/api/client.ts para que get_history, function_approve, function_reject y function_result puedan enviar user_address, respetando el contrato ya soportado por backend.",
+      "description": "Actualizar tipos y helpers de front/src/lib/api/client.ts para que get_history, function_approve, function_reject y function_result puedan enviar user_address, respetando el contrato ya soportado por backend.",
       "filesToCreate": [],
       "filesToModify": [
-        "FRONT/src/lib/api/client.ts"
+        "front/src/lib/api/client.ts"
       ],
       "dependencies": [],
       "verification": [
@@ -46,8 +46,8 @@
       ],
       "status": "completed",
       "evidence": [
-        "FRONT/src/lib/api/client.ts: ChatRequest incluye user_address en get_history, function_approve, function_reject y function_result; postApprove/postReject/postFunctionResult/getHistory envían user_address.",
-        "FRONT/src/lib/api/__tests__/client.test.ts: valida payloads de user_address para get_history/function_approve/function_result/function_reject."
+        "front/src/lib/api/client.ts: ChatRequest incluye user_address en get_history, function_approve, function_reject y function_result; postApprove/postReject/postFunctionResult/getHistory envían user_address.",
+        "front/src/lib/api/__tests__/client.test.ts: valida payloads de user_address para get_history/function_approve/function_result/function_reject."
       ]
     },
     {
@@ -56,7 +56,7 @@
       "description": "Migrar el store de chat desde un sessionId global compartido a un bootstrap persistido por wallet address normalizada, descartando la referencia global legacy y preservando solo el estado minimo necesario.",
       "filesToCreate": [],
       "filesToModify": [
-        "FRONT/src/stores/chatStore.ts"
+        "front/src/stores/chatStore.ts"
       ],
       "dependencies": [
         "T1"
@@ -67,8 +67,8 @@
       ],
       "status": "completed",
       "evidence": [
-        "FRONT/src/stores/chatStore.ts: persiste sesiones por mapa sessionsByWallet y elimina sessionId legacy persistido.",
-        "FRONT/src/stores/__tests__/chatStore.test.ts: cubre migración legacy y persistencia/restore por wallet."
+        "front/src/stores/chatStore.ts: persiste sesiones por mapa sessionsByWallet y elimina sessionId legacy persistido.",
+        "front/src/stores/__tests__/chatStore.test.ts: cubre migración legacy y persistencia/restore por wallet."
       ]
     },
     {
@@ -77,9 +77,9 @@
       "description": "Actualizar useAgentMessage para esperar la resolucion de wallet, leer solo el bootstrap de la wallet activa, hidratar con user_address y limpiar la referencia cuando backend devuelva session_not_found.",
       "filesToCreate": [],
       "filesToModify": [
-        "FRONT/src/hooks/useAgentMessage.ts",
-        "FRONT/src/hooks/useWallet.ts",
-        "FRONT/src/stores/chatStore.ts"
+        "front/src/hooks/useAgentMessage.ts",
+        "front/src/hooks/useWallet.ts",
+        "front/src/stores/chatStore.ts"
       ],
       "dependencies": [
         "T1",
@@ -91,9 +91,9 @@
       ],
       "status": "completed",
       "evidence": [
-        "FRONT/src/hooks/useWallet.ts: introduce estado isResolved y lo expone para gating de hidratación.",
-        "FRONT/src/hooks/useAgentMessage.ts: hidrata por wallet solo cuando resuelta y con user_address; usa dedupe por `${wallet}:${sessionId}` y limpia bootstrap en session_not_found.",
-        "FRONT/src/hooks/__tests__/useAgentMessage.test.tsx: verifica que no hidrata antes de resolución y usa user_address al llamar getHistory.",
+        "front/src/hooks/useWallet.ts: introduce estado isResolved y lo expone para gating de hidratación.",
+        "front/src/hooks/useAgentMessage.ts: hidrata por wallet solo cuando resuelta y con user_address; usa dedupe por `${wallet}:${sessionId}` y limpia bootstrap en session_not_found.",
+        "front/src/hooks/__tests__/useAgentMessage.test.tsx: verifica que no hidrata antes de resolución y usa user_address al llamar getHistory.",
         "Review fix: session_not_found de una hidratación stale ya no limpia estado si sessionId o wallet activa cambiaron."
       ]
     },
@@ -103,9 +103,9 @@
       "description": "Implementar el reseteo inmediato del runtime visible al cambiar o desconectar wallet, y luego cargar el scope persistido de la nueva wallet sin leakage visual ni reuso de sessionId ajeno.",
       "filesToCreate": [],
       "filesToModify": [
-        "FRONT/src/hooks/useAgentMessage.ts",
-        "FRONT/src/hooks/useWallet.ts",
-        "FRONT/src/stores/chatStore.ts"
+        "front/src/hooks/useAgentMessage.ts",
+        "front/src/hooks/useWallet.ts",
+        "front/src/stores/chatStore.ts"
       ],
       "dependencies": [
         "T2",
@@ -117,19 +117,19 @@
       ],
       "status": "completed",
       "evidence": [
-        "FRONT/src/hooks/useAgentMessage.ts: setCurrentWalletAddress se invoca al resolver wallet para reset inmediato al cambiar/disconectar.",
-        "FRONT/src/stores/chatStore.ts: clearSessionData limpia bootstrap de sessionsByWallet para la wallet activa; setCurrentWalletAddress resetea conversación cuando cambia wallet.",
-        "FRONT/src/hooks/__tests__/useAgentMessage.test.tsx: cubre desconexión de wallet y limpieza de estado visible.",
-        "FRONT/src/hooks/__tests__/useAgentMessage.test.tsx: cubre carrera donde Wallet A recibe session_not_found después de cambiar a Wallet B y no borra la sesión activa de B."
+        "front/src/hooks/useAgentMessage.ts: setCurrentWalletAddress se invoca al resolver wallet para reset inmediato al cambiar/disconectar.",
+        "front/src/stores/chatStore.ts: clearSessionData limpia bootstrap de sessionsByWallet para la wallet activa; setCurrentWalletAddress resetea conversación cuando cambia wallet.",
+        "front/src/hooks/__tests__/useAgentMessage.test.tsx: cubre desconexión de wallet y limpieza de estado visible.",
+        "front/src/hooks/__tests__/useAgentMessage.test.tsx: cubre carrera donde Wallet A recibe session_not_found después de cambiar a Wallet B y no borra la sesión activa de B."
       ]
     },
     {
       "id": "T5",
       "title": "Endurecer enforcement backend de ownership por wallet",
-      "description": "Ajustar BACK/services/chat.ts para que get_history rechace sesiones wallet-bound cuando user_address falta o no coincide, y extender el mismo criterio a approve, reject y function_result.",
+      "description": "Ajustar back/services/chat.ts para que get_history rechace sesiones wallet-bound cuando user_address falta o no coincide, y extender el mismo criterio a approve, reject y function_result.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/services/chat.ts"
+        "back/services/chat.ts"
       ],
       "dependencies": [
         "T1"
@@ -140,8 +140,8 @@
       ],
       "status": "completed",
       "evidence": [
-        "BACK/services/chat.ts: hasSessionWalletMismatch trata sesión con userAddress + user_address ausente como mismatch.",
-        "BACK/services/chat.ts: get_history/function_approve/function_result/function_reject usan hasSessionWalletMismatch antes de operar sesión."
+        "back/services/chat.ts: hasSessionWalletMismatch trata sesión con userAddress + user_address ausente como mismatch.",
+        "back/services/chat.ts: get_history/function_approve/function_result/function_reject usan hasSessionWalletMismatch antes de operar sesión."
       ]
     },
     {
@@ -150,8 +150,8 @@
       "description": "Crear o extender tests del store y del hook para validar migracion legacy, persistencia por wallet, hidratacion wallet-bound y comportamiento en switch/disconnect.",
       "filesToCreate": [],
       "filesToModify": [
-        "FRONT/src/stores/__tests__/chatStore.test.ts",
-        "FRONT/src/hooks/__tests__/useAgentMessage.test.tsx"
+        "front/src/stores/__tests__/chatStore.test.ts",
+        "front/src/hooks/__tests__/useAgentMessage.test.tsx"
       ],
       "dependencies": [
         "T2",
@@ -163,17 +163,17 @@
       ],
       "status": "completed",
       "evidence": [
-        "FRONT/src/stores/__tests__/chatStore.test.ts: tests de bootstrap por wallet, migración y clear.",
-        "FRONT/src/hooks/__tests__/useAgentMessage.test.tsx: tests de hidratación por wallet, mismatch/resolución, approvals, disconnect y respuesta stale de hidratación."
+        "front/src/stores/__tests__/chatStore.test.ts: tests de bootstrap por wallet, migración y clear.",
+        "front/src/hooks/__tests__/useAgentMessage.test.tsx: tests de hidratación por wallet, mismatch/resolución, approvals, disconnect y respuesta stale de hidratación."
       ]
     },
     {
       "id": "T7",
       "title": "Agregar cobertura automatizada de backend",
-      "description": "Crear o extender tests de BACK/services/chat.ts para verificar get_history wallet-bound y bloqueo de acciones sensibles bajo mismatch o omission de user_address.",
+      "description": "Crear o extender tests de back/services/chat.ts para verificar get_history wallet-bound y bloqueo de acciones sensibles bajo mismatch o omission de user_address.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/services/chat.ts"
+        "back/services/chat.ts"
       ],
       "dependencies": [
         "T5"
@@ -183,7 +183,7 @@
       ],
       "status": "completed",
       "evidence": [
-        "BACK/services/__tests__/chat.test.ts: tests nuevos para get_history mismatched/omitido y function_approve/function_result/function_reject con wallet mismatch."
+        "back/services/__tests__/chat.test.ts: tests nuevos para get_history mismatched/omitido y function_approve/function_result/function_reject con wallet mismatch."
       ]
     },
     {
@@ -208,8 +208,8 @@
       ],
       "status": "completed",
       "evidence": [
-        "Pruebas ejecutadas: `npm test FRONT/src/lib/api/__tests__/client.test.ts FRONT/src/stores/__tests__/chatStore.test.ts FRONT/src/hooks/__tests__/useAgentMessage.test.tsx` y `npm run test:back BACK/services/__tests__/chat.test.ts`.",
-        "`npm run lint` ejecutado: falla por 22 problemas de lint preexistentes/no relacionados restantes en BACK/services/chat.ts, BACK/services/conditionalOrders.ts, BACK/services/priceQuote.ts, BACK/services/tools/*, FRONT/src/components/ui/* y app/layout.tsx.",
+        "Pruebas ejecutadas: `npm test front/src/lib/api/__tests__/client.test.ts front/src/stores/__tests__/chatStore.test.ts front/src/hooks/__tests__/useAgentMessage.test.tsx` y `npm run test:back back/services/__tests__/chat.test.ts`.",
+        "`npm run lint` ejecutado: falla por 22 problemas de lint preexistentes/no relacionados restantes en back/services/chat.ts, back/services/conditionalOrders.ts, back/services/priceQuote.ts, back/services/tools/*, front/src/components/ui/* y app/layout.tsx.",
         "No se ejecutó validación manual completa de UI (pendiente de QA con wallets reales o mocks de navegador)."
       ]
     }

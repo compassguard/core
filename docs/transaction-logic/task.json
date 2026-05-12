@@ -37,10 +37,10 @@
       "description": "Update frontend/backend contracts so proposals include execution.mode, approve uses session_id only, and transfer approve responses model unsigned transaction payload plus awaiting_signature state.",
       "filesToCreate": [],
       "filesToModify": [
-        "FRONT/src/lib/api/schemas.ts",
-        "FRONT/src/types/api.ts",
-        "FRONT/src/lib/api/client.ts",
-        "BACK/services/chat.ts"
+        "front/src/lib/api/schemas.ts",
+        "front/src/types/api.ts",
+        "front/src/lib/api/client.ts",
+        "back/services/chat.ts"
       ],
       "dependencies": [],
       "verification": [
@@ -52,7 +52,7 @@
       "evidence": [
         {
           "date": "2026-05-10",
-          "command": "rg -n \"FunctionApproveResponseSchema|FunctionExecutionSchema|ConditionalBuySolParamsSchema|function_result|function_approve\" FRONT/src/lib/api/schemas.ts FRONT/src/types/api.ts FRONT/src/lib/api/client.ts BACK/services/chat.ts",
+          "command": "rg -n \"FunctionApproveResponseSchema|FunctionExecutionSchema|ConditionalBuySolParamsSchema|function_result|function_approve\" front/src/lib/api/schemas.ts front/src/types/api.ts front/src/lib/api/client.ts back/services/chat.ts",
           "result": "Alineados contratos de propuesta/approve: función approve solo con session_id, esquema de response de approve con transaction (unsigned_tx_base64) y proposal_state.awaiting_signature, y función function_result con tx_signature/status."
         }
       ]
@@ -63,8 +63,8 @@
       "description": "Store proposal type, state, expiry, expected wallet, network, recent blockhash, and last valid block height in the existing session pendingProposal model keyed by session_id.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/services/chat.ts",
-        "BACK/services/chatSessionStore.ts"
+        "back/services/chat.ts",
+        "back/services/chatSessionStore.ts"
       ],
       "dependencies": [
         "T1"
@@ -77,7 +77,7 @@
       "evidence": [
         {
           "date": "2026-05-10",
-          "command": "rg -n \"proposalType|proposal_state|expectedUserAddress|proposalType|recentBlockhash|lastValidBlockHeight|network\" BACK/services/chatSessionStore.ts BACK/services/chat.ts",
+          "command": "rg -n \"proposalType|proposal_state|expectedUserAddress|proposalType|recentBlockhash|lastValidBlockHeight|network\" back/services/chatSessionStore.ts back/services/chat.ts",
           "result": "Session store extendido con campos de metadata de pendingProposal y handlers de chat leyendo/guardando expiry, estado y metadata por sesión."
         }
       ]
@@ -88,8 +88,8 @@
       "description": "Ensure transfer approval only prepares and returns unsigned_tx_base64 with proposal_state.awaiting_signature; it must not report execution success or expect a later signed_tx_base64 submit step.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/services/chat.ts",
-        "BACK/services/tools/transfer.ts"
+        "back/services/chat.ts",
+        "back/services/tools/transfer.ts"
       ],
       "dependencies": [
         "T1",
@@ -104,7 +104,7 @@
       "evidence": [
         {
           "date": "2026-05-10",
-          "command": "rg -n \"prepareUnsigned|unsigned_tx_base64|proposal_state|awaiting_signature|signed_tx_base64|execute_tx_signature\" BACK/services/chat.ts BACK/services/tools/transfer.ts",
+          "command": "rg -n \"prepareUnsigned|unsigned_tx_base64|proposal_state|awaiting_signature|signed_tx_base64|execute_tx_signature\" back/services/chat.ts back/services/tools/transfer.ts",
           "result": "function_approve de transfer devuelve transacción preparada sin ejecutar y sin requerir signed_tx_base64; no hay ruta backend que reciba signed_tx_base64 para transfer."
         }
       ]
@@ -115,8 +115,8 @@
       "description": "Extend the Phantom wallet boundary to deserialize unsigned transaction payloads, call Phantom signAndSendTransaction or equivalent, and return tx_signature with clear local error mapping.",
       "filesToCreate": [],
       "filesToModify": [
-        "FRONT/src/hooks/useWallet.ts",
-        "FRONT/src/types/phantom.ts"
+        "front/src/hooks/useWallet.ts",
+        "front/src/types/phantom.ts"
       ],
       "dependencies": [
         "T1"
@@ -129,7 +129,7 @@
       "evidence": [
         {
           "date": "2026-05-10",
-          "command": "rg -n \"signAndSendPreparedTransaction|signAndSendTransaction|PhantomExecutionResult|PhantomExecutionErrorCode|wallet_mismatch|user_rejected\" FRONT/src/hooks/useWallet.ts FRONT/src/types/phantom.ts",
+          "command": "rg -n \"signAndSendPreparedTransaction|signAndSendTransaction|PhantomExecutionResult|PhantomExecutionErrorCode|wallet_mismatch|user_rejected\" front/src/hooks/useWallet.ts front/src/types/phantom.ts",
           "result": "Añadido helper de firma-envío con deserialización de VersionedTransaction, ejecución en Phantom y mapeo de errores (mismatch, reject, desconectado, expirado, send_failed)."
         }
       ]
@@ -140,10 +140,10 @@
       "description": "Refactor useAgentMessage/chat store so approve moves to awaiting_signature, Phantom result moves to submitted/confirming/confirmed, and initial approve never marks success.",
       "filesToCreate": [],
       "filesToModify": [
-        "FRONT/src/hooks/useAgentMessage.ts",
-        "FRONT/src/stores/chatStore.ts",
-        "FRONT/src/components/chat/proposals/SendProposalCard.tsx",
-        "FRONT/src/components/chat/proposals/SwapProposalCard.tsx"
+        "front/src/hooks/useAgentMessage.ts",
+        "front/src/stores/chatStore.ts",
+        "front/src/components/chat/proposals/SendProposalCard.tsx",
+        "front/src/components/chat/proposals/SwapProposalCard.tsx"
       ],
       "dependencies": [
         "T3",
@@ -158,7 +158,7 @@
       "evidence": [
         {
           "date": "2026-05-10",
-          "command": "rg -n \"preparing_transaction|awaiting_signature|submitted|confirming|cancelled|completeProposal|setProposalUiState\" FRONT/src/hooks/useAgentMessage.ts FRONT/src/stores/chatStore.ts FRONT/src/components/chat/proposals/SendProposalCard.tsx FRONT/src/components/chat/proposals/SwapProposalCard.tsx",
+          "command": "rg -n \"preparing_transaction|awaiting_signature|submitted|confirming|cancelled|completeProposal|setProposalUiState\" front/src/hooks/useAgentMessage.ts front/src/stores/chatStore.ts front/src/components/chat/proposals/SendProposalCard.tsx front/src/components/chat/proposals/SwapProposalCard.tsx",
           "result": "Flujo de estado en frontend actualizado para pasar por preparación/firma y completar solo después de tx_signature; cancelación/rechazo mapeada sin éxito previo."
         }
       ]
@@ -169,9 +169,9 @@
       "description": "If chat continuity requires backend awareness, add an optional function_result request accepting tx_signature/status for the active session proposal without requiring signed transaction bytes.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/services/chat.ts",
-        "FRONT/src/lib/api/client.ts",
-        "FRONT/src/lib/api/schemas.ts"
+        "back/services/chat.ts",
+        "front/src/lib/api/client.ts",
+        "front/src/lib/api/schemas.ts"
       ],
       "dependencies": [
         "T1",
@@ -186,7 +186,7 @@
       "evidence": [
         {
           "date": "2026-05-10",
-          "command": "rg -n \"type: 'function_result'|postFunctionResult|function_result\" BACK/services/chat.ts FRONT/src/lib/api/schemas.ts FRONT/src/lib/api/client.ts FRONT/src/hooks/useAgentMessage.ts",
+          "command": "rg -n \"type: 'function_result'|postFunctionResult|function_result\" back/services/chat.ts front/src/lib/api/schemas.ts front/src/lib/api/client.ts front/src/hooks/useAgentMessage.ts",
           "result": "Implementado request JSON function_result opcional (session_id, tx_signature, status) sin ejecutar transacciones en backend; callback opcional para continuidad del chat."
         }
       ]
@@ -197,9 +197,9 @@
       "description": "Keep conditional_buy_sol self-custodial: frontend executes with Phantom; backend receives only tx_signature/proof if needed to verify guard-program semantics and update chat state.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/services/chat.ts",
-        "BACK/services/onchainApproval.ts",
-        "FRONT/src/hooks/useAgentMessage.ts"
+        "back/services/chat.ts",
+        "back/services/onchainApproval.ts",
+        "front/src/hooks/useAgentMessage.ts"
       ],
       "dependencies": [
         "T5",
@@ -213,7 +213,7 @@
       "evidence": [
         {
           "date": "2026-05-10",
-          "command": "rg -n \"conditional_buy_sol|verifyOracleExecutionTx|expected_signer|expected_network\" BACK/services/chat.ts BACK/services/onchainApproval.ts FRONT/src/hooks/useAgentMessage.ts FRONT/src/components/chat/proposals/ConditionalBuyProposalCard.tsx FRONT/src/components/chat/proposals/ProposalCard.tsx",
+          "command": "rg -n \"conditional_buy_sol|verifyOracleExecutionTx|expected_signer|expected_network\" back/services/chat.ts back/services/onchainApproval.ts front/src/hooks/useAgentMessage.ts front/src/components/chat/proposals/ConditionalBuyProposalCard.tsx front/src/components/chat/proposals/ProposalCard.tsx",
           "result": "conditional_buy_sol se prepara en frontend con ejecución Phantom; backend acepta function_result opcional con tx_signature y solo verifica on-chain cuando se reporta status confirmed."
         }
       ]
@@ -224,10 +224,10 @@
       "description": "Cover schema alignment, approve response semantics, absence of signed_tx_base64 backend submission, Phantom rejection, successful tx_signature flow, and optional function_result behavior.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/services/__tests__/chat.test.ts",
-        "FRONT/src/lib/api/__tests__/schemas.test.ts",
-        "FRONT/src/hooks/useAgentMessage.ts",
-        "FRONT/src/stores/chatStore.ts"
+        "back/services/__tests__/chat.test.ts",
+        "front/src/lib/api/__tests__/schemas.test.ts",
+        "front/src/hooks/useAgentMessage.ts",
+        "front/src/stores/chatStore.ts"
       ],
       "dependencies": [
         "T6",
@@ -242,7 +242,7 @@
       "evidence": [
         {
           "date": "2026-05-10",
-          "command": "npm test -- BACK/services/__tests__/chat.test.ts FRONT/src/lib/api/__tests__/schemas.test.ts",
+          "command": "npm test -- back/services/__tests__/chat.test.ts front/src/lib/api/__tests__/schemas.test.ts",
           "result": "16 tests passed after installing dependencies in the worktree."
         },
         {
@@ -268,7 +268,7 @@
     "Functional spec states backend does not receive signed_tx_base64 for transfer.",
     "Technical spec uses Phantom signAndSendTransaction or equivalent frontend execution.",
     "Implementation was reviewed after tester_reviewer findings: function_result is non-blocking, Phantom cancellation calls reject cleanup, transfer build failure leaves no blocking preparing state, conditional approve no longer emits confirmed execution, and proposal UI state is synchronized.",
-    "npm test -- BACK/services/__tests__/chat.test.ts FRONT/src/lib/api/__tests__/schemas.test.ts passed.",
+    "npm test -- back/services/__tests__/chat.test.ts front/src/lib/api/__tests__/schemas.test.ts passed.",
     "npm run lint passed with warnings only.",
     "npm run build passed.",
     "git diff --check passed."

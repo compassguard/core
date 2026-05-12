@@ -17,12 +17,12 @@ Diseñar un guardrail de validación de wallet destino para transferencias en So
 
 Estado observado en el worktree:
 
-- `BACK/services/chat.ts` implementa el flujo de propuesta/aprobación con session store manual y Azure Responses API.
-- `BACK/services/tools/transfer.ts` solo valida wallet origen, formato de `recipient` y monto.
-- `BACK/services/onchainApproval.ts` ya verifica evidencia básica de invocación al programa `AgentActionGuard`.
+- `back/services/chat.ts` implementa el flujo de propuesta/aprobación con session store manual y Azure Responses API.
+- `back/services/tools/transfer.ts` solo valida wallet origen, formato de `recipient` y monto.
+- `back/services/onchainApproval.ts` ya verifica evidencia básica de invocación al programa `AgentActionGuard`.
 - El runtime actual usa RPC de Solana, listas internas, sanciones/env y allowlist-denylist, pero no integra Solscan todavía.
 - El estado actual de chequeos combina validaciones reales, checks condicionados por env y proveedores todavía mock/status-only.
-- `BACK/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs` ya soporta `UserPolicy`, `ActionApproval` y control on-chain de parámetros hash-bound.
+- `back/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs` ya soporta `UserPolicy`, `ActionApproval` y control on-chain de parámetros hash-bound.
 - `docs/transaction-logic/` define que las transacciones de usuario se firman y envían desde frontend con Phantom injected. El backend prepara unsigned transactions y no recibe `signed_tx_base64`.
 
 La spec propone una arquitectura objetivo compatible con el backend actual y con la decisión Phantom-first de `transaction-logic`: wallet safety corre antes de `pendingProposal`; al aprobar una transferencia simple, el backend devuelve `unsigned_tx_base64`; el frontend firma y envía con Phantom. Como addendum, la spec también define una opinión textual LLM opcional y estrictamente secundaria, generada después de la decisión determinística y solo desde un payload sanitizado de checks.
@@ -282,7 +282,7 @@ Funciones:
 ### `generate_wallet_safety_opinion`
 
 - Corre solo después de `compute_wallet_safety_decision` y antes de emitir la propuesta final al usuario.
-- Vive en backend, en el flujo de creación de proposal de `BACK/services/chat.ts`.
+- Vive en backend, en el flujo de creación de proposal de `back/services/chat.ts`.
 - Solo se ejecuta para decisiones ya determinadas; no recalcula riesgo.
 - Si falla, el flujo sigue sin `agentOpinion`.
 
@@ -712,15 +712,15 @@ Si se quiere enforcement on-chain de estas señales, se necesita:
 
 ## 13. Cambios de implementación sugeridos
 
-- Extender `BACK/services/tools/transfer.ts` para desacoplar preparación de transferencia de evaluación de riesgo.
-- Incorporar un servicio nuevo tipo `BACK/services/walletSafetyValidation.ts`.
+- Extender `back/services/tools/transfer.ts` para desacoplar preparación de transferencia de evaluación de riesgo.
+- Incorporar un servicio nuevo tipo `back/services/walletSafetyValidation.ts`.
 - Introducir tipos compartidos para `WalletSafetyDecisionResult`.
-- Evolucionar `BACK/services/chat.ts` hacia nodos explícitos o adaptador tipo LangGraph.
+- Evolucionar `back/services/chat.ts` hacia nodos explícitos o adaptador tipo LangGraph.
 - Extender el contrato de proposal definido en `docs/transaction-logic/technical-spec.md` para incluir `risk.walletSafety`.
 - Mantener el flujo `function_approve -> unsigned_tx_base64 -> Phantom signAndSendTransaction` para transferencias simples.
-- Extender verificación en `BACK/services/onchainApproval.ts` para leer/contrastar approval PDA solo en acciones guarded, no como dependencia de transfer simple.
-- Agregar integración Solscan en `BACK/services/walletSafetyValidation.ts` con provider status explícito, reason codes estables y degradación controlada.
-- Insertar la generación de `agentOpinion` en `BACK/services/chat.ts` después de `evaluateWalletSafety` y antes de emitir la proposal al stream.
+- Extender verificación en `back/services/onchainApproval.ts` para leer/contrastar approval PDA solo en acciones guarded, no como dependencia de transfer simple.
+- Agregar integración Solscan en `back/services/walletSafetyValidation.ts` con provider status explícito, reason codes estables y degradación controlada.
+- Insertar la generación de `agentOpinion` en `back/services/chat.ts` después de `evaluateWalletSafety` y antes de emitir la proposal al stream.
 - Mantener la UI como consumidora pasiva de `agentOpinion`, sin usarla para recalcular decisión.
 
 ## 14. Riesgos técnicos principales

@@ -16,28 +16,28 @@
       "id": "T1",
       "title": "Alinear contrato de balances",
       "filesToModify": [
-        "FRONT/src/types/api.ts"
+        "front/src/types/api.ts"
       ],
       "dependencies": [],
       "status": "completed",
       "evidence": [
-        "Actualicé GetBalancesResponse en FRONT/src/types/api.ts para permitir change_24h_pct opcional.",
-        "Actualicé schema en FRONT/src/lib/api/schemas.ts para exigir updated_at ISO con z.string().datetime().",
-        "Ajusté tests en FRONT/src/lib/api/__tests__/schemas.test.ts para change_24h_pct opcional y rechazo de updated_at no ISO."
+        "Actualicé GetBalancesResponse en front/src/types/api.ts para permitir change_24h_pct opcional.",
+        "Actualicé schema en front/src/lib/api/schemas.ts para exigir updated_at ISO con z.string().datetime().",
+        "Ajusté tests en front/src/lib/api/__tests__/schemas.test.ts para change_24h_pct opcional y rechazo de updated_at no ISO."
       ]
     },
     {
       "id": "T2",
       "title": "Derivar SOL y USDC por mint",
       "filesToModify": [
-        "FRONT/src/hooks/useWallet.ts"
+        "front/src/hooks/useWallet.ts"
       ],
       "dependencies": [
         "T1"
       ],
       "status": "completed",
       "evidence": [
-        "Añadí constantes canónicas SOL/USDC y helper getHighlightBalances en FRONT/src/lib/walletBalances.ts.",
+        "Añadí constantes canónicas SOL/USDC y helper getHighlightBalances en front/src/lib/walletBalances.ts.",
         "useWallet ahora expone highlightBalances y refreshBalances desde la fuente única de balances."
       ]
     },
@@ -45,9 +45,9 @@
       "id": "T3",
       "title": "Actualizar superficies de balance",
       "filesToModify": [
-        "FRONT/src/components/layout/TopBar.tsx",
-        "FRONT/src/components/wallet/BalanceCard.tsx",
-        "FRONT/src/components/wallet/AssetList.tsx"
+        "front/src/components/layout/TopBar.tsx",
+        "front/src/components/wallet/BalanceCard.tsx",
+        "front/src/components/wallet/AssetList.tsx"
       ],
       "dependencies": [
         "T2"
@@ -96,11 +96,11 @@
       "id": "T6",
       "title": "Derivar Allocation chart desde balances reales",
       "filesToModify": [
-        "FRONT/src/lib/walletBalances.ts",
-        "FRONT/src/components/layout/RightPanel.tsx",
-        "FRONT/src/components/wallet/AssetAllocationDonut.tsx",
-        "FRONT/src/hooks/useWallet.ts",
-        "FRONT/src/lib/__tests__/walletBalances.test.ts"
+        "front/src/lib/walletBalances.ts",
+        "front/src/components/layout/RightPanel.tsx",
+        "front/src/components/wallet/AssetAllocationDonut.tsx",
+        "front/src/hooks/useWallet.ts",
+        "front/src/lib/__tests__/walletBalances.test.ts"
       ],
       "dependencies": [
         "T5"
@@ -110,7 +110,7 @@
         "La chart de allocation dejó de depender de /api/wallet/allocation y ahora se calcula desde `useWallet.balances`.",
         "Se agregó cálculo de porcentaje estable desde saldo real (prioriza `usd_value` y fallback a `ui_amount`) para evitar tokens inventados y mantener consistencia con data flow real.",
         "Se mejoró estado loading/vacío del gráfico para no mostrar `Sin assets` o inventar USDC/JUP.",
-        "Se agregó cobertura en `FRONT/src/lib/__tests__/walletBalances.test.ts` para el fallback con SOL y balances sin valor."
+        "Se agregó cobertura en `front/src/lib/__tests__/walletBalances.test.ts` para el fallback con SOL y balances sin valor."
       ]
     }
   ]

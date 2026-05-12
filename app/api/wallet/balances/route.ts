@@ -1,4 +1,4 @@
-import { fetchWalletHoldings } from '../../../../BACK/services/walletHoldings';
+import { fetchWalletHoldings } from '../../../../back/services/walletHoldings';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

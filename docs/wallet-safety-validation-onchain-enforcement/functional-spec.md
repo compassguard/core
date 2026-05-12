@@ -45,7 +45,7 @@ Estado actual según handoff:
 - El frontend firma/envía con Phantom.
 - La transferencia simple actual no invoca un programa Solana propio.
 - Existe `AgentActionGuard` con `UserPolicy` y `ActionApproval`.
-- La verificación actual en `BACK/services/onchainApproval.ts` es débil porque mira logs/invocación pero no lee PDAs.
+- La verificación actual en `back/services/onchainApproval.ts` es débil porque mira logs/invocación pero no lee PDAs.
 
 ## Problema a Resolver
 

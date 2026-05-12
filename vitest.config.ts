@@ -7,13 +7,13 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   test: {
     environment: 'jsdom',
-    include: ['FRONT/src/**/*.{test,spec}.?(c|m)[jt]s?(x)'],
+    include: ['front/src/**/*.{test,spec}.?(c|m)[jt]s?(x)'],
   },
   resolve: {
     alias: {
-      '@': path.resolve(dirname, './FRONT/src'),
-      '@front': path.resolve(dirname, './FRONT/src'),
-      '@back': path.resolve(dirname, './BACK'),
+      '@': path.resolve(dirname, './front/src'),
+      '@front': path.resolve(dirname, './front/src'),
+      '@back': path.resolve(dirname, './back'),
       '@shared': path.resolve(dirname, './shared'),
     },
   },

@@ -32,7 +32,7 @@ Por tanto, el contrato actual de transacciones queda incompleto. El frontend ya 
 
 ```txt
 Usuario escribe intent
-  → Frontend POST /api/agent/message
+  → Frontend POST /api/chat
   → Backend/agent responde function_call si requiere aprobación
   → Usuario confirma
   → Frontend POST { type: "function_approve" }
@@ -70,9 +70,9 @@ Phantom/usuario es el firmante.
 La documentación de frontend actual define un protocolo de function-calling en:
 
 ```txt
-FRONT/docs/frontend-spec.md
-FRONT/docs/task-specs/T4-agent-swap-flow.md
-FRONT/docs/task-specs/T6-api-contracts-zod.md
+front/docs/frontend-spec.md
+front/docs/task-specs/T4-agent-swap-flow.md
+front/docs/task-specs/T6-api-contracts-zod.md
 ```
 
 ### 3.1 Backend → frontend actual
@@ -169,7 +169,7 @@ D. Submit signed transaction + resultado
 Endpoint existente:
 
 ```txt
-POST /api/agent/message
+POST /api/chat
 ```
 
 ### 5.1 Request: user_message
@@ -423,7 +423,7 @@ El frontend **no debe** alterar instrucciones, accounts, amounts, slippage ni fe
 
 ### 7.1 Tipos de Phantom necesarios
 
-`FRONT/src/types/phantom.ts` ya tiene:
+`front/src/types/phantom.ts` ya tiene:
 
 ```ts
 signTransaction<TTransaction>(transaction: TTransaction): Promise<TTransaction>;
@@ -613,7 +613,7 @@ El frontend puede poller este endpoint hasta `confirmed/finalized/failed` y lueg
 
 ## 10. Cambios en tipos frontend
 
-### 10.1 `FRONT/src/types/api.ts`
+### 10.1 `front/src/types/api.ts`
 
 Agregar o modificar:
 
@@ -712,7 +712,7 @@ export type SubmitSignedTransactionResponse = {
 };
 ```
 
-### 10.2 `FRONT/src/lib/api/schemas.ts`
+### 10.2 `front/src/lib/api/schemas.ts`
 
 Agregar schemas Zod equivalentes para:
 
@@ -731,7 +731,7 @@ execution.prepare_endpoint
 execution.expires_at
 ```
 
-### 10.3 `FRONT/src/lib/api/client.ts`
+### 10.3 `front/src/lib/api/client.ts`
 
 Agregar métodos:
 
@@ -796,7 +796,7 @@ submit failed → failed con detalle de RPC/simulación
 
 ## 12. Cambios backend
 
-### 12.1 `app/api/agent/message/route.ts`
+### 12.1 `app/api/chat/route.ts`
 
 Cambiar semántica:
 
@@ -807,7 +807,7 @@ Cambiar semántica:
 Recomendación:
 
 ```txt
-/api/agent/message       → chat/propuestas/rechazo
+/api/chat       → chat/propuestas/rechazo
 /api/transactions/prepare → construir unsigned tx
 /api/transactions/submit  → recibir signed tx y enviar
 /api/transactions/status  → confirmar
@@ -818,10 +818,10 @@ Recomendación:
 Crear una capa tipo:
 
 ```txt
-BACK/services/transactions/prepareTransaction.ts
-BACK/services/transactions/submitSignedTransaction.ts
-BACK/services/transactions/verifyPreparedTransaction.ts
-BACK/services/transactions/status.ts
+back/services/transactions/prepareTransaction.ts
+back/services/transactions/submitSignedTransaction.ts
+back/services/transactions/verifyPreparedTransaction.ts
+back/services/transactions/status.ts
 ```
 
 Responsabilidades mínimas:
@@ -887,28 +887,28 @@ POST /api/auth/verify
 
 | Archivo | Cambio |
 |---|---|
-| `FRONT/src/types/api.ts` | Agregar `proposal_id`, `execution`, contratos prepare/submit/status. |
-| `FRONT/src/lib/api/schemas.ts` | Validación Zod para nuevos contratos. |
-| `FRONT/src/lib/api/client.ts` | Métodos `prepareTransaction`, `submitSignedTransaction`, `getTransactionStatus`. |
-| `FRONT/src/hooks/useAgentMessage.ts` | `approveProposal()` ya no solo manda `function_approve`; debe orquestar prepare → sign → submit. |
-| `FRONT/src/stores/chatStore.ts` | Guardar `proposal_id`, `prepared_transaction_id`, estados de firma. |
-| `FRONT/src/components/chat/proposals/*` | Mostrar estados `preparing`, `awaiting_signature`, `submitting`, `confirmed`, `failed`. |
-| `FRONT/src/types/phantom.ts` | Confirmar soporte de `signTransaction`; opcional `signAndSendTransaction`. |
+| `front/src/types/api.ts` | Agregar `proposal_id`, `execution`, contratos prepare/submit/status. |
+| `front/src/lib/api/schemas.ts` | Validación Zod para nuevos contratos. |
+| `front/src/lib/api/client.ts` | Métodos `prepareTransaction`, `submitSignedTransaction`, `getTransactionStatus`. |
+| `front/src/hooks/useAgentMessage.ts` | `approveProposal()` ya no solo manda `function_approve`; debe orquestar prepare → sign → submit. |
+| `front/src/stores/chatStore.ts` | Guardar `proposal_id`, `prepared_transaction_id`, estados de firma. |
+| `front/src/components/chat/proposals/*` | Mostrar estados `preparing`, `awaiting_signature`, `submitting`, `confirmed`, `failed`. |
+| `front/src/types/phantom.ts` | Confirmar soporte de `signTransaction`; opcional `signAndSendTransaction`. |
 
 ### Backend
 
 | Archivo/ruta | Cambio |
 |---|---|
-| `app/api/agent/message/route.ts` | Dejar de simular ejecución directa en `function_approve` para tx reales. |
+| `app/api/chat/route.ts` | Dejar de simular ejecución directa en `function_approve` para tx reales. |
 | `app/api/transactions/prepare/route.ts` | Nuevo endpoint. |
 | `app/api/transactions/submit/route.ts` | Nuevo endpoint. |
 | `app/api/transactions/status/route.ts` | Nuevo endpoint opcional. |
-| `BACK/services/*` | Nuevo servicio de construcción/verificación/submit de tx. |
+| `back/services/*` | Nuevo servicio de construcción/verificación/submit de tx. |
 | Persistencia/cache | Guardar proposal/prepared tx/hash/TTL/status. |
 
 ### Docs a actualizar luego
 
-Los docs actuales de `FRONT/docs` todavía dicen que el frontend nunca firma. Para Phantom externa deberían cambiar a:
+Los docs actuales de `front/docs` todavía dicen que el frontend nunca firma. Para Phantom externa deberían cambiar a:
 
 ```txt
 El frontend no construye, simula ni decide transacciones.

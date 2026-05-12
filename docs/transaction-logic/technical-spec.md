@@ -3,7 +3,7 @@
 Version: 1
 Status: Planned
 Date: 2026-05-09
-Source: user clarification + current FRONT/BACK contract review
+Source: user clarification + current front/back contract review
 
 ## Arquitectura
 
@@ -125,7 +125,7 @@ No debe devolver `status: "success"` de ejecucion en este paso. Solo indica que 
 
 ## Frontend wallet boundary
 
-`FRONT/src/hooks/useWallet.ts` o un helper cercano debe exponer capacidad de ejecucion:
+`front/src/hooks/useWallet.ts` o un helper cercano debe exponer capacidad de ejecucion:
 
 ```ts
 type PhantomExecutionResult = {

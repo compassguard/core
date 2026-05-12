@@ -9,7 +9,7 @@ Feature: `devnet-conditional-escrow-buy-sol`
 
 Recomendación principal: crear un programa Anchor nuevo para escrow y settlement real, por ejemplo:
 
-- `BACK/solana/conditional-escrow-buy/`
+- `back/solana/conditional-escrow-buy/`
 
 Tradeoff documentado:
 
@@ -27,18 +27,18 @@ Motivo: la feature ya no es solo `executed=true`; ahora tiene custodia SPL, movi
 
 Módulos probables a crear o modificar:
 
-- `BACK/solana/conditional-escrow-buy/` o extensión equivalente dentro del workspace Anchor
-- `BACK/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs` solo si se decide compartir utilidades oracle o mantener compatibilidad
-- `BACK/services/tools/conditionalBuySol.ts`
-- `BACK/services/chat.ts`
-- `BACK/services/onchainApproval.ts` o nuevo servicio on-chain específico de órdenes
+- `back/solana/conditional-escrow-buy/` o extensión equivalente dentro del workspace Anchor
+- `back/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs` solo si se decide compartir utilidades oracle o mantener compatibilidad
+- `back/services/tools/conditionalBuySol.ts`
+- `back/services/chat.ts`
+- `back/services/onchainApproval.ts` o nuevo servicio on-chain específico de órdenes
 - nuevas rutas API bajo `app/api/conditional-orders/...`
-- `FRONT/src/types/api.ts`
-- `FRONT/src/lib/api/schemas.ts`
-- `FRONT/src/lib/api/client.ts`
-- `FRONT/src/hooks/useWallet.ts`
-- `FRONT/src/hooks/useAgentMessage.ts`
-- `FRONT/src/components/chat/proposals/ConditionalBuyProposalCard.tsx`
+- `front/src/types/api.ts`
+- `front/src/lib/api/schemas.ts`
+- `front/src/lib/api/client.ts`
+- `front/src/hooks/useWallet.ts`
+- `front/src/hooks/useAgentMessage.ts`
+- `front/src/components/chat/proposals/ConditionalBuyProposalCard.tsx`
 - componentes nuevos de detalle/estado de orden si hace falta
 
 ## On-Chain Accounts

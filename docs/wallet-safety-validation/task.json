@@ -4,7 +4,7 @@
   "goal": "Implementar y extender el guardrail de validación de seguridad para la public key destino en transferencias de Solana, con decisiones ALLOW/WARN/REJECT, separación explícita entre chequeos locales, on-chain y off-chain, integración Phantom-first, validación indexada por Solscan para el recipient y una opinión textual LLM opcional basada en los chequeos ya ejecutados.",
   "context": {
     "source": "explorer_handoff",
-    "summary": "El backend actual prepara transferencias con validación mínima en BACK/services/tools/transfer.ts y gestiona aprobación en BACK/services/chat.ts mediante session store manual y SSE. docs/transaction-logic/ define que transferencias de usuario siguen un flujo Phantom-first: el backend emite proposal y devuelve unsigned_tx_base64 al aprobar; el frontend firma/envía con Phantom injected y nunca devuelve signed_tx_base64 al backend. Existe un programa Anchor AgentActionGuard con UserPolicy y ActionApproval para enforcement determinístico, pero no debe ser requisito de transfer simple salvo acciones guarded. El addendum vigente ya cubre Solscan como señal indexed/off-chain configurable. El nuevo pedido agrega inventario explícito de checks reales vs mock/status-only y una opinión textual LLM opcional, aditiva y segura, generada en backend a partir de un payload sanitizado de resultados."
+    "summary": "El backend actual prepara transferencias con validación mínima en back/services/tools/transfer.ts y gestiona aprobación en back/services/chat.ts mediante session store manual y SSE. docs/transaction-logic/ define que transferencias de usuario siguen un flujo Phantom-first: el backend emite proposal y devuelve unsigned_tx_base64 al aprobar; el frontend firma/envía con Phantom injected y nunca devuelve signed_tx_base64 al backend. Existe un programa Anchor AgentActionGuard con UserPolicy y ActionApproval para enforcement determinístico, pero no debe ser requisito de transfer simple salvo acciones guarded. El addendum vigente ya cubre Solscan como señal indexed/off-chain configurable. El nuevo pedido agrega inventario explícito de checks reales vs mock/status-only y una opinión textual LLM opcional, aditiva y segura, generada en backend a partir de un payload sanitizado de resultados."
   },
   "acceptanceCriteria": [
     "Existe una especificación funcional en español para el feature con alcance, objetivos, estados ALLOW/WARN/REJECT, criterios de aceptación y casos de uso.",
@@ -21,7 +21,7 @@
     "Si Solscan falla por timeout, 429 o 5xx, la salida registra provider=solscan con status=error, expone PROVIDER_PARTIAL_FAILURE y la decisión queda al menos en WARN salvo REJECT por otra causal.",
     "La spec de docs/wallet-safety-validation-onchain-enforcement/ sigue siendo el plan vigente para cualquier parte de programa Solana; Solscan no se consulta directamente desde el programa.",
     "La documentación inventaria con claridad qué chequeos están implementados como reales, cuáles dependen de env y cuáles siguen mock/status-only.",
-    "La implementación futura genera agentOpinion solo para proposals ALLOW/WARN, después de evaluateWalletSafety y antes de emitir la proposal en BACK/services/chat.ts.",
+    "La implementación futura genera agentOpinion solo para proposals ALLOW/WARN, después de evaluateWalletSafety y antes de emitir la proposal en back/services/chat.ts.",
     "La opinión LLM es aditiva: no puede modificar decision, score, risk level ni requiresExtraConfirmation.",
     "La opinión LLM se construye solo desde un payload sanitizado de checks/resultados y nunca incluye rawUserMessage.",
     "La salida del LLM usa JSON estricto con summary breve, basedOn.codes y basedOn.sources validados contra los resultados determinísticos.",
@@ -58,7 +58,7 @@
     "Solscan se incorpora como proveedor indexado secundario para confirmar presencia/historial básico del recipient y registrar provider status explícito.",
     "La ausencia de indexación en Solscan o una falla operativa de Solscan no puede promover silenciosamente a ALLOW.",
     "La spec docs/wallet-safety-validation-onchain-enforcement/technical-spec.md sigue siendo la referencia para la futura parte de programa; Solscan solo puede entrar on-chain mediante attestation/hash-bound.",
-    "La opinión textual del agente se genera en backend después de la decisión determinística y antes de emitir la proposal, dentro del flujo de BACK/services/chat.ts.",
+    "La opinión textual del agente se genera en backend después de la decisión determinística y antes de emitir la proposal, dentro del flujo de back/services/chat.ts.",
     "La opinión LLM usa exclusivamente un payload sanitizado de checks, códigos y estados de proveedor; rawUserMessage queda fuera del prompt.",
     "La opinión LLM se valida con JSON estricto y se descarta por completo si intenta mutar la decisión o si no cumple el contrato.",
     "El frontend debe presentar la opinión como texto secundario y opcional, nunca como reemplazo del resultado del guardrail."
@@ -70,9 +70,9 @@
       "description": "Introducir tipos y contratos compartidos para intent de transferencia, resultados de validación local, hechos on-chain, señales off-chain, decisión final ALLOW/WARN/REJECT y extensión compatible de ProposalEnvelope.risk.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/services/tools/transfer.ts",
-        "BACK/services/chat.ts",
-        "BACK/services/onchainApproval.ts"
+        "back/services/tools/transfer.ts",
+        "back/services/chat.ts",
+        "back/services/onchainApproval.ts"
       ],
       "dependencies": [],
       "verification": [
@@ -82,8 +82,8 @@
       ],
       "status": "completed",
       "evidence": [
-        "Updated transfer risk contracts and risk typing integration in BACK/services/tools/transfer.ts and BACK/services/chat.ts.",
-        "Extended wallet safety types in BACK/services/walletSafetyValidation.ts and onchain approval types."
+        "Updated transfer risk contracts and risk typing integration in back/services/tools/transfer.ts and back/services/chat.ts.",
+        "Extended wallet safety types in back/services/walletSafetyValidation.ts and onchain approval types."
       ]
     },
     {
@@ -91,10 +91,10 @@
       "title": "Implementar validación local de wallet destino",
       "description": "Crear la capa local que valide PublicKey, shape de parámetros y canonicalización del recipient sin depender de red; self-transfer queda permitido y se evalúa con el resto de guardrails.",
       "filesToCreate": [
-        "BACK/services/walletSafetyValidation.ts"
+        "back/services/walletSafetyValidation.ts"
       ],
       "filesToModify": [
-        "BACK/services/tools/transfer.ts"
+        "back/services/tools/transfer.ts"
       ],
       "dependencies": [
         "T1"
@@ -106,8 +106,8 @@
       ],
       "status": "completed",
       "evidence": [
-        "Implemented canonical/local token validation and wallet checks in BACK/services/walletSafetyValidation.ts.",
-        "Kept prepareTransferResult local checks in BACK/services/tools/transfer.ts."
+        "Implemented canonical/local token validation and wallet checks in back/services/walletSafetyValidation.ts.",
+        "Kept prepareTransferResult local checks in back/services/tools/transfer.ts."
       ]
     },
     {
@@ -116,7 +116,7 @@
       "description": "Consultar getAccountInfo y clasificar la cuenta destino para detectar executable=true, owner y categoría básica de cuenta.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/services/walletSafetyValidation.ts"
+        "back/services/walletSafetyValidation.ts"
       ],
       "dependencies": [
         "T2"
@@ -128,7 +128,7 @@
       ],
       "status": "completed",
       "evidence": [
-        "Added on-chain account facts via getAccountInfo and caching in BACK/services/walletSafetyValidation.ts.",
+        "Added on-chain account facts via getAccountInfo and caching in back/services/walletSafetyValidation.ts.",
         "Marked executable/system/token/pda-like account categories and executable hard-reject logic."
       ]
     },
@@ -138,7 +138,7 @@
       "description": "Agregar lookup de blocklist/allowlist/denylist y, cuando exista proveedor aplicable, señales indexadas o reputacionales con estado de fuente y política fail-open/fail-closed.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/services/walletSafetyValidation.ts"
+        "back/services/walletSafetyValidation.ts"
       ],
       "dependencies": [
         "T2"
@@ -150,7 +150,7 @@
       ],
       "status": "completed",
       "evidence": [
-        "Implemented internal/allow/deny lists and sanctions mock provider statuses in BACK/services/walletSafetyValidation.ts.",
+        "Implemented internal/allow/deny lists and sanctions mock provider statuses in back/services/walletSafetyValidation.ts.",
         "Failure policy defaults preserve WARN/FAIL-OPEN behavior and keep hard blocklists fail-closed."
       ]
     },
@@ -160,7 +160,7 @@
       "description": "Fusionar resultados locales, on-chain, off-chain y de política en una decisión única con razones auditables y flags de confirmación reforzada.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/services/walletSafetyValidation.ts"
+        "back/services/walletSafetyValidation.ts"
       ],
       "dependencies": [
         "T3",
@@ -173,7 +173,7 @@
       ],
       "status": "completed",
       "evidence": [
-        "Built decision engine in BACK/services/walletSafetyValidation.ts producing ALLOW/WARN/REJECT + hardReject + requiresExtraConfirmation.",
+        "Built decision engine in back/services/walletSafetyValidation.ts producing ALLOW/WARN/REJECT + hardReject + requiresExtraConfirmation.",
         "Added helper utilities for walletSafety hash/expiry and policy score mapping."
       ]
     },
@@ -183,9 +183,9 @@
       "description": "Insertar los nodos lógicos del guardrail antes de crear pendingProposal, manteniendo que function_approve prepare unsigned_tx_base64 y que Phantom firme/envíe desde frontend.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/services/chat.ts",
-        "BACK/services/chatSessionStore.ts",
-        "BACK/services/tools/transfer.ts"
+        "back/services/chat.ts",
+        "back/services/chatSessionStore.ts",
+        "back/services/tools/transfer.ts"
       ],
       "dependencies": [
         "T5"
@@ -198,7 +198,7 @@
       ],
       "status": "completed",
       "evidence": [
-        "Wire transfer flow now evaluates wallet safety before creating pendingProposal in BACK/services/chat.ts.",
+        "Wire transfer flow now evaluates wallet safety before creating pendingProposal in back/services/chat.ts.",
         "Persisted actionHash/actionExpiry in pending proposal and stored safety payload in proposal risk."
       ]
     },
@@ -208,8 +208,8 @@
       "description": "Asegurar que transfer simple valida pendingProposal/action_hash en backend antes de preparar unsigned_tx_base64, y que la verificación de ActionApproval queda solo para acciones que usan AgentActionGuard.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/services/onchainApproval.ts",
-        "BACK/services/chat.ts"
+        "back/services/onchainApproval.ts",
+        "back/services/chat.ts"
       ],
       "dependencies": [
         "T6"
@@ -222,7 +222,7 @@
       ],
       "status": "completed",
       "evidence": [
-        "function_approve now validates pending action expiry and canonical action hash before building transfer tx in BACK/services/chat.ts.",
+        "function_approve now validates pending action expiry and canonical action hash before building transfer tx in back/services/chat.ts.",
         "Phantom-first path remains intact: function_approve returns unsigned_tx_base64 only.",
         "Main-session reviewer fix corrected build-breaking imports and Token-2022 program constants; npm run build passes."
       ]
@@ -233,7 +233,7 @@
       "description": "Agregar tests para validación local, decision engine, degradación por proveedores, approvals hash-bound y flujo de proposal SSE.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/services/__tests__/chat.test.ts"
+        "back/services/__tests__/chat.test.ts"
       ],
       "dependencies": [
         "T5",
@@ -248,9 +248,9 @@
       ],
       "status": "completed",
       "evidence": [
-        "Added chat-level tests for rejected/mismatched/expired transfer approvals and unsigned tx generation in BACK/services/__tests__/chat.test.ts.",
-        "Added decision-engine tests for ALLOW/WARN/REJECT and expiry helper in BACK/services/__tests__/walletSafetyValidation.test.ts.",
-        "Verified npm run test -- BACK/services/__tests__/walletSafetyValidation.test.ts BACK/services/__tests__/chat.test.ts FRONT/src/lib/api/__tests__/schemas.test.ts passes with 24 tests."
+        "Added chat-level tests for rejected/mismatched/expired transfer approvals and unsigned tx generation in back/services/__tests__/chat.test.ts.",
+        "Added decision-engine tests for ALLOW/WARN/REJECT and expiry helper in back/services/__tests__/walletSafetyValidation.test.ts.",
+        "Verified npm run test -- back/services/__tests__/walletSafetyValidation.test.ts back/services/__tests__/chat.test.ts front/src/lib/api/__tests__/schemas.test.ts passes with 24 tests."
       ]
     },
     {
@@ -259,10 +259,10 @@
       "description": "Reflejar en el contrato de proposal los estados de wallet safety, razones y requerimiento de extra confirmation para que la UI distinga claramente WARN de REJECT sin cambiar la firma/envío Phantom-first.",
       "filesToCreate": [],
       "filesToModify": [
-        "FRONT/src/types/api.ts",
-        "FRONT/src/lib/api/schemas.ts",
-        "FRONT/src/components/chat/proposals/SendProposalCard.tsx",
-        "FRONT/src/components/chat/proposals/RiskInlineAlert.tsx"
+        "front/src/types/api.ts",
+        "front/src/lib/api/schemas.ts",
+        "front/src/components/chat/proposals/SendProposalCard.tsx",
+        "front/src/components/chat/proposals/RiskInlineAlert.tsx"
       ],
       "dependencies": [
         "T6"
@@ -275,8 +275,8 @@
       ],
       "status": "completed",
       "evidence": [
-        "Extended API risk schema/types to carry walletSafety details in FRONT/src/types/api.ts and FRONT/src/lib/api/schemas.ts.",
-        "Updated SendProposalCard and RiskInlineAlert to render wallet safety decisions and reinforce WARN confirmations in FRONT/src/components/chat/proposals/.",
+        "Extended API risk schema/types to carry walletSafety details in front/src/types/api.ts and front/src/lib/api/schemas.ts.",
+        "Updated SendProposalCard and RiskInlineAlert to render wallet safety decisions and reinforce WARN confirmations in front/src/components/chat/proposals/.",
         "Main-session reviewer fix extended approve response schemas/types to preserve transaction, added Phantom sign/send helper, and wired approveProposal to sign/send unsigned_tx_base64 from frontend."
       ]
     },
@@ -286,12 +286,12 @@
       "description": "Extender la capa off-chain existente para consultar Solscan cuando esté configurado, registrar providerStatuses y reason codes estables, evitar ALLOW cuando el recipient no aparezca indexado y mantener el vínculo con la spec on-chain existente para cualquier enforcement vía programa.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/services/walletSafetyValidation.ts",
-        "BACK/services/__tests__/walletSafetyValidation.test.ts",
-        "BACK/services/__tests__/chat.test.ts",
-        "FRONT/src/lib/api/schemas.ts",
-        "FRONT/src/types/api.ts",
-        "FRONT/src/components/chat/proposals/RiskInlineAlert.tsx",
+        "back/services/walletSafetyValidation.ts",
+        "back/services/__tests__/walletSafetyValidation.test.ts",
+        "back/services/__tests__/chat.test.ts",
+        "front/src/lib/api/schemas.ts",
+        "front/src/types/api.ts",
+        "front/src/components/chat/proposals/RiskInlineAlert.tsx",
         "docs/wallet-safety-validation-onchain-enforcement/technical-spec.md",
         "docs/wallet-safety-validation-onchain-enforcement/task.json",
         ".env.example"
@@ -310,11 +310,11 @@
       ],
       "status": "completed",
       "evidence": [
-        "Added Solscan-enabled off-chain lookup path with environment controls and optional fetcher hook in BACK/services/walletSafetyValidation.ts.",
+        "Added Solscan-enabled off-chain lookup path with environment controls and optional fetcher hook in back/services/walletSafetyValidation.ts.",
         "Decisions now include RECIPIENT_NOT_INDEXED_ON_SOLSCAN and PROVIDER_PARTIAL_FAILURE when Solscan is enabled and missing/error.",
         "Wallet safety providerStatuses now include solscan status for observability (ok/missing/error) and UI reasons in RiskInlineAlert explain these outcomes.",
         "Added .env.example variables for WALLET_SAFETY_SOLSCAN_* runtime configuration.",
-        "Added unit tests covering Solscan indexed-ok/indexed-missing/error scenarios in BACK/services/__tests__/walletSafetyValidation.test.ts."
+        "Added unit tests covering Solscan indexed-ok/indexed-missing/error scenarios in back/services/__tests__/walletSafetyValidation.test.ts."
       ]
     },
     {
@@ -323,10 +323,10 @@
       "description": "Extender los tipos de wallet safety y proposal risk para soportar risk.walletSafety.agentOpinion, junto con un builder de payload sanitizado que derive solo de checks ejecutados, códigos y provider statuses.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/services/walletSafetyValidation.ts",
-        "BACK/services/chat.ts",
-        "FRONT/src/types/api.ts",
-        "FRONT/src/lib/api/schemas.ts",
+        "back/services/walletSafetyValidation.ts",
+        "back/services/chat.ts",
+        "front/src/types/api.ts",
+        "front/src/lib/api/schemas.ts",
         ".env.example"
       ],
       "dependencies": [
@@ -344,11 +344,11 @@
     {
       "id": "T12",
       "title": "Generar opinión LLM aditiva en backend",
-      "description": "Insertar en BACK/services/chat.ts un paso posterior a evaluateWalletSafety que, si el flag está activo, invoque el LLM con JSON estricto y agregue agentOpinion a la proposal sin mutar decision, score, risk level ni requiresExtraConfirmation.",
+      "description": "Insertar en back/services/chat.ts un paso posterior a evaluateWalletSafety que, si el flag está activo, invoque el LLM con JSON estricto y agregue agentOpinion a la proposal sin mutar decision, score, risk level ni requiresExtraConfirmation.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/services/chat.ts",
-        "BACK/services/walletSafetyValidation.ts"
+        "back/services/chat.ts",
+        "back/services/walletSafetyValidation.ts"
       ],
       "dependencies": [
         "T11"
@@ -367,10 +367,10 @@
       "description": "Actualizar el contrato frontend y los componentes de proposal/risk para mostrar agentOpinion como texto opcional y secundario, separado del bloque determinístico de wallet safety.",
       "filesToCreate": [],
       "filesToModify": [
-        "FRONT/src/types/api.ts",
-        "FRONT/src/lib/api/schemas.ts",
-        "FRONT/src/components/chat/proposals/SendProposalCard.tsx",
-        "FRONT/src/components/chat/proposals/RiskInlineAlert.tsx"
+        "front/src/types/api.ts",
+        "front/src/lib/api/schemas.ts",
+        "front/src/components/chat/proposals/SendProposalCard.tsx",
+        "front/src/components/chat/proposals/RiskInlineAlert.tsx"
       ],
       "dependencies": [
         "T11",
@@ -390,9 +390,9 @@
       "description": "Agregar cobertura unitaria e integración para payload sanitizado, parsing de JSON estricto, omisión segura por timeout/error y garantía de que la opinión no altera el resultado determinístico.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/services/__tests__/walletSafetyValidation.test.ts",
-        "BACK/services/__tests__/chat.test.ts",
-        "FRONT/src/lib/api/__tests__/schemas.test.ts"
+        "back/services/__tests__/walletSafetyValidation.test.ts",
+        "back/services/__tests__/chat.test.ts",
+        "front/src/lib/api/__tests__/schemas.test.ts"
       ],
       "dependencies": [
         "T11",
@@ -421,7 +421,7 @@
   ],
   "validation": [
     "Verified funcional y técnico feature docs existen solo en docs/wallet-safety-validation/.",
-    "Verificados cambios runtime en BACK/FRONT para flujo Phantom-first con action hash/expiry y propuesta WARN/REJECT.",
+    "Verificados cambios runtime en back/front para flujo Phantom-first con action hash/expiry y propuesta WARN/REJECT.",
     "Verificados tests de decisiones ALLOW/WARN/REJECT, action hash mismatch y propuesta vencida en suite.",
     "Verificado que no se envía signed_tx_base64 en function_approve para transfer simple.",
     "Verificado npm run build exitoso después de aplicar fixes del tester_reviewer.",

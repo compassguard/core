@@ -18,8 +18,8 @@ Phase 1 implementa solo el dominio publico. Phase 2 agrega el dominio privado si
 
 Flujo tecnico propuesto:
 
-1. `FRONT/src/hooks/useTransactionHistory.ts` consulta el backend cuando la tab `History` esta activa.
-2. `FRONT/src/lib/api/client.ts` envia `address`, `limit` y `before`.
+1. `front/src/hooks/useTransactionHistory.ts` consulta el backend cuando la tab `History` esta activa.
+2. `front/src/lib/api/client.ts` envia `address`, `limit` y `before`.
 3. `app/api/wallet/transactions/route.ts` valida query params y delega en un servicio backend.
 4. El servicio backend consulta un proveedor publico compatible con Solana RPC o el patron existente tipo Helius proxy.
 5. El backend normaliza el resultado a `GetTransactionsResponseSchema`.
@@ -107,16 +107,16 @@ Errores esperados:
 - `app/api/wallet/transactions/route.ts`
   Reemplazar stub/mock por validacion real y llamada a servicio backend.
 
-- `BACK/services/*`
+- `back/services/*`
   Agregar o extender un servicio de historial publico siguiendo el patron de integraciones backend.
 
-- `FRONT/src/hooks/useTransactionHistory.ts`
+- `front/src/hooks/useTransactionHistory.ts`
   Incluir cursor en query key y soporte para cargar paginas adicionales.
 
-- `FRONT/src/lib/api/client.ts`
+- `front/src/lib/api/client.ts`
   Confirmar serializacion de `limit` y `before`.
 
-- `FRONT/src/components/layout/DesktopShell.tsx`
+- `front/src/components/layout/DesktopShell.tsx`
   Mejorar `HistoryView` para loading, error, empty, lista, explorer link y cargar mas.
 
 ## Provider strategy
@@ -126,7 +126,7 @@ Phase 1 debe usar una estrategia backend-managed y no consultar RPC directamente
 Opciones validas dentro del alcance:
 
 - Solana RPC estandar via backend
-- proxy a Helius o proveedor equivalente, siguiendo el patron ya presente en `BACK/services/helius.ts`
+- proxy a Helius o proveedor equivalente, siguiendo el patron ya presente en `back/services/helius.ts`
 
 Decision de esta spec:
 

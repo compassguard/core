@@ -28,14 +28,14 @@ Necesitamos integrar `approve -> guard execute -> result` para que el agente no 
 
 ### Affected modules / ownership boundaries
 - On-chain (ya implementado):
-  - `BACK/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs`
+  - `back/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs`
 - Backend:
-  - `BACK/services/chat.ts`
-  - `BACK/services/onchainApproval.ts`
+  - `back/services/chat.ts`
+  - `back/services/onchainApproval.ts`
   - potencial helper nuevo de integración guard-swap (si conviene separar)
 - Frontend:
-  - `FRONT/src/hooks/useAgentMessage.ts`
-  - `FRONT/src/lib/api/{schemas.ts,client.ts}`
+  - `front/src/hooks/useAgentMessage.ts`
+  - `front/src/lib/api/{schemas.ts,client.ts}`
   - tipos API/chat de proposal execution metadata
 
 ### Data-model impact and migration risks
@@ -254,19 +254,19 @@ La implementación usa **enforcement ON-CHAIN real** con transacción atómica c
 - **Una sola firma**: El usuario firma UNA vez toda la transacción
 
 ### Key Changes
-- `BACK/services/tools/swapGuardOnChain.ts`: **NUEVO** - Builder de instrucciones del guard program
+- `back/services/tools/swapGuardOnChain.ts`: **NUEVO** - Builder de instrucciones del guard program
   - `buildSwapGuardInstructions()`: Construye las 3 instrucciones del guard
   - `deriveUserPolicyPda()`, `deriveActionApprovalPda()`: Derivación de PDAs
   - `checkUserPolicyExists()`: Verifica si el usuario ya tiene policy
-- `BACK/services/tools/orcaSwapTx.ts`: 
+- `back/services/tools/orcaSwapTx.ts`: 
   - `buildUnsignedOrcaSwapTxWithGuard()`: **NUEVO** - Combina guard + swap en una tx
-- `BACK/services/chat.ts`: 
+- `back/services/chat.ts`: 
   - Integración de guard on-chain en `handleFunctionApprove` para swaps
   - Construcción de transacción compuesta
-- `BACK/services/tools/swapGuard.ts`: Server-side helper para pre-check de warning (no bloqueante)
-- `FRONT/src/stores/chatStore.ts`: Estado `swapGuardWarning` para UI
-- `FRONT/src/hooks/useAgentMessage.ts`: Setea warning desde response del approve
-- `FRONT/src/components/chat/proposals/SwapGuardWarning.tsx`: Componente visual de warning
+- `back/services/tools/swapGuard.ts`: Server-side helper para pre-check de warning (no bloqueante)
+- `front/src/stores/chatStore.ts`: Estado `swapGuardWarning` para UI
+- `front/src/hooks/useAgentMessage.ts`: Setea warning desde response del approve
+- `front/src/components/chat/proposals/SwapGuardWarning.tsx`: Componente visual de warning
 
 ### Smart Contract Used
 - **Program ID**: `ETLBetVBpHeG3pKKqpCaRQYfQ2opMNEKCsrQUyqgyg6s`

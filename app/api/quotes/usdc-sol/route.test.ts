@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GET } from './route';
-import * as quoteService from '../../../../BACK/services/priceQuote';
+import * as quoteService from '../../../../back/services/priceQuote';
 
 describe('GET /api/quotes/usdc-sol', () => {
   afterEach(() => {

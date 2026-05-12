@@ -4,7 +4,7 @@
   "goal": "Extender la feature wallet-safety-validation para que las transferencias SOL aprobadas se ejecuten con enforcement on-chain mediante AgentActionGuard, usando guarded_transfer, ActionApproval verificable y una WalletSafetyAttestation PDA, mientras se mantiene el flujo Phantom-first y el backend sin custody de firma.",
   "context": {
     "source": "explorer_handoff",
-    "summary": "La feature existente wallet-safety-validation ya tiene docs separadas y no debe sobrescribirse. Hoy el backend valida off-chain/RPC, crea proposal y function_approve devuelve unsigned_tx_base64 para Phantom, pero la transferencia simple no invoca un programa propio. Existe AgentActionGuard con UserPolicy y ActionApproval PDA por action_hash, y la verificación actual en BACK/services/onchainApproval.ts es débil porque solo inspecciona logs/invocación. Esta extensión debe introducir enforcement real con guarded_transfer y verificación determinística de PDAs."
+    "summary": "La feature existente wallet-safety-validation ya tiene docs separadas y no debe sobrescribirse. Hoy el backend valida off-chain/RPC, crea proposal y function_approve devuelve unsigned_tx_base64 para Phantom, pero la transferencia simple no invoca un programa propio. Existe AgentActionGuard con UserPolicy y ActionApproval PDA por action_hash, y la verificación actual en back/services/onchainApproval.ts es débil porque solo inspecciona logs/invocación. Esta extensión debe introducir enforcement real con guarded_transfer y verificación determinística de PDAs."
   },
   "acceptanceCriteria": [
     "Las transferencias SOL cubiertas por wallet-safety-validation se ejecutan mediante AgentActionGuard.guarded_transfer y no mediante SystemProgram.transfer directo desde el flujo aprobado.",
@@ -27,7 +27,7 @@
     "Agregar una cuenta WalletSafetyAttestation PDA dentro del programa para representar la validación dinámica de riesgo sin exigir cofirma del backend en la tx del usuario.",
     "Usar guarded_transfer como única vía de ejecución protegida para la transferencia SOL cubierta por esta feature.",
     "Canonicalizar action_hash con JSON canónico y sha256 incluyendo tipo de acción, red, user, recipient, amount_lamports, policy_pda y expires_at.",
-    "Endurecer BACK/services/onchainApproval.ts para leer y validar PDAs derivados en vez de confiar en logs o solo en la presencia de una instrucción del programa."
+    "Endurecer back/services/onchainApproval.ts para leer y validar PDAs derivados en vez de confiar en logs o solo en la presencia de una instrucción del programa."
   ],
   "tasks": [
     {
@@ -36,10 +36,10 @@
       "description": "Alinear el payload canónico de TRANSFER_SOL_GUARDED, las seeds de ActionApproval y WalletSafetyAttestation, y la metadata mínima que deberá compartir backend, programa y frontend.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs",
-        "BACK/services/chat.ts",
-        "BACK/services/onchainApproval.ts",
-        "BACK/services/tools/transfer.ts"
+        "back/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs",
+        "back/services/chat.ts",
+        "back/services/onchainApproval.ts",
+        "back/services/tools/transfer.ts"
       ],
       "dependencies": [],
       "verification": [
@@ -49,7 +49,7 @@
       "status": "completed",
       "evidence": [
         {
-          "command": "cd /private/tmp/solana-wallet-safety-validation && npm run test -- BACK/services/__tests__/onchainApproval.test.ts BACK/services/__tests__/chat.test.ts FRONT/src/lib/api/__tests__/schemas.test.ts",
+          "command": "cd /private/tmp/solana-wallet-safety-validation && npm run test -- back/services/__tests__/onchainApproval.test.ts back/services/__tests__/chat.test.ts front/src/lib/api/__tests__/schemas.test.ts",
           "result": "passed",
           "passed": "3 files, 28 tests",
           "notes": "Includes schema parsing and approval/session guardrail wiring tests."
@@ -62,7 +62,7 @@
       "description": "Extender AgentActionGuard con la cuenta WalletSafetyAttestation, su tamaño, sus campos y la instrucción upsert_wallet_safety_attestation o equivalente para emitir attestations vigentes por acción.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs"
+        "back/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs"
       ],
       "dependencies": [
         "T1"
@@ -74,7 +74,7 @@
       "status": "completed",
       "evidence": [
         {
-          "command": "cd /private/tmp/solana-wallet-safety-validation && npm run test -- BACK/services/__tests__/onchainApproval.test.ts BACK/services/__tests__/chat.test.ts FRONT/src/lib/api/__tests__/schemas.test.ts",
+          "command": "cd /private/tmp/solana-wallet-safety-validation && npm run test -- back/services/__tests__/onchainApproval.test.ts back/services/__tests__/chat.test.ts front/src/lib/api/__tests__/schemas.test.ts",
           "result": "passed",
           "passed": "3 files, 28 tests",
           "notes": "Includes schema parsing and approval/session guardrail wiring tests."
@@ -87,7 +87,7 @@
       "description": "Agregar la instrucción guarded_transfer que valide UserPolicy, ActionApproval, WalletSafetyAttestation y luego haga CPI a System Program para mover lamports, marcando executed dentro de la misma instrucción.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs"
+        "back/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs"
       ],
       "dependencies": [
         "T1",
@@ -101,7 +101,7 @@
       "status": "completed",
       "evidence": [
         {
-          "command": "cd /private/tmp/solana-wallet-safety-validation && npm run test -- BACK/services/__tests__/onchainApproval.test.ts BACK/services/__tests__/chat.test.ts FRONT/src/lib/api/__tests__/schemas.test.ts",
+          "command": "cd /private/tmp/solana-wallet-safety-validation && npm run test -- back/services/__tests__/onchainApproval.test.ts back/services/__tests__/chat.test.ts front/src/lib/api/__tests__/schemas.test.ts",
           "result": "passed",
           "passed": "3 files, 28 tests",
           "notes": "Includes schema parsing and approval/session guardrail wiring tests."
@@ -114,8 +114,8 @@
       "description": "Definir una estrategia mínima para administrar la autoridad que puede emitir WalletSafetyAttestation, ya sea mediante config PDA o una alternativa equivalente de bajo riesgo operativo.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs",
-        "BACK/solana/agent-action-guard/README.md"
+        "back/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs",
+        "back/solana/agent-action-guard/README.md"
       ],
       "dependencies": [
         "T2"
@@ -127,7 +127,7 @@
       "status": "completed",
       "evidence": [
         {
-          "command": "cd /private/tmp/solana-wallet-safety-validation && npm run test -- BACK/services/__tests__/onchainApproval.test.ts BACK/services/__tests__/chat.test.ts FRONT/src/lib/api/__tests__/schemas.test.ts",
+          "command": "cd /private/tmp/solana-wallet-safety-validation && npm run test -- back/services/__tests__/onchainApproval.test.ts back/services/__tests__/chat.test.ts front/src/lib/api/__tests__/schemas.test.ts",
           "result": "passed",
           "passed": "3 files, 28 tests",
           "notes": "Includes schema parsing and approval/session guardrail wiring tests."
@@ -140,9 +140,9 @@
       "description": "Modificar la preparación de propuestas y approve para que el backend genere el action_hash canónico, garantice la existencia de ActionApproval y WalletSafetyAttestation, y almacene el contexto necesario en la sesión.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/services/chat.ts",
-        "BACK/services/chatSessionStore.ts",
-        "BACK/services/tools/transfer.ts"
+        "back/services/chat.ts",
+        "back/services/chatSessionStore.ts",
+        "back/services/tools/transfer.ts"
       ],
       "dependencies": [
         "T1",
@@ -155,7 +155,7 @@
       "status": "completed",
       "evidence": [
         {
-          "command": "cd /private/tmp/solana-wallet-safety-validation && npm run test -- BACK/services/__tests__/onchainApproval.test.ts BACK/services/__tests__/chat.test.ts FRONT/src/lib/api/__tests__/schemas.test.ts",
+          "command": "cd /private/tmp/solana-wallet-safety-validation && npm run test -- back/services/__tests__/onchainApproval.test.ts back/services/__tests__/chat.test.ts front/src/lib/api/__tests__/schemas.test.ts",
           "result": "passed",
           "passed": "3 files, 28 tests",
           "notes": "Includes schema parsing and approval/session guardrail wiring tests."
@@ -168,7 +168,7 @@
       "description": "Reemplazar la construcción actual de SystemProgram.transfer por una unsigned transaction que invoque guarded_transfer y referencie las PDAs derivadas esperadas.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/services/chat.ts"
+        "back/services/chat.ts"
       ],
       "dependencies": [
         "T3",
@@ -182,7 +182,7 @@
       "status": "completed",
       "evidence": [
         {
-          "command": "cd /private/tmp/solana-wallet-safety-validation && npm run test -- BACK/services/__tests__/onchainApproval.test.ts BACK/services/__tests__/chat.test.ts FRONT/src/lib/api/__tests__/schemas.test.ts",
+          "command": "cd /private/tmp/solana-wallet-safety-validation && npm run test -- back/services/__tests__/onchainApproval.test.ts back/services/__tests__/chat.test.ts front/src/lib/api/__tests__/schemas.test.ts",
           "result": "passed",
           "passed": "3 files, 28 tests",
           "notes": "Includes schema parsing and approval/session guardrail wiring tests."
@@ -192,10 +192,10 @@
     {
       "id": "T7",
       "title": "Endurecer la verificación on-chain del backend",
-      "description": "Reescribir BACK/services/onchainApproval.ts para derivar, leer y validar ActionApproval y WalletSafetyAttestation tras la confirmación de la tx, descartando pruebas débiles basadas solo en logs.",
+      "description": "Reescribir back/services/onchainApproval.ts para derivar, leer y validar ActionApproval y WalletSafetyAttestation tras la confirmación de la tx, descartando pruebas débiles basadas solo en logs.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/services/onchainApproval.ts"
+        "back/services/onchainApproval.ts"
       ],
       "dependencies": [
         "T1",
@@ -209,7 +209,7 @@
       "status": "completed",
       "evidence": [
         {
-          "command": "cd /private/tmp/solana-wallet-safety-validation && npm run test -- BACK/services/__tests__/onchainApproval.test.ts BACK/services/__tests__/chat.test.ts FRONT/src/lib/api/__tests__/schemas.test.ts",
+          "command": "cd /private/tmp/solana-wallet-safety-validation && npm run test -- back/services/__tests__/onchainApproval.test.ts back/services/__tests__/chat.test.ts front/src/lib/api/__tests__/schemas.test.ts",
           "result": "passed",
           "passed": "3 files, 28 tests",
           "notes": "Includes schema parsing and approval/session guardrail wiring tests."
@@ -222,9 +222,9 @@
       "description": "Alinear schemas y tipos para que approve y function_result representen el nuevo flujo protegido, incluyendo metadata opcional de enforcement on-chain y nuevos códigos de error.",
       "filesToCreate": [],
       "filesToModify": [
-        "FRONT/src/lib/api/client.ts",
-        "FRONT/src/lib/api/schemas.ts",
-        "FRONT/src/types/api.ts"
+        "front/src/lib/api/client.ts",
+        "front/src/lib/api/schemas.ts",
+        "front/src/types/api.ts"
       ],
       "dependencies": [
         "T6"
@@ -236,7 +236,7 @@
       "status": "completed",
       "evidence": [
         {
-          "command": "cd /private/tmp/solana-wallet-safety-validation && npm run test -- BACK/services/__tests__/onchainApproval.test.ts BACK/services/__tests__/chat.test.ts FRONT/src/lib/api/__tests__/schemas.test.ts",
+          "command": "cd /private/tmp/solana-wallet-safety-validation && npm run test -- back/services/__tests__/onchainApproval.test.ts back/services/__tests__/chat.test.ts front/src/lib/api/__tests__/schemas.test.ts",
           "result": "passed",
           "passed": "3 files, 28 tests",
           "notes": "Includes schema parsing and approval/session guardrail wiring tests."
@@ -249,10 +249,10 @@
       "description": "Ajustar la UI de transferencia para mostrar guardrail on-chain, expiraciones relevantes y errores diferenciados de approval o attestation, manteniendo el flujo Phantom-first.",
       "filesToCreate": [],
       "filesToModify": [
-        "FRONT/src/components/chat/proposals/SendProposalCard.tsx",
-        "FRONT/src/hooks/useAgentMessage.ts",
-        "FRONT/src/hooks/useWallet.ts",
-        "FRONT/src/stores/chatStore.ts"
+        "front/src/components/chat/proposals/SendProposalCard.tsx",
+        "front/src/hooks/useAgentMessage.ts",
+        "front/src/hooks/useWallet.ts",
+        "front/src/stores/chatStore.ts"
       ],
       "dependencies": [
         "T8"
@@ -264,7 +264,7 @@
       "status": "completed",
       "evidence": [
         {
-          "command": "cd /private/tmp/solana-wallet-safety-validation && npm run test -- BACK/services/__tests__/onchainApproval.test.ts BACK/services/__tests__/chat.test.ts FRONT/src/lib/api/__tests__/schemas.test.ts",
+          "command": "cd /private/tmp/solana-wallet-safety-validation && npm run test -- back/services/__tests__/onchainApproval.test.ts back/services/__tests__/chat.test.ts front/src/lib/api/__tests__/schemas.test.ts",
           "result": "passed",
           "passed": "3 files, 28 tests",
           "notes": "Includes schema parsing and approval/session guardrail wiring tests."
@@ -276,11 +276,11 @@
       "title": "Agregar pruebas del programa y del contrato backend",
       "description": "Cubrir camino feliz y rechazos por mismatch, expiración, revocación, replay y ausencia de attestation tanto a nivel del programa como de la verificación backend.",
       "filesToCreate": [
-        "BACK/solana/agent-action-guard/tests/guarded-transfer.ts"
+        "back/solana/agent-action-guard/tests/guarded-transfer.ts"
       ],
       "filesToModify": [
-        "BACK/services/onchainApproval.ts",
-        "BACK/services/chat.ts"
+        "back/services/onchainApproval.ts",
+        "back/services/chat.ts"
       ],
       "dependencies": [
         "T3",
@@ -294,7 +294,7 @@
       "status": "completed",
       "evidence": [
         {
-          "command": "cd /private/tmp/solana-wallet-safety-validation && npm run test -- BACK/services/__tests__/onchainApproval.test.ts BACK/services/__tests__/chat.test.ts FRONT/src/lib/api/__tests__/schemas.test.ts",
+          "command": "cd /private/tmp/solana-wallet-safety-validation && npm run test -- back/services/__tests__/onchainApproval.test.ts back/services/__tests__/chat.test.ts front/src/lib/api/__tests__/schemas.test.ts",
           "result": "passed",
           "passed": "3 files, 28 tests",
           "notes": "Includes schema parsing and approval/session guardrail wiring tests."
@@ -307,9 +307,9 @@
       "description": "Validar que el frontend consume el nuevo contrato approve, mantiene Phantom-first y representa correctamente fallas de enforcement on-chain.",
       "filesToCreate": [],
       "filesToModify": [
-        "FRONT/src/lib/api/__tests__/schemas.test.ts",
-        "FRONT/src/hooks/useAgentMessage.ts",
-        "FRONT/src/components/chat/proposals/SendProposalCard.tsx"
+        "front/src/lib/api/__tests__/schemas.test.ts",
+        "front/src/hooks/useAgentMessage.ts",
+        "front/src/components/chat/proposals/SendProposalCard.tsx"
       ],
       "dependencies": [
         "T8",
@@ -322,7 +322,7 @@
       "status": "completed",
       "evidence": [
         {
-          "command": "cd /private/tmp/solana-wallet-safety-validation && npm run test -- BACK/services/__tests__/onchainApproval.test.ts BACK/services/__tests__/chat.test.ts FRONT/src/lib/api/__tests__/schemas.test.ts",
+          "command": "cd /private/tmp/solana-wallet-safety-validation && npm run test -- back/services/__tests__/onchainApproval.test.ts back/services/__tests__/chat.test.ts front/src/lib/api/__tests__/schemas.test.ts",
           "result": "passed",
           "passed": "3 files, 28 tests",
           "notes": "Includes schema parsing and approval/session guardrail wiring tests."
@@ -335,7 +335,7 @@
       "description": "Actualizar la documentación operativa del programa y del backend para describir program id, attestor authority, variables de entorno, derivación de PDAs y estrategia de rollout sin bypass.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/solana/agent-action-guard/README.md",
+        "back/solana/agent-action-guard/README.md",
         ".env.example"
       ],
       "dependencies": [
@@ -350,7 +350,7 @@
       "status": "completed",
       "evidence": [
         {
-          "command": "cd /private/tmp/solana-wallet-safety-validation && npm run test -- BACK/services/__tests__/onchainApproval.test.ts BACK/services/__tests__/chat.test.ts FRONT/src/lib/api/__tests__/schemas.test.ts",
+          "command": "cd /private/tmp/solana-wallet-safety-validation && npm run test -- back/services/__tests__/onchainApproval.test.ts back/services/__tests__/chat.test.ts front/src/lib/api/__tests__/schemas.test.ts",
           "result": "passed",
           "passed": "3 files, 28 tests",
           "notes": "Includes schema parsing and approval/session guardrail wiring tests."
@@ -367,8 +367,8 @@
   ],
   "validation": [
     "TypeScript validation passed with PATH=/Users/rcarnicer/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH npx tsc --noEmit.",
-    "Targeted Vitest validation passed with PATH=/Users/rcarnicer/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH npm run test -- BACK/services/__tests__/onchainApproval.test.ts BACK/services/__tests__/chat.test.ts FRONT/src/lib/api/__tests__/schemas.test.ts.",
-    "Wallet safety unit validation passed with PATH=/Users/rcarnicer/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH npm run test -- BACK/services/__tests__/walletSafetyValidation.test.ts.",
+    "Targeted Vitest validation passed with PATH=/Users/rcarnicer/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH npm run test -- back/services/__tests__/onchainApproval.test.ts back/services/__tests__/chat.test.ts front/src/lib/api/__tests__/schemas.test.ts.",
+    "Wallet safety unit validation passed with PATH=/Users/rcarnicer/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:$PATH npm run test -- back/services/__tests__/walletSafetyValidation.test.ts.",
     "Native Anchor guarded_transfer integration tests remain scaffolded and require local Solana/Anchor validator setup."
   ]
 }

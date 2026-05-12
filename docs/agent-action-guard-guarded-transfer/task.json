@@ -4,7 +4,7 @@
   "goal": "Add the missing program-only enforcement surface to AgentActionGuard for guarded SOL transfers, including attestation state, authorized attestor writes, guarded transfer execution, Anchor tests, and any generated IDL or client typing needed by the program test workflow.",
   "context": {
     "source": "explorer_handoff",
-    "summary": "The existing AgentActionGuard program already defines UserPolicy, ActionApproval, and conditional oracle execution in BACK/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs, but it does not implement guarded_transfer, WalletSafetyAttestation, or Anchor tests for guarded transfer enforcement. The broader on-chain integration spec remains in docs/wallet-safety-validation-onchain-enforcement/ and should consume this program-only spec rather than duplicate it."
+    "summary": "The existing AgentActionGuard program already defines UserPolicy, ActionApproval, and conditional oracle execution in back/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs, but it does not implement guarded_transfer, WalletSafetyAttestation, or Anchor tests for guarded transfer enforcement. The broader on-chain integration spec remains in docs/wallet-safety-validation-onchain-enforcement/ and should consume this program-only spec rather than duplicate it."
   },
   "acceptanceCriteria": [
     "AgentActionGuard defines a guarded_transfer instruction that requires the user signer, validates UserPolicy.enabled, validates ActionApproval for the exact transfer, validates WalletSafetyAttestation for the same user, recipient, and action_hash, performs a CPI to SystemProgram::transfer, and marks ActionApproval.executed = true in the same instruction.",
@@ -17,7 +17,7 @@
     "Docs only in this handoff; do not implement runtime or program code.",
     "Scope is strictly program-only plus Anchor tests and generated IDL/client typing required by those tests.",
     "Do not make this spec own frontend or backend integration migration beyond noting the dependency on current direct SystemProgram.transfer usage.",
-    "Keep work focused on BACK/solana/agent-action-guard/** and generated artifacts required by that program workflow.",
+    "Keep work focused on back/solana/agent-action-guard/** and generated artifacts required by that program workflow.",
     "All tasks must remain in status pending with empty evidence arrays."
   ],
   "decisions": [
@@ -33,8 +33,8 @@
       "description": "Document and implement a single guarded SOL transfer action_hash format plus the PDA seed scheme for GuardConfig, ActionApproval, and WalletSafetyAttestation so all program tests and generated clients use the same bindings.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs",
-        "BACK/solana/agent-action-guard/tests/guarded-transfer.ts"
+        "back/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs",
+        "back/solana/agent-action-guard/tests/guarded-transfer.ts"
       ],
       "dependencies": [],
       "verification": [
@@ -50,7 +50,7 @@
       "description": "Introduce the minimal config PDA and the instruction surface required to initialize and update the set of authorized attestors plus the paused flag.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs"
+        "back/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs"
       ],
       "dependencies": [
         "T1"
@@ -68,7 +68,7 @@
       "description": "Define WalletSafetyAttestation storage and implement upsert_wallet_safety_attestation gated by the authorized attestor model.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs"
+        "back/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs"
       ],
       "dependencies": [
         "T1",
@@ -87,7 +87,7 @@
       "description": "Add guarded_transfer to validate the user policy, approval, attestation, and exact transfer parameters before performing the SystemProgram transfer CPI and marking the approval executed.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs"
+        "back/solana/agent-action-guard/programs/agent-action-guard/src/lib.rs"
       ],
       "dependencies": [
         "T1",
@@ -105,7 +105,7 @@
       "title": "Add Anchor tests for guarded transfer success and failure matrix",
       "description": "Create program tests that cover the happy path plus wrong PDA seeds, mismatched recipient, mismatched amount, mismatched action_hash, expired approval, revoked approval, already executed approval, missing attestation, expired attestation, unauthorized attestor, and replay.",
       "filesToCreate": [
-        "BACK/solana/agent-action-guard/tests/guarded-transfer.ts"
+        "back/solana/agent-action-guard/tests/guarded-transfer.ts"
       ],
       "filesToModify": [],
       "dependencies": [
@@ -126,8 +126,8 @@
       "description": "Regenerate the Anchor IDL and any typed TS client output required by the repository's program test workflow so the new instructions and accounts are consumable from tests.",
       "filesToCreate": [],
       "filesToModify": [
-        "BACK/solana/agent-action-guard/target/idl/agent_action_guard.json",
-        "BACK/solana/agent-action-guard/target/types/agent_action_guard.ts"
+        "back/solana/agent-action-guard/target/idl/agent_action_guard.json",
+        "back/solana/agent-action-guard/target/types/agent_action_guard.ts"
       ],
       "dependencies": [
         "T4"

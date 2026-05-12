@@ -294,7 +294,7 @@ Reemplaza tanto `/api/agent/message` (mock) como `/api/chat` (actual).
 
 ### Slice 1: Backend - Unificar contrato (2h)
 **Files:**
-- `BACK/services/chat.ts` - Adaptar a nuevo contrato
+- `back/services/chat.ts` - Adaptar a nuevo contrato
 - `app/api/chat/route.ts` - Ya existe, ajustar validación
 - Eliminar `app/api/agent/message/route.ts`
 
@@ -306,9 +306,9 @@ Reemplaza tanto `/api/agent/message` (mock) como `/api/chat` (actual).
 
 ### Slice 2: Frontend - Cliente SSE (2h)
 **Files:**
-- `FRONT/src/lib/api/client.ts` - Agregar `streamChat()` 
-- `FRONT/src/lib/api/schemas.ts` - Agregar schemas SSE
-- `FRONT/src/hooks/useAgentMessage.ts` - Refactor para SSE
+- `front/src/lib/api/client.ts` - Agregar `streamChat()` 
+- `front/src/lib/api/schemas.ts` - Agregar schemas SSE
+- `front/src/hooks/useAgentMessage.ts` - Refactor para SSE
 
 **Cambios:**
 1. Crear función `streamChat()` que consuma SSE
@@ -318,8 +318,8 @@ Reemplaza tanto `/api/agent/message` (mock) como `/api/chat` (actual).
 
 ### Slice 3: Frontend - Integrar con Store (1h)
 **Files:**
-- `FRONT/src/stores/chatStore.ts` - Agregar `sessionId`, acciones para tokens
-- `FRONT/src/hooks/useAgentMessage.ts` - Usar nuevo cliente
+- `front/src/stores/chatStore.ts` - Agregar `sessionId`, acciones para tokens
+- `front/src/hooks/useAgentMessage.ts` - Usar nuevo cliente
 
 **Cambios:**
 1. Agregar `sessionId` al store
@@ -358,18 +358,18 @@ Reemplaza tanto `/api/agent/message` (mock) como `/api/chat` (actual).
 ### Files Changed
 
 **Backend:**
-- `BACK/services/chat.ts` - Unified chat service with SSE for user_message, JSON for approve/reject
-- `BACK/services/chatSessionStore.ts` - Added `userAddress` to session state
-- `BACK/services/tools/transfer.ts` - Unified transfer tool with new params format
+- `back/services/chat.ts` - Unified chat service with SSE for user_message, JSON for approve/reject
+- `back/services/chatSessionStore.ts` - Added `userAddress` to session state
+- `back/services/tools/transfer.ts` - Unified transfer tool with new params format
 - `app/api/chat/route.ts` - Updated route handler
 - Deleted: `app/api/agent/message/route.ts` (mock endpoint)
 
 **Frontend:**
-- `FRONT/src/lib/api/client.ts` - Added `streamChat()`, `postApprove()`, `postReject()`
-- `FRONT/src/lib/api/schemas.ts` - Added `SSEProposalSchema`
-- `FRONT/src/stores/chatStore.ts` - Added `sessionId`, streaming actions
-- `FRONT/src/hooks/useAgentMessage.ts` - Refactored to use SSE streaming
-- `FRONT/src/types/api.ts` - Updated `AgentMessageRequest` type
+- `front/src/lib/api/client.ts` - Added `streamChat()`, `postApprove()`, `postReject()`
+- `front/src/lib/api/schemas.ts` - Added `SSEProposalSchema`
+- `front/src/stores/chatStore.ts` - Added `sessionId`, streaming actions
+- `front/src/hooks/useAgentMessage.ts` - Refactored to use SSE streaming
+- `front/src/types/api.ts` - Updated `AgentMessageRequest` type
 
 **Tests:**
-- `BACK/services/__tests__/chat.test.ts` - Updated for new transfer API
+- `back/services/__tests__/chat.test.ts` - Updated for new transfer API

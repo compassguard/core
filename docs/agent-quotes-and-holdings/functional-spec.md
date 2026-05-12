@@ -39,7 +39,7 @@ No incluye:
 - Permitir que el agente responda con contexto real sobre cuanto SOL, USDC y otros tokens tiene el usuario.
 - Permitir que el agente consulte una cotizacion actual entre USDC y SOL sin depender del endpoint mock de precios.
 - Evitar alucinaciones de balances o precios cuando la data no este disponible.
-- Reusar la arquitectura existente de `app/api/*` + `BACK/services/*`.
+- Reusar la arquitectura existente de `app/api/*` + `back/services/*`.
 
 ## No objetivos
 

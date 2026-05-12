@@ -53,7 +53,7 @@ El alcance cubre una sesion activa rehidratable por `session_id` usando el store
 ## Criterios de aceptacion
 
 - Despues de enviar al menos un mensaje, un refresh recupera la conversacion activa desde backend usando el `session_id` persistido.
-- `BACK/services/chat.ts` deja de invocar al LLM con solo el ultimo mensaje del usuario y usa el historial almacenado en la sesion.
+- `back/services/chat.ts` deja de invocar al LLM con solo el ultimo mensaje del usuario y usa el historial almacenado en la sesion.
 - Al recibir una propuesta por SSE, refrescar la pagina muestra otra vez esa propuesta consultando backend, siempre que la sesion siga viva.
 - El frontend deja de persistir mensajes y conversaciones completas en `localStorage`.
 - Si la sesion ya no existe en backend, el frontend deja de mostrarla como activa y la siguiente interaccion crea una sesion nueva.

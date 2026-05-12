@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import '../FRONT/src/styles/globals.css';
+import '../front/src/styles/globals.css';
 
 export const metadata: Metadata = {
   title: 'Wallet Copilot',
