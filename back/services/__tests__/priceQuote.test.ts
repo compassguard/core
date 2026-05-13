@@ -10,6 +10,7 @@ const COMMON_QUOTE = {
   pool_address: '3KBZiL2g8C7tiJ32hTv5v3KM7aK9htpqTw4cTXz1HvPt',
   input_mint: 'BRjpCHtyQLNCo8gqRUr8jtdAj5AjPYQaoqbvcZiHok1k',
   output_mint: 'So11111111111111111111111111111111111111112',
+  quote_source: 'orca_whirlpool_quote' as const,
 };
 
 describe('getUsdcSolQuote', () => {
@@ -38,12 +39,13 @@ describe('getUsdcSolQuote', () => {
     expect(result.input_amount).toBe(1);
     expect(result.output_amount).toBe(2);
     expect(result.updated_at).toMatch(/T/);
+    expect(result.quote_source).toBe('orca_whirlpool_quote');
     expect(orca.quoteOrcaUsdcToSol).toHaveBeenCalledWith(
       expect.objectContaining({
         input_token: 'USDC',
         output_token: 'SOL',
         input_amount: 1,
-        allow_fallback: false,
+        allow_fallback: true,
       }),
     );
   });

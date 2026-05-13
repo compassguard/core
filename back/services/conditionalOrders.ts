@@ -82,6 +82,69 @@ export type OracleSnapshot = {
   observedAt: number;
 };
 
+export const CONDITIONAL_ORDER_EXPLANATION_REASON_MAP = {
+  ready: {
+    decision: 'ALLOW',
+    severity: 'info',
+    category: 'price_or_execution_risk',
+    suggestedUserAction: 'continue',
+  },
+  price_above_target: {
+    decision: 'ALLOW',
+    severity: 'info',
+    category: 'price_or_execution_risk',
+    suggestedUserAction: 'wait_and_retry',
+  },
+  oracle_not_fetched: {
+    decision: 'WARN',
+    severity: 'warning',
+    category: 'network_or_provider_state',
+    suggestedUserAction: 'wait_and_retry',
+  },
+  oracle_stale: {
+    decision: 'WARN',
+    severity: 'warning',
+    category: 'network_or_provider_state',
+    suggestedUserAction: 'wait_and_retry',
+  },
+  invalid_oracle_price: {
+    decision: 'REJECT',
+    severity: 'critical',
+    category: 'network_or_provider_state',
+    suggestedUserAction: 'wait_and_retry',
+  },
+  oracle_confidence_too_high: {
+    decision: 'WARN',
+    severity: 'warning',
+    category: 'network_or_provider_state',
+    suggestedUserAction: 'wait_and_retry',
+  },
+  order_expired: {
+    decision: 'WARN',
+    severity: 'warning',
+    category: 'price_or_execution_risk',
+    suggestedUserAction: 'cancel',
+  },
+  required_exceeds_max_usdc_in: {
+    decision: 'WARN',
+    severity: 'warning',
+    category: 'user_policy',
+    suggestedUserAction: 'review_price',
+  },
+  insufficient_escrow: {
+    decision: 'REJECT',
+    severity: 'critical',
+    category: 'user_policy',
+    suggestedUserAction: 'reduce_amount',
+  },
+  math_overflow: {
+    decision: 'REJECT',
+    severity: 'critical',
+    category: 'onchain_enforcement',
+    suggestedUserAction: 'request_review',
+  },
+} as const;
+
 const orderIndex = new Map<string, RawOrderRecord>();
 const userIndex = new Map<string, Set<string>>();
 const failureState = new Map<string, { nextAttemptAt: number; errorCount: number; lastReason?: string }>();

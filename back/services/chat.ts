@@ -55,6 +55,13 @@ import {
 import { DEVNET_USDC_MINT, quoteOrcaUsdcToSol, type OrcaSwapParams, type OrcaSwapQuote } from './tools/orcaSwap';
 import { buildUnsignedOrcaSwapTx, buildUnsignedOrcaSwapTxWithGuard } from './tools/orcaSwapTx';
 import { buildSwapGuardConfig, type SwapGuardConfig, type SwapGuardWarning } from './tools/swapGuard';
+import {
+  buildSwapGuardRejectionExplanation,
+  buildSwapGuardWarningExplanation,
+  buildTransferGuardrailExplanation,
+  type GuardrailExplanation,
+} from './guardrailExplanations';
+import { attachGuardrailNarration } from './guardrailNarration';
 import { buildSwapGuardInstructions, getGuardProgramId, getPythOracleFeed } from './tools/swapGuardOnChain';
 import {
   deriveActionApprovalAddress,
@@ -140,6 +147,9 @@ type AgentFunctionCallMessage = {
     summary: string;
     fee_usd?: number;
     provider?: string;
+    slippage_bps?: number;
+    estimated_output_amount?: number;
+    quote_source?: string;
   };
   risk: {
     score: number;
@@ -147,6 +157,7 @@ type AgentFunctionCallMessage = {
     reasons?: string[];
     requiresExtraConfirmation?: boolean;
     walletSafety?: WalletSafetyDecisionResult;
+    explanation?: GuardrailExplanation;
   };
   onchain_guardrail?: {
     action_type: string;
@@ -579,6 +590,22 @@ function getRequiredUsdcForConditionalBuy(args: ConditionalBuySolParams): number
 
 function displaySwapToken(token: 'USDC' | 'SOL'): string {
   return token === 'USDC' ? 'devUSDC' : token;
+}
+
+function swapTokenDecimals(token: 'USDC' | 'SOL'): number {
+  return token === 'USDC' ? 6 : 9;
+}
+
+function uiAmountFromBaseUnits(baseUnits: string, token: 'USDC' | 'SOL'): number {
+  return Number(baseUnits) / 10 ** swapTokenDecimals(token);
+}
+
+function formatSwapAmount(amount: number, token: 'USDC' | 'SOL'): string {
+  const decimals = token === 'USDC' ? 6 : 9;
+  return amount.toLocaleString(undefined, {
+    maximumFractionDigits: decimals,
+    minimumFractionDigits: 0,
+  });
 }
 
 async function getWalletUsdcTestBalance(userAddress: string): Promise<number> {
@@ -1412,13 +1439,18 @@ async function handleOrcaSwapToolCall(
 
   try {
     const quote = await quoteOrcaUsdcToSol(toolArgs);
+    const estimatedOutputAmount = uiAmountFromBaseUnits(quote.estimated_output_base_units, toolArgs.output_token);
+    const swapSummary = `Swap Orca: ${toolArgs.input_amount} ${displaySwapToken(toolArgs.input_token)} -> ~${formatSwapAmount(estimatedOutputAmount, toolArgs.output_token)} ${displaySwapToken(toolArgs.output_token)}`;
 
     const proposalMessage: AgentFunctionCallMessage = {
       type: 'function_call',
       function: { name: 'swap_orca_usdc_to_sol', params: toolArgs },
       display: {
-        summary: `Swap Orca: ${toolArgs.input_amount} ${displaySwapToken(toolArgs.input_token)} -> ${displaySwapToken(toolArgs.output_token)}`,
+        summary: swapSummary,
         provider: 'orca_whirlpools_devnet',
+        slippage_bps: quote.slippage_bps,
+        estimated_output_amount: estimatedOutputAmount,
+        quote_source: quote.quote_source,
       },
       risk: {
         score: 35,
@@ -1456,8 +1488,11 @@ async function handleOrcaSwapToolCall(
       type: 'function_call',
       function: { name: 'swap_orca_usdc_to_sol', params: toolArgs },
       display: {
-        summary: `Swap Orca: ${toolArgs.input_amount} ${displaySwapToken(toolArgs.input_token)} -> ${displaySwapToken(toolArgs.output_token)}`,
+        summary: swapSummary,
         provider: 'orca_whirlpools_devnet',
+        slippage_bps: quote.slippage_bps,
+        estimated_output_amount: estimatedOutputAmount,
+        quote_source: quote.quote_source,
       },
       risk: {
         score: 35,
@@ -2091,6 +2126,26 @@ async function handleTransferToolCall(
     recipient: canonical.recipient,
     memo: canonical.memo,
   });
+  const onchainGuardrail = {
+    action_type: actionMetadata.actionType,
+    action_hash: actionHash,
+    policy_pda: actionMetadata.policyPda,
+    action_approval_pda: actionApprovalPda,
+    wallet_safety_attestation_pda: walletSafetyAttestationPda,
+    action_expires_at: actionMetadata.actionExpiresAt,
+    action_created_at: actionMetadata.actionCreatedAt,
+    action_amount_lamports: actionMetadata.amountLamports,
+    action_recipient: canonical.recipient,
+  };
+  const explanation = await attachGuardrailNarration(buildTransferGuardrailExplanation({
+    risk,
+    walletSafety: safety.decisionResult,
+    onchainGuardrail,
+    createdAt: actionMetadata.actionCreatedAt,
+    amount: canonical.amount,
+    token: canonical.token,
+    recipient: canonical.recipient,
+  }));
   const proposalExpiresAt = getProposalExpiry();
   const pendingProposal: PendingProposal = {
     proposalType: 'transfer',
@@ -2145,6 +2200,7 @@ async function handleTransferToolCall(
       ...risk,
       walletSafety: safety.decisionResult,
       requiresExtraConfirmation: safety.decisionResult.requiresExtraConfirmation,
+      explanation,
     },
     execution: {
       mode: 'phantom_sign_and_send',
@@ -2152,17 +2208,7 @@ async function handleTransferToolCall(
       expires_at: new Date(proposalExpiresAt).toISOString(),
       expected_user_address: userAddress,
     },
-    onchain_guardrail: {
-      action_type: actionMetadata.actionType,
-      action_hash: actionHash,
-      policy_pda: actionMetadata.policyPda,
-      action_approval_pda: actionApprovalPda,
-      wallet_safety_attestation_pda: walletSafetyAttestationPda,
-      action_expires_at: actionMetadata.actionExpiresAt,
-      action_created_at: actionMetadata.actionCreatedAt,
-      action_amount_lamports: actionMetadata.amountLamports,
-      action_recipient: canonical.recipient,
-    },
+    onchain_guardrail: onchainGuardrail,
     timestamp: now(),
   };
   const sessionProposalMessage = proposalMessageFromFunctionCall(proposal);
@@ -2697,6 +2743,19 @@ async function handleFunctionApprove(request: {
 
             // Return structured response for frontend to show bypass option
             const deviationPercent = (txResult.guardRejection.deviationBps / 100).toFixed(2);
+            const guardRejection = {
+              reason: txResult.guardRejection.type,
+              deviation_bps: txResult.guardRejection.deviationBps,
+              max_allowed_bps: txResult.guardRejection.maxAllowedBps,
+              oracle_price_usd: txResult.oraclePriceUsd,
+              quoted_price_usd: txResult.quotedPriceUsd,
+              can_bypass: true,
+              warning_message: `El precio del swap ($${txResult.quotedPriceUsd.toFixed(2)}) difiere ${deviationPercent}% del precio de mercado ($${txResult.oraclePriceUsd.toFixed(2)}). Ejecutar sin protección podría resultar en pérdidas.`,
+            };
+            const guardRejectionWithExplanation = {
+              ...guardRejection,
+              explanation: await attachGuardrailNarration(buildSwapGuardRejectionExplanation({ rejection: guardRejection })),
+            };
             return jsonResponse({
               messages: [
                 {
@@ -2710,15 +2769,7 @@ async function handleFunctionApprove(request: {
                 state: 'guard_rejected_awaiting_bypass',
                 expires_at: new Date(proposal.expiresAt).toISOString(),
               },
-              guard_rejection: {
-                reason: txResult.guardRejection.type,
-                deviation_bps: txResult.guardRejection.deviationBps,
-                max_allowed_bps: txResult.guardRejection.maxAllowedBps,
-                oracle_price_usd: txResult.oraclePriceUsd,
-                quoted_price_usd: txResult.quotedPriceUsd,
-                can_bypass: true,
-                warning_message: `El precio del swap ($${txResult.quotedPriceUsd.toFixed(2)}) difiere ${deviationPercent}% del precio de mercado ($${txResult.oraclePriceUsd.toFixed(2)}). Ejecutar sin protección podría resultar en pérdidas.`,
-              },
+              guard_rejection: guardRejectionWithExplanation,
             }, { status: 200 });
           }
 
@@ -2839,7 +2890,7 @@ async function handleFunctionApprove(request: {
         execution_type: 'orca_swap_guarded' | 'orca_swap';
       };
       swap_guard?: SwapGuardConfig;
-      swap_guard_warning?: SwapGuardWarning;
+      swap_guard_warning?: (NonNullable<SwapGuardWarning> & { explanation?: GuardrailExplanation });
     } = {
       messages: [
         {
@@ -2873,7 +2924,13 @@ async function handleFunctionApprove(request: {
     if (swapGuardConfig) {
       response.swap_guard = swapGuardConfig;
       if (swapGuardWarning) {
-        response.swap_guard_warning = swapGuardWarning;
+        response.swap_guard_warning = {
+          ...swapGuardWarning,
+          explanation: await attachGuardrailNarration(buildSwapGuardWarningExplanation({
+            warning: swapGuardWarning,
+            swapGuard: swapGuardConfig,
+          })),
+        };
       }
     }
 
@@ -2940,13 +2997,22 @@ async function handleFunctionApprove(request: {
   }
 
   const expectedAmountLamports = Math.round(transferArgs.amount * web3.LAMPORTS_PER_SOL);
+  const resolvedActionApprovalPda = actionApprovalPda || deriveActionApprovalAddress({
+    user: session.userAddress,
+    actionHash: pendingActionHash,
+  }).address;
+  const resolvedWalletSafetyAttestationPda = walletSafetyAttestationPda || deriveWalletSafetyAttestationAddress({
+    user: session.userAddress,
+    recipient: transferArgs.recipient,
+    actionHash: pendingActionHash,
+  }).address;
   const readiness = await verifyTransferGuardReadiness({
     user: session.userAddress,
     action_hash: pendingActionHash,
     recipient: transferArgs.recipient,
     amount_lamports: expectedAmountLamports,
-    actionApprovalPda: actionApprovalPda || undefined,
-    walletSafetyAttestationPda: walletSafetyAttestationPda || undefined,
+    actionApprovalPda: resolvedActionApprovalPda,
+    walletSafetyAttestationPda: resolvedWalletSafetyAttestationPda,
     allowMissingApproval: true,
     allowMissingAttestation: true,
   });
@@ -3050,8 +3116,8 @@ async function handleFunctionApprove(request: {
         action_type: actionType || 'TRANSFER_SOL_GUARDED',
         action_hash: pendingActionHash,
         policy_pda: policyPda,
-        action_approval_pda: actionApprovalPda || '',
-        wallet_safety_attestation_pda: walletSafetyAttestationPda || '',
+        action_approval_pda: resolvedActionApprovalPda,
+        wallet_safety_attestation_pda: resolvedWalletSafetyAttestationPda,
         action_expires_at: actionExpiresAt || actionExpiry || new Date(createdAt + 5 * 60 * 1000).toISOString(),
         action_created_at: actionCreatedAt || new Date(createdAt).toISOString(),
         action_amount_lamports: expectedAmountLamports,

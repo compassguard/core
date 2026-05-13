@@ -18,6 +18,7 @@ describe('GET /api/quotes/usdc-sol', () => {
       input_mint: 'BRjpCHtyQLNCo8gqRUr8jtdAj5AjPYQaoqbvcZiHok1k',
       output_mint: 'So11111111111111111111111111111111111111112',
       slippage_bps: 100,
+      quote_source: 'orca_whirlpool_quote',
       updated_at: new Date().toISOString(),
     });
 

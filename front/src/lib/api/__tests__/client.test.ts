@@ -73,6 +73,7 @@ describe('streamChat', () => {
           input_mint: 'BRjpCHtyQLNCo8gqRUr8jtdAj5AjPYQaoqbvcZiHok1k',
           output_mint: 'So11111111111111111111111111111111111111112',
           slippage_bps: 100,
+          quote_source: 'orca_whirlpool_quote',
           updated_at: new Date().toISOString(),
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
@@ -154,6 +155,65 @@ describe('chat session history endpoint', () => {
       session_id: 'session-1',
       user_address: 'wallet-1',
     });
+  });
+
+  it('parses function_approve response with guardrail explanation', async () => {
+    const now = new Date().toISOString();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          messages: [],
+          proposal_state: {
+            state: 'guard_rejected_awaiting_bypass',
+            expires_at: now,
+          },
+          guard_rejection: {
+            reason: 'PriceDeviationExceeded',
+            deviation_bps: 850,
+            max_allowed_bps: 500,
+            oracle_price_usd: 150,
+            quoted_price_usd: 162.75,
+            can_bypass: true,
+            warning_message: 'El precio del swap difiere del precio de mercado.',
+            explanation: {
+              id: 'swap-rejection-explanation-1',
+              action_type: 'swap',
+              decision: 'REJECT',
+              severity: 'critical',
+              category: 'price_or_execution_risk',
+              summary: 'El guardrail bloqueó el swap por desviación de precio.',
+              reason_codes: ['PriceDeviationExceeded', 'price_deviation_rejected'],
+              reasons: [
+                {
+                  code: 'price_deviation_rejected',
+                  message: 'El precio del swap difiere del precio de mercado.',
+                  category: 'price_or_execution_risk',
+                  source: 'onchain',
+                  severity: 'critical',
+                },
+              ],
+              checks: [
+                {
+                  check: 'swap_price_deviation',
+                  label: 'Límite máximo de desviación de precio',
+                  status: 'fail',
+                  source: 'onchain',
+                },
+              ],
+              sources: [{ provider: 'agent_action_guard', status: 'ok', checked_at: now }],
+              suggested_user_action: 'request_review',
+              created_at: now,
+            },
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+
+    const payload = await postApprove('session-1');
+
+    expect(payload.guard_rejection?.explanation?.decision).toBe('REJECT');
+    expect(payload.guard_rejection?.explanation?.reason_codes).toContain('price_deviation_rejected');
   });
 
   it('sends user_address on function_approve', async () => {

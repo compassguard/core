@@ -1,14 +1,15 @@
+import React from 'react';
 import { AlertTriangle } from 'lucide-react';
-
-export type SwapGuardWarningData = {
-  code: 'price_deviation_warning';
-  message: string;
-  deviation_bps: number;
-};
+import type { SwapGuardWarning as SwapGuardWarningData } from '@/types/api';
+import { GuardrailExplanationCard } from './GuardrailExplanationCard';
 
 export function SwapGuardWarning({ warning }: { warning: SwapGuardWarningData }) {
   const deviationPercent = (warning.deviation_bps / 100).toFixed(1);
-  
+
+  if (warning.explanation) {
+    return <GuardrailExplanationCard explanation={warning.explanation} className="mt-4" />;
+  }
+
   return (
     <div className="mt-4 rounded-2xl border border-warning-border bg-warning-bg p-4 text-warning-text">
       <div className="flex items-start gap-3">

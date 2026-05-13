@@ -1,6 +1,8 @@
+import React from 'react';
 import { AlertTriangle, ShieldCheck } from 'lucide-react';
 import type { RiskInfo } from '@/types/api';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { GuardrailExplanationCard } from './GuardrailExplanationCard';
 
 type WalletSafetyReason = NonNullable<RiskInfo['walletSafety']>['reasons'][number];
 
@@ -90,6 +92,10 @@ function buildCheckSummary(risk: RiskInfo): string[] {
 export function RiskInlineAlert({ risk }: { risk: RiskInfo }) {
   const enabled = useSettingsStore((state) => state.riskWarningsEnabled);
   if (!enabled) return null;
+
+  if (risk.explanation) {
+    return <GuardrailExplanationCard explanation={risk.explanation} className="mt-4" />;
+  }
 
   const walletDecision = risk.walletSafety?.decision;
   const explainedReasons = getUniqueReasons(risk.walletSafety?.reasons).map(explainReason);

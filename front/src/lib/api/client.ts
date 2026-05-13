@@ -12,6 +12,7 @@ import type {
   GetPricesResponse,
   GetTransactionsQuery,
   GetTransactionsResponse,
+  GuardrailExplanation,
 } from '@/types/api';
 import {
   AgentMessageResponseSchema,
@@ -287,12 +288,15 @@ export type SwapGuard = {
   staleness_seconds: number;
   max_confidence_bps: number;
   network: 'devnet' | 'mainnet-beta';
+  on_chain_enforcement?: boolean;
+  action_approval_pda?: string;
 };
 
 export type SwapGuardWarning = {
   code: 'price_deviation_warning';
   message: string;
   deviation_bps: number;
+  explanation?: GuardrailExplanation;
 };
 
 export type GuardRejection = {
@@ -303,6 +307,7 @@ export type GuardRejection = {
   quoted_price_usd: number;
   can_bypass: boolean;
   warning_message: string;
+  explanation?: GuardrailExplanation;
 };
 
 export type ApproveResponse = {

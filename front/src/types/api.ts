@@ -12,6 +12,75 @@ export function isApiError<T>(result: ApiResult<T>): result is ApiError {
   return typeof result === 'object' && result !== null && 'error' in result;
 }
 
+export type GuardrailActionType = 'transfer' | 'swap' | 'conditional_order' | 'token_risk' | 'wallet_policy' | string;
+export type GuardrailDecision = 'ALLOW' | 'WARN' | 'REJECT';
+export type GuardrailSeverity = 'info' | 'warning' | 'critical';
+export type ExplanationCategory =
+  | 'destination_trust'
+  | 'token_or_protocol_safety'
+  | 'price_or_execution_risk'
+  | 'permission_scope'
+  | 'user_policy'
+  | 'network_or_provider_state'
+  | 'onchain_enforcement';
+export type ExplanationSource = 'local' | 'policy' | 'onchain' | 'offchain' | 'oracle' | 'onchain_approval' | 'simulation';
+export type CheckStatus = 'pass' | 'warn' | 'fail' | 'error' | 'not_run';
+export type SuggestedUserAction =
+  | 'continue'
+  | 'cancel'
+  | 'review_destination'
+  | 'reduce_amount'
+  | 'send_test_amount'
+  | 'review_price'
+  | 'adjust_slippage'
+  | 'wait_and_retry'
+  | 'request_review';
+
+export type GuardrailNarration = {
+  summary: string;
+  bullets?: string[];
+  based_on: {
+    explanation_id: string;
+    reason_codes: string[];
+    checks: string[];
+    sources: string[];
+  };
+};
+
+export type GuardrailExplanation = {
+  id: string;
+  action_type: GuardrailActionType;
+  decision: GuardrailDecision;
+  severity: GuardrailSeverity;
+  category: ExplanationCategory;
+  summary: string;
+  impact?: string;
+  reason_codes: string[];
+  reasons: Array<{
+    code: string;
+    message: string;
+    category: ExplanationCategory;
+    source: ExplanationSource;
+    severity: GuardrailSeverity;
+  }>;
+  checks: Array<{
+    check: string;
+    label: string;
+    status: CheckStatus;
+    source: ExplanationSource;
+    evidence?: Record<string, unknown>;
+  }>;
+  sources: Array<{
+    provider: string;
+    status: 'ok' | 'missing' | 'stale' | 'error';
+    checked_at?: string;
+  }>;
+  suggested_user_action?: SuggestedUserAction;
+  technical_details?: Record<string, unknown>;
+  narration?: GuardrailNarration;
+  created_at: string;
+};
+
 export type RiskInfo = {
   score: number;
   level: 'low' | 'medium' | 'critical';
@@ -33,6 +102,7 @@ export type RiskInfo = {
       status: 'ok' | 'missing' | 'stale' | 'error';
     }[];
   };
+  explanation?: GuardrailExplanation;
 };
 
 export type ExecuteInfo = {
@@ -148,6 +218,8 @@ export type AgentMessage =
         fee_usd?: number;
         provider?: string;
         slippage_bps?: number;
+        estimated_output_amount?: number;
+        quote_source?: 'orca_whirlpool_quote' | 'fallback_sol_usd';
       };
       risk: RiskInfo;
       execution?: FunctionExecution;
@@ -183,6 +255,8 @@ export type SessionHistoryFunctionCallMessage = {
     fee_usd?: number;
     provider?: string;
     slippage_bps?: number;
+    estimated_output_amount?: number;
+    quote_source?: 'orca_whirlpool_quote' | 'fallback_sol_usd';
   };
   risk: RiskInfo;
   execution?: FunctionExecution;
@@ -209,20 +283,66 @@ export type AgentMessageRequest =
   | { type: 'function_result'; session_id: string; tx_signature: string; status: 'submitted' | 'confirmed' | 'failed'; error_message?: string; user_address?: string }
   | { type: 'function_reject'; session_id: string; reason?: string; user_address?: string };
 
+export type SwapGuard = {
+  program_id: string;
+  oracle_feed: string;
+  quoted_price_usd_e8: number;
+  oracle_price_usd_e8?: number;
+  deviation_bps?: number;
+  warning_deviation_bps: number;
+  max_deviation_bps: number;
+  staleness_seconds: number;
+  max_confidence_bps: number;
+  network: 'devnet' | 'mainnet-beta';
+  on_chain_enforcement?: boolean;
+  action_approval_pda?: string;
+};
+
+export type SwapGuardWarning = {
+  code: 'price_deviation_warning';
+  message: string;
+  deviation_bps: number;
+  explanation?: GuardrailExplanation;
+};
+
+export type GuardRejection = {
+  reason: string;
+  deviation_bps: number;
+  max_allowed_bps: number;
+  oracle_price_usd: number;
+  quoted_price_usd: number;
+  can_bypass: boolean;
+  warning_message: string;
+  explanation?: GuardrailExplanation;
+};
+
 export type AgentMessageResponse = {
   messages: AgentMessage[];
   proposal_state?: {
-    state: 'awaiting_signature';
-    expires_at: string;
+    state: 'awaiting_signature' | 'guard_rejected_awaiting_bypass' | 'cancelled';
+    expires_at?: string;
   };
   transaction?: {
-    format: 'base64_versioned_transaction';
+    format: 'base64_versioned_transaction' | 'base64_legacy_transaction';
     unsigned_tx_base64: string;
-    recent_blockhash: string;
-    last_valid_block_height: number;
-    network: 'devnet' | 'mainnet-beta';
+    recent_blockhash?: string;
+    last_valid_block_height?: number;
+    network?: 'devnet' | 'mainnet-beta';
+    execution_type?: string;
     onchain_guardrail?: OnchainGuardrail;
   };
+  swap_execution?: {
+    provider: string;
+    pair: string;
+    input_amount: number;
+    slippage_bps: number;
+    quote: unknown;
+  };
+  swap_guard?: SwapGuard;
+  swap_guard_warning?: SwapGuardWarning;
+  guard_rejection?: GuardRejection;
+  risk_accepted?: boolean;
+  guard_bypassed?: boolean;
 };
 
 export type GetHistoryResponse = {
@@ -329,5 +449,6 @@ export type UsdcSolQuoteResponse = {
   output_mint: string;
   slippage_bps: number;
   route_context?: string;
+  quote_source: 'orca_whirlpool_quote' | 'fallback_sol_usd';
   updated_at: string;
 };

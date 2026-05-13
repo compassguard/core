@@ -31,12 +31,91 @@ const WalletSafetyResultSchema = z.object({
     .optional(),
 });
 
+export const GuardrailDecisionSchema = z.enum(['ALLOW', 'WARN', 'REJECT']);
+export const GuardrailSeveritySchema = z.enum(['info', 'warning', 'critical']);
+export const ExplanationCategorySchema = z.enum([
+  'destination_trust',
+  'token_or_protocol_safety',
+  'price_or_execution_risk',
+  'permission_scope',
+  'user_policy',
+  'network_or_provider_state',
+  'onchain_enforcement',
+]);
+export const ExplanationSourceSchema = z.enum([
+  'local',
+  'policy',
+  'onchain',
+  'offchain',
+  'oracle',
+  'onchain_approval',
+  'simulation',
+]);
+export const CheckStatusSchema = z.enum(['pass', 'warn', 'fail', 'error', 'not_run']);
+export const SuggestedUserActionSchema = z.enum([
+  'continue',
+  'cancel',
+  'review_destination',
+  'reduce_amount',
+  'send_test_amount',
+  'review_price',
+  'adjust_slippage',
+  'wait_and_retry',
+  'request_review',
+]);
+
+export const GuardrailNarrationSchema = z.object({
+  summary: z.string(),
+  bullets: z.array(z.string()).optional(),
+  based_on: z.object({
+    explanation_id: z.string(),
+    reason_codes: z.array(z.string()),
+    checks: z.array(z.string()),
+    sources: z.array(z.string()),
+  }),
+});
+
+export const GuardrailExplanationSchema = z.object({
+  id: z.string(),
+  action_type: z.string(),
+  decision: GuardrailDecisionSchema,
+  severity: GuardrailSeveritySchema,
+  category: ExplanationCategorySchema,
+  summary: z.string(),
+  impact: z.string().optional(),
+  reason_codes: z.array(z.string()),
+  reasons: z.array(z.object({
+    code: z.string(),
+    message: z.string(),
+    category: ExplanationCategorySchema,
+    source: ExplanationSourceSchema,
+    severity: GuardrailSeveritySchema,
+  })),
+  checks: z.array(z.object({
+    check: z.string(),
+    label: z.string(),
+    status: CheckStatusSchema,
+    source: ExplanationSourceSchema,
+    evidence: z.record(z.unknown()).optional(),
+  })),
+  sources: z.array(z.object({
+    provider: z.string(),
+    status: z.enum(['ok', 'missing', 'stale', 'error']),
+    checked_at: z.string().optional(),
+  })),
+  suggested_user_action: SuggestedUserActionSchema.optional(),
+  technical_details: z.record(z.unknown()).optional(),
+  narration: GuardrailNarrationSchema.optional(),
+  created_at: z.string(),
+});
+
 export const RiskInfoSchema = z.object({
   score: z.number().min(0).max(100),
   level: z.enum(['low', 'medium', 'critical']),
   reasons: z.array(z.string()).optional(),
   requiresExtraConfirmation: z.boolean().optional(),
   walletSafety: WalletSafetyResultSchema.optional(),
+  explanation: GuardrailExplanationSchema.optional(),
 });
 
 export const ExecuteSchema = z.object({
@@ -132,6 +211,8 @@ export const AgentMessageSchema = z.discriminatedUnion('type', [
       fee_usd: z.number().optional(),
       provider: z.string().optional(),
       slippage_bps: z.number().optional(),
+      estimated_output_amount: z.number().optional(),
+      quote_source: z.enum(['orca_whirlpool_quote', 'fallback_sol_usd']).optional(),
     }),
     risk: RiskInfoSchema,
     execution: FunctionExecutionSchema.optional(),
@@ -172,6 +253,8 @@ export const SessionHistoryFunctionCallMessageSchema = z.object({
     fee_usd: z.number().optional(),
     provider: z.string().optional(),
     slippage_bps: z.number().optional(),
+    estimated_output_amount: z.number().optional(),
+    quote_source: z.enum(['orca_whirlpool_quote', 'fallback_sol_usd']).optional(),
   }),
   risk: RiskInfoSchema,
   execution: FunctionExecutionSchema.optional(),
@@ -224,6 +307,7 @@ export const SwapGuardWarningSchema = z.object({
   code: z.literal('price_deviation_warning'),
   message: z.string(),
   deviation_bps: z.number(),
+  explanation: GuardrailExplanationSchema.optional(),
 });
 
 export const AgentMessageResponseSchema = z.object({
@@ -246,6 +330,7 @@ export const GuardRejectionSchema = z.object({
   quoted_price_usd: z.number(),
   can_bypass: z.boolean(),
   warning_message: z.string(),
+  explanation: GuardrailExplanationSchema.optional(),
 });
 
 export const FunctionApproveResponseSchema = AgentMessageResponseSchema.extend({
@@ -314,6 +399,7 @@ export const UsdcSolQuoteResponseSchema = z.object({
   output_mint: z.string(),
   slippage_bps: z.number().nonnegative(),
   route_context: z.string().optional(),
+  quote_source: z.enum(['orca_whirlpool_quote', 'fallback_sol_usd']),
   updated_at: z.string(),
 });
 
@@ -426,6 +512,9 @@ export const SSEProposalSchema = z.object({
     summary: z.string(),
     fee_usd: z.number().optional(),
     provider: z.string().optional(),
+    slippage_bps: z.number().optional(),
+    estimated_output_amount: z.number().optional(),
+    quote_source: z.enum(['orca_whirlpool_quote', 'fallback_sol_usd']).optional(),
   }),
   risk: RiskInfoSchema,
   execution: z

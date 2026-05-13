@@ -92,7 +92,7 @@
       "status": "completed",
       "evidence": [
         "Implemented back/services/priceQuote.ts with devnet USDC/SOL pair validation and normalized quote output.",
-        "Disabled fallback pricing for the read-only agent quote path and validate provider mints against configured devnet mints."
+        "Amended quote design: devUSDC is treated as a 1 USD stable demo token; quote no longer queries Orca token registry for the devUSDC mint and exposes quote_source."
       ]
     },
     {
@@ -216,6 +216,111 @@
         "Ran frontend validation with Codex runtime Node: vitest run --no-cache front/src/lib/api/__tests__/client.test.ts front/src/lib/api/__tests__/schemas.test.ts (2 files, 17 tests passed).",
         "Ran backend/API validation with Codex runtime Node: vitest run --no-cache --config vitest.back.config.ts app/api/quotes/usdc-sol/route.test.ts app/api/wallet/balances/route.test.ts back/services/__tests__/walletHoldings.test.ts back/services/__tests__/priceQuote.test.ts back/services/__tests__/chat.test.ts (5 files, 36 tests passed).",
         "Ran npm run build with Codex runtime Node and temporary node_modules symlink; Next build completed successfully with pre-existing lint warning in app/layout.tsx."
+      ]
+    },
+    {
+      "id": "T9",
+      "title": "Corregir fuente de precio devUSDC en quote devnet",
+      "description": "Evitar consultar el token registry público de Orca para el mint devUSDC; tratar devUSDC como stable demo token de 1 USD, consultar solo SOL/USD cuando sea posible y exponer quote_source.",
+      "filesToCreate": [
+        "back/services/__tests__/orcaSwap.test.ts"
+      ],
+      "filesToModify": [
+        "back/services/tools/orcaSwap.ts",
+        "back/services/priceQuote.ts",
+        "front/src/types/api.ts",
+        "front/src/lib/api/schemas.ts",
+        "back/services/__tests__/priceQuote.test.ts",
+        "front/src/lib/api/__tests__/schemas.test.ts",
+        "front/src/lib/api/__tests__/client.test.ts",
+        "docs/agent-quotes-and-holdings/functional-spec.md",
+        "docs/agent-quotes-and-holdings/technical-spec.md",
+        "docs/agent-quotes-and-holdings/task.json"
+      ],
+      "dependencies": [
+        "T3"
+      ],
+      "verification": [
+        "quoteOrcaUsdcToSol no llama /tokens/<DEVNET_USDC_MINT>.",
+        "USDC->SOL y SOL->USDC preservan mints devnet correctos.",
+        "Fallback local marca quote_source=fallback_sol_usd.",
+        "API/schema/frontend aceptan quote_source."
+      ],
+      "status": "completed",
+      "evidence": [
+        "Updated docs/agent-quotes-and-holdings/functional-spec.md and technical-spec.md with devUSDC quote source amendment.",
+        "Updated back/services/tools/orcaSwap.ts so devUSDC is treated as 1 USD and only SOL/USD is fetched from provider; quote_source indicates provider vs fallback.",
+        "Updated priceQuote/frontend schemas/types/tests to expose quote_source.",
+        "npm run test:back -- back/services/__tests__/orcaSwap.test.ts back/services/__tests__/priceQuote.test.ts app/api/quotes/usdc-sol/route.test.ts (15 passed)",
+        "npm run test:front -- front/src/lib/api/__tests__/schemas.test.ts front/src/lib/api/__tests__/client.test.ts (31 passed)",
+        "npx eslint back/services/tools/orcaSwap.ts back/services/priceQuote.ts back/services/__tests__/orcaSwap.test.ts back/services/__tests__/priceQuote.test.ts app/api/quotes/usdc-sol/route.test.ts front/src/types/api.ts front/src/lib/api/schemas.ts front/src/lib/api/__tests__/schemas.test.ts front/src/lib/api/__tests__/client.test.ts (passed)",
+        "Manual local endpoint check: GET /api/quotes/usdc-sol?input_token=USDC&output_token=SOL&input_amount=420&network=devnet returned 200 with quote_source=orca_token_api and devnet mints."
+      ]
+    },
+    {
+      "id": "T10",
+      "title": "Unificar cotización UX con quote real de Whirlpool",
+      "description": "Cambiar la fuente primaria de quote para que el agente y la propuesta usen swapQuoteByInputToken del mismo Whirlpool devnet que se usa al construir el swap real, dejando SOL/USD solo como fallback explícito.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "back/services/tools/orcaSwap.ts",
+        "back/services/__tests__/orcaSwap.test.ts",
+        "back/services/priceQuote.ts",
+        "front/src/types/api.ts",
+        "front/src/lib/api/schemas.ts",
+        "docs/agent-quotes-and-holdings/functional-spec.md",
+        "docs/agent-quotes-and-holdings/technical-spec.md",
+        "docs/agent-quotes-and-holdings/task.json"
+      ],
+      "dependencies": [
+        "T9"
+      ],
+      "verification": [
+        "La quote primaria usa swapQuoteByInputToken sobre DEVNET_SOL_USDC_POOL.",
+        "quote_source usa orca_whirlpool_quote para fuente primaria.",
+        "No se usa fetch/token registry para la quote primaria.",
+        "Endpoint local devuelve una cotización coherente con el pool real que luego usa el swap."
+      ],
+      "status": "completed",
+      "evidence": [
+        "Updated docs/agent-quotes-and-holdings/functional-spec.md and technical-spec.md with single quote source amendment.",
+        "Changed back/services/tools/orcaSwap.ts so primary quote uses Orca Whirlpool SDK swapQuoteByInputToken against DEVNET_SOL_USDC_POOL, matching the swap transaction source.",
+        "Updated quote_source contract to orca_whirlpool_quote | fallback_sol_usd across backend/frontend schemas and tests.",
+        "npm run test:back -- back/services/__tests__/orcaSwap.test.ts back/services/__tests__/priceQuote.test.ts app/api/quotes/usdc-sol/route.test.ts (15 passed)",
+        "npm run test:front -- front/src/lib/api/__tests__/schemas.test.ts front/src/lib/api/__tests__/client.test.ts (31 passed)",
+        "npx eslint back/services/tools/orcaSwap.ts back/services/priceQuote.ts back/services/__tests__/orcaSwap.test.ts back/services/__tests__/priceQuote.test.ts app/api/quotes/usdc-sol/route.test.ts front/src/types/api.ts front/src/lib/api/schemas.ts front/src/lib/api/__tests__/schemas.test.ts front/src/lib/api/__tests__/client.test.ts (passed)",
+        "Manual endpoint check: GET /api/quotes/usdc-sol?input_token=USDC&output_token=SOL&input_amount=60&network=devnet returned 200 with quote_source=orca_whirlpool_quote."
+      ]
+    },
+    {
+      "id": "T11",
+      "title": "Mostrar output estimado de Whirlpool en propuesta de swap",
+      "description": "Agregar estimated_output_amount y quote_source al display de swap para que el usuario vea antes de aprobar la cantidad estimada que viene de la misma quote del Whirlpool usada para construir la transacción.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "back/services/chat.ts",
+        "front/src/types/api.ts",
+        "front/src/lib/api/schemas.ts",
+        "front/src/components/chat/proposals/SwapProposalCard.tsx",
+        "docs/agent-quotes-and-holdings/task.json"
+      ],
+      "dependencies": [
+        "T10"
+      ],
+      "verification": [
+        "La propuesta de swap muestra receive como ~<amount> <token> en vez de solo el token.",
+        "La propuesta muestra quote_source para diferenciar Orca Whirlpool vs fallback.",
+        "Los schemas de SSE/session history aceptan los nuevos campos opcionales de display."
+      ],
+      "status": "completed",
+      "evidence": [
+        "Updated back/services/chat.ts to include estimated_output_amount, slippage_bps, quote_source, and summary with estimated receive in swap proposals.",
+        "Updated SwapProposalCard to render Receive as estimated amount and show Quote source.",
+        "Updated frontend schemas/types for optional display fields.",
+        "npm run test:back -- back/services/__tests__/chat.test.ts (33 passed)",
+        "npm run test:front -- front/src/lib/api/__tests__/schemas.test.ts front/src/lib/api/__tests__/client.test.ts front/src/components/chat/proposals/__tests__/GuardrailExplanationCard.test.tsx (38 passed)",
+        "npx eslint back/services/chat.ts front/src/types/api.ts front/src/lib/api/schemas.ts front/src/components/chat/proposals/SwapProposalCard.tsx (passed)",
+        "Restarted local dev server on port 3000; curl -I returned HTTP 200."
       ]
     }
   ],

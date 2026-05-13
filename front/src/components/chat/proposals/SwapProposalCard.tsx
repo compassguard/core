@@ -23,7 +23,9 @@ export function SwapProposalCard({
     ? `${(params as OrcaSwapParams).input_amount} ${tokenLabel((params as OrcaSwapParams).input_token)}`
     : `${(params as SwapParams).amount_in} ${(params as SwapParams).token_in}`;
   const receiveValue = isOrcaSwap
-    ? tokenLabel((params as OrcaSwapParams).output_token)
+    ? proposal.display.estimated_output_amount !== undefined
+      ? `~${proposal.display.estimated_output_amount.toLocaleString(undefined, { maximumFractionDigits: 9 })} ${tokenLabel((params as OrcaSwapParams).output_token)}`
+      : tokenLabel((params as OrcaSwapParams).output_token)
     : (params as SwapParams).token_out;
   const { approveProposal, rejectProposal } = useAgentMessage();
   const uiState = useChatStore((state) => state.proposalUiState) ?? proposal.uiState;
@@ -68,6 +70,12 @@ export function SwapProposalCard({
           <Detail label="Receive" value={receiveValue} />
           {proposal.display.fee_usd !== undefined ? <Detail label="Network fee" value={`$${proposal.display.fee_usd.toFixed(2)}`} /> : null}
           {proposal.display.slippage_bps !== undefined ? <Detail label="Slippage" value={`${proposal.display.slippage_bps / 100}%`} /> : null}
+          {proposal.display.quote_source ? (
+            <Detail
+              label="Quote source"
+              value={proposal.display.quote_source === 'orca_whirlpool_quote' ? 'Orca Whirlpool' : 'Fallback local'}
+            />
+          ) : null}
         </div>
       </div>
 
