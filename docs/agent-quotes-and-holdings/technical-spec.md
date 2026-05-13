@@ -251,3 +251,60 @@ Freshness:
 - probar quote `USDC -> SOL` y `SOL -> USDC`
 - probar errores por address invalido, network distinta de `devnet` y provider timeout
 - verificar que ningun secreto de provider aparezca en payloads cliente o del agente
+
+## Amendment 2026-05-13 — devUSDC pricing model
+
+### Decisión técnica
+
+`back/services/tools/orcaSwap.ts` debe separar dos conceptos:
+
+1. **Mint de ejecución devnet:** `DEVNET_USDC_MINT` sigue siendo `BRjpCHty...` para construir quotes/tx contra el pool devnet.
+2. **Precio de referencia:** devUSDC se fija en `1 USD`; no se consulta `/tokens/<DEVNET_USDC_MINT>` en Orca public API.
+
+El servicio puede consultar SOL/USD desde Orca public API para `DEVNET_SOL_MINT`. Si esa consulta falla, puede usar `FALLBACK_SOL_USD_PRICE || 140` como fallback local de demo.
+
+### Contrato extendido
+
+`OrcaSwapQuote` y la respuesta normalizada `UsdcSolQuoteResult` agregan:
+
+```ts
+type QuoteSource = 'orca_token_api' | 'fallback_sol_usd';
+quote_source: QuoteSource;
+```
+
+Reglas:
+
+- `quote_source = 'orca_token_api'` cuando SOL/USD salió del provider.
+- `quote_source = 'fallback_sol_usd'` cuando SOL/USD salió del fallback local.
+- `route_context` debe mantenerse en `orca_usdc_sol_devnet` para identificar el par/ruta devnet.
+
+### Testing adicional
+
+- Unit test de `quoteOrcaUsdcToSol` debe mockear `fetch` y verificar que nunca se llama `/tokens/<DEVNET_USDC_MINT>`.
+- Unit test de fallback debe verificar que, si falla SOL/USD, la quote usa `FALLBACK_SOL_USD_PRICE || 140` y marca `quote_source = 'fallback_sol_usd'`.
+- Tests de `priceQuote` y schemas frontend deben aceptar y validar `quote_source`.
+
+## Amendment 2026-05-13 — single quote source for UX and execution
+
+### Decisión técnica
+
+`quoteOrcaUsdcToSol` deja de estimar output con precio SOL/USD cuando puede consultar el pool. La fuente primaria pasa a ser `swapQuoteByInputToken` del Orca Whirlpool SDK contra `DEVNET_SOL_USDC_POOL`, igual que el flujo que construye la transacción real.
+
+`QuoteSource` queda:
+
+```ts
+type QuoteSource = 'orca_whirlpool_quote' | 'fallback_sol_usd';
+```
+
+Reglas:
+
+- `quote_source = 'orca_whirlpool_quote'` cuando el output viene de `swapQuoteByInputToken`.
+- `quote_source = 'fallback_sol_usd'` solo si falla Whirlpool y `allow_fallback !== false`.
+- El guard on-chain sigue comparando el precio implícito de la quote real del pool contra Pyth; puede rechazar si el pool devnet está desalineado.
+
+### Testing adicional
+
+- Unit test debe verificar que `quoteOrcaUsdcToSol` usa `swapQuoteByInputToken` y no `fetch`/token registry.
+- API/schema/frontend deben aceptar `quote_source = 'orca_whirlpool_quote'`.
+- Endpoint local debe mostrar output coherente con el pool real, aunque el guard pueda bloquear por desviación contra oráculo.
+

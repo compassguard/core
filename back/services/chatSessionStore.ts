@@ -4,6 +4,9 @@
  * Uses an external Redis REST store when configured, with in-memory fallback for local development.
  */
 
+import type { GuardrailExplanation } from './guardrailExplanations';
+import type { WalletSafetyDecisionResult } from './walletSafetyValidation';
+
 export type SolanaNetwork = 'devnet' | 'mainnet-beta';
 export type ProposalState =
   | 'awaiting_approval'
@@ -51,6 +54,9 @@ export type SessionFunctionMessage = {
     score: number;
     level: 'low' | 'medium' | 'critical';
     reasons?: string[];
+    requiresExtraConfirmation?: boolean;
+    walletSafety?: WalletSafetyDecisionResult;
+    explanation?: GuardrailExplanation;
   };
   execution?: SessionFunctionExecution;
   timestamp: string;

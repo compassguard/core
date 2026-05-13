@@ -256,10 +256,12 @@ describe('api schemas', () => {
       input_mint: 'BRjpCHtyQLNCo8gqRUr8jtdAj5AjPYQaoqbvcZiHok1k',
       output_mint: 'So11111111111111111111111111111111111111112',
       slippage_bps: 100,
+      quote_source: 'fallback_sol_usd',
       updated_at: '2026-05-10T02:03:57.138Z',
     });
 
     expect(parsed.provider).toBe('orca_whirlpools_devnet');
+    expect(parsed.quote_source).toBe('fallback_sol_usd');
   });
 
   it('validates function approve response without signed tx submission', () => {
@@ -322,6 +324,200 @@ describe('api schemas', () => {
     expect(parsed.proposal_state.state).toBe('awaiting_signature');
     expect(parsed.swap_execution?.provider).toBe('orca_whirlpools_devnet');
     expect(parsed.transaction?.execution_type).toBe('orca_swap');
+  });
+
+  it('parses transfer proposal risk with optional guardrail explanation', () => {
+    const now = new Date().toISOString();
+    const parsedProposal = SSEProposalSchema.parse({
+      type: 'function_call',
+      function: {
+        name: 'transfer',
+        params: {
+          amount: 1,
+          token: 'SOL',
+          recipient: '11111111111111111111111111111111',
+        },
+      },
+      display: { summary: 'Enviar 1 SOL', provider: 'Wallet Copilot' },
+      risk: {
+        score: 55,
+        level: 'medium',
+        reasons: ['Destino no allowlisted'],
+        explanation: {
+          id: 'transfer-explanation-1',
+          action_type: 'transfer',
+          decision: 'WARN',
+          severity: 'warning',
+          category: 'destination_trust',
+          summary: 'Revisá la transferencia antes de firmar.',
+          impact: 'Las transferencias on-chain no se pueden revertir.',
+          reason_codes: ['destination_not_allowlisted'],
+          reasons: [
+            {
+              code: 'destination_not_allowlisted',
+              message: 'El destino no está en tu allowlist.',
+              category: 'destination_trust',
+              source: 'policy',
+              severity: 'warning',
+            },
+          ],
+          checks: [
+            {
+              check: 'wallet_safety_decision',
+              label: 'Evaluación de seguridad de la wallet destino',
+              status: 'warn',
+              source: 'policy',
+              evidence: { risk_level: 'medium' },
+            },
+          ],
+          sources: [{ provider: 'wallet_safety_policy', status: 'ok', checked_at: now }],
+          suggested_user_action: 'review_destination',
+          technical_details: { score: 55 },
+          narration: {
+            summary: 'El destino no está en tu allowlist; revisá antes de firmar.',
+            bullets: ['La narración está derivada del payload estructurado.'],
+            based_on: {
+              explanation_id: 'transfer-explanation-1',
+              reason_codes: ['destination_not_allowlisted'],
+              checks: ['wallet_safety_decision'],
+              sources: ['wallet_safety_policy'],
+            },
+          },
+          created_at: now,
+        },
+      },
+      timestamp: now,
+    });
+
+    expect(parsedProposal.risk.explanation?.decision).toBe('WARN');
+    expect(parsedProposal.risk.explanation?.reason_codes).toContain('destination_not_allowlisted');
+    expect(parsedProposal.risk.explanation?.narration?.based_on.explanation_id).toBe('transfer-explanation-1');
+  });
+
+  it('keeps legacy transfer proposal payload valid without explanation', () => {
+    const parsedProposal = SSEProposalSchema.parse({
+      type: 'function_call',
+      function: {
+        name: 'transfer',
+        params: {
+          amount: 1,
+          token: 'SOL',
+          recipient: '11111111111111111111111111111111',
+        },
+      },
+      display: { summary: 'Enviar 1 SOL', provider: 'Wallet Copilot' },
+      risk: { score: 10, level: 'low' },
+      timestamp: new Date().toISOString(),
+    });
+
+    expect(parsedProposal.risk.explanation).toBeUndefined();
+  });
+
+  it('parses swap approve response with warning explanation', () => {
+    const now = new Date().toISOString();
+    const parsed = FunctionApproveResponseSchema.parse({
+      messages: [
+        {
+          type: 'text',
+          content: 'Swap preparado. Firma en tu wallet para ejecutar.',
+          timestamp: now,
+        },
+      ],
+      proposal_state: { state: 'awaiting_signature', expires_at: now },
+      swap_guard_warning: {
+        code: 'price_deviation_warning',
+        message: 'El precio se desvió 2.00% del oráculo.',
+        deviation_bps: 200,
+        explanation: {
+          id: 'swap-warning-explanation-1',
+          action_type: 'swap',
+          decision: 'WARN',
+          severity: 'warning',
+          category: 'price_or_execution_risk',
+          summary: 'El swap está permitido, pero el precio se aleja del oráculo.',
+          reason_codes: ['price_deviation_warning'],
+          reasons: [
+            {
+              code: 'price_deviation_warning',
+              message: 'El precio se desvió 2.00% del oráculo.',
+              category: 'price_or_execution_risk',
+              source: 'oracle',
+              severity: 'warning',
+            },
+          ],
+          checks: [
+            {
+              check: 'swap_price_deviation',
+              label: 'Comparación de precio cotizado contra oráculo',
+              status: 'warn',
+              source: 'oracle',
+            },
+          ],
+          sources: [{ provider: 'pyth_oracle', status: 'ok', checked_at: now }],
+          suggested_user_action: 'review_price',
+          created_at: now,
+        },
+      },
+    });
+
+    expect(parsed.swap_guard_warning?.explanation?.category).toBe('price_or_execution_risk');
+  });
+
+  it('parses guard rejection response with explanation', () => {
+    const now = new Date().toISOString();
+    const parsed = FunctionApproveResponseSchema.parse({
+      messages: [
+        {
+          type: 'alert',
+          severity: 'warning',
+          content: 'El guard on-chain rechazó esta transacción.',
+          timestamp: now,
+        },
+      ],
+      proposal_state: { state: 'guard_rejected_awaiting_bypass', expires_at: now },
+      guard_rejection: {
+        reason: 'PriceDeviationExceeded',
+        deviation_bps: 850,
+        max_allowed_bps: 500,
+        oracle_price_usd: 150,
+        quoted_price_usd: 162.75,
+        can_bypass: true,
+        warning_message: 'El precio del swap difiere del precio de mercado.',
+        explanation: {
+          id: 'swap-rejection-explanation-1',
+          action_type: 'swap',
+          decision: 'REJECT',
+          severity: 'critical',
+          category: 'price_or_execution_risk',
+          summary: 'El guardrail bloqueó el swap por desviación de precio.',
+          reason_codes: ['PriceDeviationExceeded', 'price_deviation_rejected'],
+          reasons: [
+            {
+              code: 'price_deviation_rejected',
+              message: 'El precio del swap difiere del precio de mercado.',
+              category: 'price_or_execution_risk',
+              source: 'onchain',
+              severity: 'critical',
+            },
+          ],
+          checks: [
+            {
+              check: 'swap_price_deviation',
+              label: 'Límite máximo de desviación de precio',
+              status: 'fail',
+              source: 'onchain',
+              evidence: { deviation_bps: 850, max_allowed_bps: 500 },
+            },
+          ],
+          sources: [{ provider: 'agent_action_guard', status: 'ok', checked_at: now }],
+          suggested_user_action: 'request_review',
+          technical_details: { deviation_bps: 850, max_allowed_bps: 500 },
+          created_at: now,
+        },
+      },
+    });
+
+    expect(parsed.guard_rejection?.explanation?.decision).toBe('REJECT');
   });
 
   it('allows conditional buy proposal params and execution envelope', () => {

@@ -14,8 +14,10 @@ export function SendProposalCard({
   disabled?: boolean;
   blockReason: ConversationActionBlockReason | null;
 }) {
-  const params = proposal.function.params as TransferParams;
+  const params = proposal.function.params as Partial<TransferParams>;
   const onchainGuard = proposal.onchain_guardrail;
+  const amountValue = params.amount !== undefined && params.token ? `${params.amount} ${params.token}` : '—';
+  const recipientValue = params.recipient ? truncateAddress(params.recipient, 6, 6) : '—';
   const { approveProposal, rejectProposal } = useAgentMessage();
   const uiState = proposal.uiState;
   const isBusy =
@@ -44,8 +46,8 @@ export function SendProposalCard({
         </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Detail label="Amount" value={`${params.amount} ${params.token}`} />
-        <Detail label="Recipient" value={truncateAddress(params.recipient, 6, 6)} />
+        <Detail label="Amount" value={amountValue} />
+        <Detail label="Recipient" value={recipientValue} />
         {params.memo ? <Detail label="Memo" value={params.memo} /> : null}
         {proposal.display.fee_usd !== undefined ? <Detail label="Network fee" value={`$${proposal.display.fee_usd.toFixed(2)}`} /> : null}
       </div>

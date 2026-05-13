@@ -26,6 +26,7 @@ export type UsdcSolQuoteResult = {
   output_mint: string;
   slippage_bps: number;
   route_context?: string;
+  quote_source: 'orca_whirlpool_quote' | 'fallback_sol_usd';
   updated_at: string;
 };
 
@@ -78,7 +79,7 @@ function parseParams(query: UsdcSolQuoteQuery): { network: SolanaNetwork; input:
       output_token: outputToken,
       input_amount: query.input_amount,
       slippage_bps: query.slippage_bps,
-      allow_fallback: false,
+      allow_fallback: true,
     },
   };
 }
@@ -130,6 +131,7 @@ export async function getUsdcSolQuote(query: UsdcSolQuoteQuery): Promise<UsdcSol
     output_mint: quote.output_mint,
     slippage_bps: slippageBps,
     route_context: 'orca_usdc_sol_devnet',
+    quote_source: quote.quote_source,
     updated_at: new Date().toISOString(),
   };
 }

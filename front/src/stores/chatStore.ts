@@ -3,8 +3,10 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import type {
   AgentMessage,
   ExecuteInfo,
+  GuardRejection,
   SessionHistoryFunctionCallMessage,
   SessionHistoryMessage,
+  SwapGuardWarning,
 } from '@/types/api';
 import type {
   AgentChatMessage,
@@ -249,21 +251,9 @@ type PersistedWalletChatBootstrap = {
   updatedAt: string;
 };
 
-export type SwapGuardWarningState = {
-  code: 'price_deviation_warning';
-  message: string;
-  deviation_bps: number;
-} | null;
+export type SwapGuardWarningState = SwapGuardWarning | null;
 
-export type GuardRejectionState = {
-  reason: string;
-  deviation_bps: number;
-  max_allowed_bps: number;
-  oracle_price_usd: number;
-  quoted_price_usd: number;
-  can_bypass: boolean;
-  warning_message: string;
-} | null;
+export type GuardRejectionState = GuardRejection | null;
 
 type ChatStore = {
   schemaVersion: number;

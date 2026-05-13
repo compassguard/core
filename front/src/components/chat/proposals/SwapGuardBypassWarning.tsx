@@ -1,5 +1,7 @@
+import React from 'react';
 import { useChatStore, type GuardRejectionState } from '@/stores/chatStore';
 import { useAgentMessage } from '@/hooks/useAgentMessage';
+import { GuardrailExplanationCard } from './GuardrailExplanationCard';
 
 type Props = {
   guardRejection: NonNullable<GuardRejectionState>;
@@ -31,7 +33,11 @@ export function SwapGuardBypassWarning({ guardRejection }: Props) {
           <h3 className="font-semibold text-yellow-800 dark:text-yellow-200">
             Guard de precio rechazó la transacción
           </h3>
-          
+
+          {guardRejection.explanation ? (
+            <GuardrailExplanationCard explanation={guardRejection.explanation} className="mt-3" />
+          ) : null}
+
           <div className="mt-2 space-y-2 text-sm text-yellow-700 dark:text-yellow-300">
             <p>
               El precio del swap difiere <strong>{deviationPercent}%</strong> del precio de mercado 

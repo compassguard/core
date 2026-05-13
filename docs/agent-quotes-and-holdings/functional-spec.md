@@ -158,3 +158,48 @@ Como usuario, quiero que el agente use una cotizacion real y reciente para respo
 - La feature falla de forma explicita ante red distinta de `devnet`, mint mismatch, timeouts o provider errors.
 - No se exponen secretos de provider ni llamadas directas desde frontend.
 - La spec deja claro que una cotizacion no equivale a una ejecucion garantizada.
+
+## Amendment 2026-05-13 — devUSDC quote source on devnet
+
+### Problema detectado
+
+Durante prueba manual, el agente consultó `get_usdc_sol_quote` para estimar una compra inmediata de SOL con devUSDC y recibió:
+
+```text
+orca_quote_failed:orca_token_http_404:BRjpCHtyQLNCo8gqRUr8jtdAj5AjPYQaoqbvcZiHok1k:Token not found
+```
+
+El mint `BRjpCHtyQLNCo8gqRUr8jtdAj5AjPYQaoqbvcZiHok1k` es el devUSDC usado por el pool devnet, pero el token registry público de Orca no necesariamente indexa ese mint como token con precio consultable.
+
+### Decisión funcional
+
+- Para transacciones y pools devnet, la app debe seguir usando el mint devUSDC configurado.
+- Para valorar devUSDC en una quote de UX, la app debe tratar devUSDC como stable demo token con precio `1 USD`.
+- El servicio de quote no debe consultar el token registry de Orca para obtener precio de devUSDC.
+- La fuente variable de precio es SOL/USD; si el provider de SOL falla, se permite fallback local explícito para demo.
+- La respuesta debe indicar si la cotización vino de provider o de fallback para que el agente no la comunique como precio garantizado.
+
+### Criterios de aceptación adicionales
+
+- `get_usdc_sol_quote` no falla por 404 del token registry al pedir precio de devUSDC.
+- `USDC -> SOL` y `SOL -> USDC` siguen usando los mints devnet correctos.
+- La quote normalizada incluye metadata de fuente (`quote_source`) para diferenciar provider vs fallback.
+- Los tests cubren que no se consulta precio de devUSDC en Orca token registry.
+
+## Amendment 2026-05-13 — quote UX must match swap execution quote
+
+### Problema detectado
+
+La corrección anterior evitaba consultar precio de devUSDC en el token registry, pero seguía generando una cotización UX desde SOL/USD. En devnet, el pool Whirlpool puede estar muy desalineado contra Pyth/SOLUSD. Eso hacía que el agente comunicara una cantidad estimada y que, al preparar la transacción real, Orca cotizara otra cantidad.
+
+### Decisión funcional
+
+Para demo y para coherencia de producto, la cotización que ve/comunica el agente debe salir de la misma fuente que el swap real: la quote del Whirlpool devnet. El oráculo/guardrail sigue siendo una validación de seguridad separada y puede bloquear si el precio del pool se aleja demasiado del oráculo.
+
+### Criterios de aceptación adicionales
+
+- `get_usdc_sol_quote` usa la quote del Whirlpool devnet como fuente primaria.
+- La propuesta de swap y el texto del agente no deben usar una fórmula SOL/USD si existe quote de Whirlpool.
+- La respuesta mantiene `quote_source` y usa `orca_whirlpool_quote` para la fuente primaria.
+- El fallback SOL/USD queda solo para degradación explícita cuando la quote de Whirlpool no está disponible.
+

@@ -1,0 +1,460 @@
+{
+  "version": 1,
+  "status": "implemented",
+  "feature": "contextual-guardrail-explanations",
+  "goal": "Implementar explicaciones contextuales y progresivas para decisiones de guardrail, con backend como fuente de verdad, UI compartida de disclosure progresivo y narrativa opcional del agente restringida al payload estructurado.",
+  "context": {
+    "source": "learning-explanations exploration",
+    "summary": "El proyecto ya tiene explicaciones parciales en transferencias mediante RiskInlineAlert, copy de validación on-chain en SendProposalCard y warnings/rejections de swap. La brecha principal es que no hay un modelo común de explicación ni taxonomía compartida entre transfer, swap y conditional buy. La arquitectura recomendada es emitir hechos estructurados desde backend, renderizarlos progresivamente en frontend y permitir que el agente solo los parafrasee."
+  },
+  "phases": [
+    {
+      "id": "P1",
+      "title": "Explanation payload incremental",
+      "objective": "Agregar un payload estructurado y opcional de explicación en respuestas existentes de transfer y swap, sin romper compatibilidad.",
+      "acceptanceCriteria": [
+        "Existe un contrato GuardrailExplanation documentado y reflejado en schemas/types.",
+        "risk.explanation puede venir en proposals de transfer sin romper payloads existentes.",
+        "swap_guard_warning.explanation y guard_rejection.explanation pueden venir en approve responses de swap.",
+        "Los builders backend reutilizan hechos ya calculados; no hacen llamadas externas nuevas.",
+        "Los clientes siguen funcionando si explanation está ausente.",
+        "Los tests de contrato cubren payloads con y sin explanation."
+      ]
+    },
+    {
+      "id": "P2",
+      "title": "Shared explanation UI and taxonomy",
+      "objective": "Unificar la presentación de explicaciones con un componente reusable y una taxonomía común de categorías de riesgo.",
+      "acceptanceCriteria": [
+        "Existe GuardrailExplanationCard o componente equivalente reutilizable.",
+        "El resumen se muestra por defecto y los detalles técnicos quedan ocultos por defecto.",
+        "RiskInlineAlert usa explanation cuando existe y mantiene fallback actual cuando no existe.",
+        "SwapGuardWarning y SwapGuardBypassWarning pueden renderizar explanation si está disponible.",
+        "ConditionalBuyProposalCard tiene integración preparada para explanation.",
+        "La UI usa labels consistentes para ALLOW, WARN y REJECT."
+      ]
+    },
+    {
+      "id": "P3",
+      "title": "Agent narrative constrained by explanation payload",
+      "objective": "Agregar micro-explicaciones conversacionales opcionales, generadas solo desde el payload estructurado y sin capacidad de modificar decisiones.",
+      "acceptanceCriteria": [
+        "La narrativa es default-off o feature-flagged.",
+        "El input de narración excluye rawUserMessage y cualquier secreto/config privada.",
+        "El output usa JSON estricto y se descarta si inventa reason codes, checks o sources.",
+        "La narrativa no puede modificar decision, severity, score, requiresExtraConfirmation ni suggested_user_action.",
+        "Si la generación falla o timeoutea, la propuesta/approval sigue su flujo normal sin narrativa.",
+        "La UI presenta la narrativa como ayuda secundaria, no como decisión oficial."
+      ]
+    }
+  ],
+  "constraints": [
+    "Ninguna operación crítica puede ejecutarse sin pasar antes por la capa de guardrails.",
+    "El backend/rules engine es la fuente de verdad para hechos y decisiones de seguridad.",
+    "El frontend no debe inventar razones de seguridad; solo puede presentar o fallbackear por códigos estables.",
+    "El agente no puede originar decisiones ni checks; solo puede parafrasear payloads estructurados.",
+    "Todos los nuevos campos de fase 1 deben ser opcionales para preservar compatibilidad.",
+    "No se deben leer ni exponer secretos, .env, credentials, private keys ni seed phrases.",
+    "Las specs del feature deben vivir en docs/contextual-guardrail-explanations/."
+  ],
+  "decisions": [
+    "Se modela una sola feature con tres fases progresivas en vez de tres features separadas, porque comparten contrato y taxonomía.",
+    "Fase 1 usa attachment points existentes para minimizar churn: risk.explanation, swap_guard_warning.explanation y guard_rejection.explanation.",
+    "Fase 2 crea UI compartida para reducir divergencia de copy entre transfer, swap y conditional buy.",
+    "Fase 3 introduce narrativa opcional solo después de tener payload estructurado suficiente.",
+    "Se priorizan reason codes y checks estructurados sobre prose para evitar schema/copy drift.",
+    "Los detalles técnicos se ocultan por defecto para evitar sobrecarga cognitiva."
+  ],
+  "tasks": [
+    {
+      "id": "P1-T1",
+      "phase": "P1",
+      "title": "Definir contrato GuardrailExplanation",
+      "description": "Agregar tipos y Zod schema para GuardrailExplanation, categorías, fuentes, estados de checks y acciones sugeridas.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "front/src/lib/api/schemas.ts",
+        "front/src/types/api.ts"
+      ],
+      "dependencies": [],
+      "verification": [
+        "El schema acepta un payload válido de GuardrailExplanation.",
+        "Los campos de explanation son opcionales en los attachment points definidos.",
+        "La inferencia de tipos frontend compila."
+      ],
+      "status": "completed",
+      "evidence": [
+        "npm run test:front -- front/src/lib/api/__tests__/schemas.test.ts front/src/lib/api/__tests__/client.test.ts (31 passed)",
+        "npm run test:back -- back/services/__tests__/guardrailExplanations.test.ts (5 passed)",
+        "npm run test:back -- back/services/__tests__/chat.test.ts (33 passed)",
+        "npx eslint back/services/chat.ts back/services/chatSessionStore.ts back/services/guardrailExplanations.ts back/services/__tests__/guardrailExplanations.test.ts front/src/lib/api/schemas.ts front/src/types/api.ts front/src/lib/api/client.ts front/src/lib/api/__tests__/schemas.test.ts front/src/lib/api/__tests__/client.test.ts (passed)",
+        "npx tsc --noEmit was attempted; blocked by pre-existing DesktopShell.test.tsx mock isResolved errors outside this phase."
+      ]
+    },
+    {
+      "id": "P1-T2",
+      "phase": "P1",
+      "title": "Crear builders backend de explicaciones",
+      "description": "Crear helpers puros que construyan explanations para transfer, swap warning y swap rejection a partir de hechos ya calculados.",
+      "filesToCreate": [
+        "back/services/guardrailExplanations.ts",
+        "back/services/__tests__/guardrailExplanations.test.ts"
+      ],
+      "filesToModify": [],
+      "dependencies": [
+        "P1-T1"
+      ],
+      "verification": [
+        "Transfer ALLOW/WARN/REJECT producen decision y reason_codes consistentes.",
+        "Swap warning produce category price_or_execution_risk.",
+        "Swap rejection incluye deviation/max_allowed en technical_details sanitizado.",
+        "Los builders no hacen IO ni llamadas externas."
+      ],
+      "status": "completed",
+      "evidence": [
+        "npm run test:front -- front/src/lib/api/__tests__/schemas.test.ts front/src/lib/api/__tests__/client.test.ts (31 passed)",
+        "npm run test:back -- back/services/__tests__/guardrailExplanations.test.ts (5 passed)",
+        "npm run test:back -- back/services/__tests__/chat.test.ts (33 passed)",
+        "npx eslint back/services/chat.ts back/services/chatSessionStore.ts back/services/guardrailExplanations.ts back/services/__tests__/guardrailExplanations.test.ts front/src/lib/api/schemas.ts front/src/types/api.ts front/src/lib/api/client.ts front/src/lib/api/__tests__/schemas.test.ts front/src/lib/api/__tests__/client.test.ts (passed)",
+        "npx tsc --noEmit was attempted; blocked by pre-existing DesktopShell.test.tsx mock isResolved errors outside this phase."
+      ]
+    },
+    {
+      "id": "P1-T3",
+      "phase": "P1",
+      "title": "Adjuntar explanations en chat backend",
+      "description": "Integrar los builders en back/services/chat.ts para transfer proposals y approve responses de swap.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "back/services/chat.ts"
+      ],
+      "dependencies": [
+        "P1-T2"
+      ],
+      "verification": [
+        "Transfer proposal incluye risk.explanation cuando hay walletSafety.",
+        "Swap warning incluye swap_guard_warning.explanation cuando hay warning.",
+        "Guard rejection incluye guard_rejection.explanation.",
+        "Las respuestas antiguas sin explanation siguen siendo válidas."
+      ],
+      "status": "completed",
+      "evidence": [
+        "npm run test:front -- front/src/lib/api/__tests__/schemas.test.ts front/src/lib/api/__tests__/client.test.ts (31 passed)",
+        "npm run test:back -- back/services/__tests__/guardrailExplanations.test.ts (5 passed)",
+        "npm run test:back -- back/services/__tests__/chat.test.ts (33 passed)",
+        "npx eslint back/services/chat.ts back/services/chatSessionStore.ts back/services/guardrailExplanations.ts back/services/__tests__/guardrailExplanations.test.ts front/src/lib/api/schemas.ts front/src/types/api.ts front/src/lib/api/client.ts front/src/lib/api/__tests__/schemas.test.ts front/src/lib/api/__tests__/client.test.ts (passed)",
+        "npx tsc --noEmit was attempted; blocked by pre-existing DesktopShell.test.tsx mock isResolved errors outside this phase."
+      ]
+    },
+    {
+      "id": "P1-T4",
+      "phase": "P1",
+      "title": "Cubrir contratos con tests",
+      "description": "Agregar tests de schemas para payloads con y sin explanation.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "front/src/lib/api/__tests__/schemas.test.ts",
+        "front/src/lib/api/__tests__/client.test.ts"
+      ],
+      "dependencies": [
+        "P1-T1",
+        "P1-T3"
+      ],
+      "verification": [
+        "Schema parsea proposal con risk.explanation.",
+        "Schema parsea approve response con swap_guard_warning.explanation.",
+        "Schema parsea approve response con guard_rejection.explanation.",
+        "Schema parsea payload legacy sin explanation."
+      ],
+      "status": "completed",
+      "evidence": [
+        "npm run test:front -- front/src/lib/api/__tests__/schemas.test.ts front/src/lib/api/__tests__/client.test.ts (31 passed)",
+        "npm run test:back -- back/services/__tests__/guardrailExplanations.test.ts (5 passed)",
+        "npm run test:back -- back/services/__tests__/chat.test.ts (33 passed)",
+        "npx eslint back/services/chat.ts back/services/chatSessionStore.ts back/services/guardrailExplanations.ts back/services/__tests__/guardrailExplanations.test.ts front/src/lib/api/schemas.ts front/src/types/api.ts front/src/lib/api/client.ts front/src/lib/api/__tests__/schemas.test.ts front/src/lib/api/__tests__/client.test.ts (passed)",
+        "npx tsc --noEmit was attempted; blocked by pre-existing DesktopShell.test.tsx mock isResolved errors outside this phase."
+      ]
+    },
+    {
+      "id": "P2-T1",
+      "phase": "P2",
+      "title": "Crear componente GuardrailExplanationCard",
+      "description": "Implementar una card reusable con resumen, detalles expandibles y sección técnica oculta por defecto.",
+      "filesToCreate": [
+        "front/src/components/chat/proposals/GuardrailExplanationCard.tsx"
+      ],
+      "filesToModify": [],
+      "dependencies": [
+        "P1-T1"
+      ],
+      "verification": [
+        "El resumen muestra decision, severity, summary e impact si corresponde.",
+        "Los detalles de reasons/checks/sources son expandibles.",
+        "technical_details queda oculto por defecto.",
+        "La card maneja evidence ausente sin romper."
+      ],
+      "status": "completed",
+      "evidence": [
+        "npm run test:front -- front/src/lib/api/__tests__/schemas.test.ts front/src/lib/api/__tests__/client.test.ts front/src/components/chat/proposals/__tests__/GuardrailExplanationCard.test.tsx (37 passed)",
+        "npm run test:back -- back/services/__tests__/conditionalBuySol.test.ts (3 passed)",
+        "npx eslint front/src/components/chat/proposals/GuardrailExplanationCard.tsx front/src/components/chat/proposals/RiskInlineAlert.tsx front/src/components/chat/proposals/SwapGuardWarning.tsx front/src/components/chat/proposals/SwapGuardBypassWarning.tsx front/src/components/chat/proposals/ConditionalBuyProposalCard.tsx front/src/components/chat/proposals/__tests__/GuardrailExplanationCard.test.tsx front/src/stores/chatStore.ts back/services/conditionalOrders.ts (passed)",
+        "npx tsc --noEmit was attempted; still blocked by pre-existing DesktopShell.test.tsx mock isResolved errors outside this phase."
+      ]
+    },
+    {
+      "id": "P2-T2",
+      "phase": "P2",
+      "title": "Migrar RiskInlineAlert con fallback",
+      "description": "Hacer que RiskInlineAlert renderice GuardrailExplanationCard cuando risk.explanation exista y conserve el comportamiento actual si no existe.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "front/src/components/chat/proposals/RiskInlineAlert.tsx"
+      ],
+      "dependencies": [
+        "P2-T1"
+      ],
+      "verification": [
+        "risk.explanation tiene prioridad de render.",
+        "La copy legacy sigue apareciendo cuando explanation no existe.",
+        "Los tests existentes de RiskInlineAlert siguen pasando o se actualizan con intención."
+      ],
+      "status": "completed",
+      "evidence": [
+        "npm run test:front -- front/src/lib/api/__tests__/schemas.test.ts front/src/lib/api/__tests__/client.test.ts front/src/components/chat/proposals/__tests__/GuardrailExplanationCard.test.tsx (37 passed)",
+        "npm run test:back -- back/services/__tests__/conditionalBuySol.test.ts (3 passed)",
+        "npx eslint front/src/components/chat/proposals/GuardrailExplanationCard.tsx front/src/components/chat/proposals/RiskInlineAlert.tsx front/src/components/chat/proposals/SwapGuardWarning.tsx front/src/components/chat/proposals/SwapGuardBypassWarning.tsx front/src/components/chat/proposals/ConditionalBuyProposalCard.tsx front/src/components/chat/proposals/__tests__/GuardrailExplanationCard.test.tsx front/src/stores/chatStore.ts back/services/conditionalOrders.ts (passed)",
+        "npx tsc --noEmit was attempted; still blocked by pre-existing DesktopShell.test.tsx mock isResolved errors outside this phase."
+      ]
+    },
+    {
+      "id": "P2-T3",
+      "phase": "P2",
+      "title": "Integrar explanation en swap cards",
+      "description": "Actualizar SwapGuardWarning y SwapGuardBypassWarning para renderizar explanation si está disponible y mantener fallback actual.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "front/src/components/chat/proposals/SwapGuardWarning.tsx",
+        "front/src/components/chat/proposals/SwapGuardBypassWarning.tsx"
+      ],
+      "dependencies": [
+        "P2-T1",
+        "P1-T3"
+      ],
+      "verification": [
+        "Warning de swap muestra explicación estructurada cuando existe.",
+        "Bypass muestra consecuencia y diferencia entre protegido/sin protección.",
+        "Fallback actual se conserva."
+      ],
+      "status": "completed",
+      "evidence": [
+        "npm run test:front -- front/src/lib/api/__tests__/schemas.test.ts front/src/lib/api/__tests__/client.test.ts front/src/components/chat/proposals/__tests__/GuardrailExplanationCard.test.tsx (37 passed)",
+        "npm run test:back -- back/services/__tests__/conditionalBuySol.test.ts (3 passed)",
+        "npx eslint front/src/components/chat/proposals/GuardrailExplanationCard.tsx front/src/components/chat/proposals/RiskInlineAlert.tsx front/src/components/chat/proposals/SwapGuardWarning.tsx front/src/components/chat/proposals/SwapGuardBypassWarning.tsx front/src/components/chat/proposals/ConditionalBuyProposalCard.tsx front/src/components/chat/proposals/__tests__/GuardrailExplanationCard.test.tsx front/src/stores/chatStore.ts back/services/conditionalOrders.ts (passed)",
+        "npx tsc --noEmit was attempted; still blocked by pre-existing DesktopShell.test.tsx mock isResolved errors outside this phase."
+      ]
+    },
+    {
+      "id": "P2-T4",
+      "phase": "P2",
+      "title": "Preparar conditional buy para explanation",
+      "description": "Agregar slot de explicación a ConditionalBuyProposalCard y documentar mapping de observedExecutableReason a categorías de explanation.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "front/src/components/chat/proposals/ConditionalBuyProposalCard.tsx",
+        "back/services/conditionalOrders.ts"
+      ],
+      "dependencies": [
+        "P2-T1"
+      ],
+      "verification": [
+        "La card puede mostrar explanation si el backend la emite.",
+        "No cambia comportamiento cuando explanation está ausente.",
+        "Queda definido el mapping inicial de razones condicionales."
+      ],
+      "status": "completed",
+      "evidence": [
+        "npm run test:front -- front/src/lib/api/__tests__/schemas.test.ts front/src/lib/api/__tests__/client.test.ts front/src/components/chat/proposals/__tests__/GuardrailExplanationCard.test.tsx (37 passed)",
+        "npm run test:back -- back/services/__tests__/conditionalBuySol.test.ts (3 passed)",
+        "npx eslint front/src/components/chat/proposals/GuardrailExplanationCard.tsx front/src/components/chat/proposals/RiskInlineAlert.tsx front/src/components/chat/proposals/SwapGuardWarning.tsx front/src/components/chat/proposals/SwapGuardBypassWarning.tsx front/src/components/chat/proposals/ConditionalBuyProposalCard.tsx front/src/components/chat/proposals/__tests__/GuardrailExplanationCard.test.tsx front/src/stores/chatStore.ts back/services/conditionalOrders.ts (passed)",
+        "npx tsc --noEmit was attempted; still blocked by pre-existing DesktopShell.test.tsx mock isResolved errors outside this phase."
+      ]
+    },
+    {
+      "id": "P2-T5",
+      "phase": "P2",
+      "title": "Agregar tests UI de disclosure progresivo",
+      "description": "Cubrir render de resumen, expansión de detalles, ocultamiento técnico y fallback legacy.",
+      "filesToCreate": [
+        "front/src/components/chat/proposals/__tests__/GuardrailExplanationCard.test.tsx"
+      ],
+      "filesToModify": [
+        "front/src/components/chat/__tests__/MessageList.test.tsx"
+      ],
+      "dependencies": [
+        "P2-T1",
+        "P2-T2",
+        "P2-T3"
+      ],
+      "verification": [
+        "Resumen visible por defecto.",
+        "Detalles técnicos no visibles hasta expandir.",
+        "RiskInlineAlert fallback sin explanation cubierto.",
+        "Swap warning/rejection con explanation cubiertos."
+      ],
+      "status": "completed",
+      "evidence": [
+        "npm run test:front -- front/src/lib/api/__tests__/schemas.test.ts front/src/lib/api/__tests__/client.test.ts front/src/components/chat/proposals/__tests__/GuardrailExplanationCard.test.tsx (37 passed)",
+        "npm run test:back -- back/services/__tests__/conditionalBuySol.test.ts (3 passed)",
+        "npx eslint front/src/components/chat/proposals/GuardrailExplanationCard.tsx front/src/components/chat/proposals/RiskInlineAlert.tsx front/src/components/chat/proposals/SwapGuardWarning.tsx front/src/components/chat/proposals/SwapGuardBypassWarning.tsx front/src/components/chat/proposals/ConditionalBuyProposalCard.tsx front/src/components/chat/proposals/__tests__/GuardrailExplanationCard.test.tsx front/src/stores/chatStore.ts back/services/conditionalOrders.ts (passed)",
+        "npx tsc --noEmit was attempted; still blocked by pre-existing DesktopShell.test.tsx mock isResolved errors outside this phase."
+      ]
+    },
+    {
+      "id": "P3-T1",
+      "phase": "P3",
+      "title": "Definir contrato de narración segura",
+      "description": "Diseñar GuardrailNarration y reglas de validación para micro-explicaciones generadas desde GuardrailExplanation.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "front/src/lib/api/schemas.ts",
+        "front/src/types/api.ts"
+      ],
+      "dependencies": [
+        "P1-T1"
+      ],
+      "verification": [
+        "GuardrailNarration referencia explanation_id y based_on.",
+        "El contrato no permite cambiar decision/severity.",
+        "Narration es opcional y backward-compatible."
+      ],
+      "status": "completed",
+      "evidence": [
+        "npm run test:back -- back/services/__tests__/guardrailNarration.test.ts back/services/__tests__/guardrailExplanations.test.ts back/services/__tests__/chat.test.ts (45 passed)",
+        "npm run test:front -- front/src/lib/api/__tests__/schemas.test.ts front/src/lib/api/__tests__/client.test.ts front/src/components/chat/proposals/__tests__/GuardrailExplanationCard.test.tsx (38 passed)",
+        "npx eslint back/services/guardrailNarration.ts back/services/__tests__/guardrailNarration.test.ts back/services/chat.ts back/services/guardrailExplanations.ts front/src/lib/api/schemas.ts front/src/types/api.ts front/src/components/chat/proposals/GuardrailExplanationCard.tsx front/src/components/chat/proposals/__tests__/GuardrailExplanationCard.test.tsx front/src/lib/api/__tests__/schemas.test.ts (passed)",
+        "npx tsc --noEmit was attempted; P3 type issues are fixed and it remains blocked only by pre-existing DesktopShell.test.tsx mock isResolved errors outside this phase.",
+        "Fresh reviewer subagent found no blockers for P3 safety/default-off/validation/rendering scope."
+      ]
+    },
+    {
+      "id": "P3-T2",
+      "phase": "P3",
+      "title": "Implementar servicio de narración default-off",
+      "description": "Crear helper backend que genere narrativa con JSON estricto desde explanation sanitizada y descarte outputs inválidos.",
+      "filesToCreate": [
+        "back/services/guardrailNarration.ts",
+        "back/services/__tests__/guardrailNarration.test.ts"
+      ],
+      "filesToModify": [
+        "back/services/chat.ts"
+      ],
+      "dependencies": [
+        "P3-T1",
+        "P1-T3"
+      ],
+      "verification": [
+        "El servicio está deshabilitado por defecto o bajo feature flag.",
+        "No recibe rawUserMessage.",
+        "Descarta JSON inválido.",
+        "Descarta reason_codes/checks/sources inventados.",
+        "Timeout/fallo no bloquea proposal."
+      ],
+      "status": "completed",
+      "evidence": [
+        "npm run test:back -- back/services/__tests__/guardrailNarration.test.ts back/services/__tests__/guardrailExplanations.test.ts back/services/__tests__/chat.test.ts (45 passed)",
+        "npm run test:front -- front/src/lib/api/__tests__/schemas.test.ts front/src/lib/api/__tests__/client.test.ts front/src/components/chat/proposals/__tests__/GuardrailExplanationCard.test.tsx (38 passed)",
+        "npx eslint back/services/guardrailNarration.ts back/services/__tests__/guardrailNarration.test.ts back/services/chat.ts back/services/guardrailExplanations.ts front/src/lib/api/schemas.ts front/src/types/api.ts front/src/components/chat/proposals/GuardrailExplanationCard.tsx front/src/components/chat/proposals/__tests__/GuardrailExplanationCard.test.tsx front/src/lib/api/__tests__/schemas.test.ts (passed)",
+        "npx tsc --noEmit was attempted; P3 type issues are fixed and it remains blocked only by pre-existing DesktopShell.test.tsx mock isResolved errors outside this phase.",
+        "Fresh reviewer subagent found no blockers for P3 safety/default-off/validation/rendering scope."
+      ]
+    },
+    {
+      "id": "P3-T3",
+      "phase": "P3",
+      "title": "Renderizar narrativa como ayuda secundaria",
+      "description": "Mostrar narration asociada a explanation sin reemplazar la decisión oficial del guardrail.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "front/src/components/chat/proposals/GuardrailExplanationCard.tsx"
+      ],
+      "dependencies": [
+        "P3-T1",
+        "P3-T2",
+        "P2-T1"
+      ],
+      "verification": [
+        "La narrativa aparece visualmente separada de la decisión.",
+        "La ausencia de narration no cambia la UI principal.",
+        "No se muestra model/internal metadata."
+      ],
+      "status": "completed",
+      "evidence": [
+        "npm run test:back -- back/services/__tests__/guardrailNarration.test.ts back/services/__tests__/guardrailExplanations.test.ts back/services/__tests__/chat.test.ts (45 passed)",
+        "npm run test:front -- front/src/lib/api/__tests__/schemas.test.ts front/src/lib/api/__tests__/client.test.ts front/src/components/chat/proposals/__tests__/GuardrailExplanationCard.test.tsx (38 passed)",
+        "npx eslint back/services/guardrailNarration.ts back/services/__tests__/guardrailNarration.test.ts back/services/chat.ts back/services/guardrailExplanations.ts front/src/lib/api/schemas.ts front/src/types/api.ts front/src/components/chat/proposals/GuardrailExplanationCard.tsx front/src/components/chat/proposals/__tests__/GuardrailExplanationCard.test.tsx front/src/lib/api/__tests__/schemas.test.ts (passed)",
+        "npx tsc --noEmit was attempted; P3 type issues are fixed and it remains blocked only by pre-existing DesktopShell.test.tsx mock isResolved errors outside this phase.",
+        "Fresh reviewer subagent found no blockers for P3 safety/default-off/validation/rendering scope."
+      ]
+    },
+    {
+      "id": "P3-T4",
+      "phase": "P3",
+      "title": "Agregar tests de seguridad de narración",
+      "description": "Cubrir validación estricta de salida, fallos, timeouts y no modificación de decisiones.",
+      "filesToCreate": [],
+      "filesToModify": [
+        "back/services/__tests__/guardrailNarration.test.ts",
+        "front/src/components/chat/proposals/__tests__/GuardrailExplanationCard.test.tsx"
+      ],
+      "dependencies": [
+        "P3-T2",
+        "P3-T3"
+      ],
+      "verification": [
+        "Output que inventa code se descarta.",
+        "Output que intenta cambiar decision se descarta.",
+        "Fallo del proveedor narrativo no altera proposal.",
+        "UI renderiza narration válida como texto secundario."
+      ],
+      "status": "completed",
+      "evidence": [
+        "npm run test:back -- back/services/__tests__/guardrailNarration.test.ts back/services/__tests__/guardrailExplanations.test.ts back/services/__tests__/chat.test.ts (45 passed)",
+        "npm run test:front -- front/src/lib/api/__tests__/schemas.test.ts front/src/lib/api/__tests__/client.test.ts front/src/components/chat/proposals/__tests__/GuardrailExplanationCard.test.tsx (38 passed)",
+        "npx eslint back/services/guardrailNarration.ts back/services/__tests__/guardrailNarration.test.ts back/services/chat.ts back/services/guardrailExplanations.ts front/src/lib/api/schemas.ts front/src/types/api.ts front/src/components/chat/proposals/GuardrailExplanationCard.tsx front/src/components/chat/proposals/__tests__/GuardrailExplanationCard.test.tsx front/src/lib/api/__tests__/schemas.test.ts (passed)",
+        "npx tsc --noEmit was attempted; P3 type issues are fixed and it remains blocked only by pre-existing DesktopShell.test.tsx mock isResolved errors outside this phase.",
+        "Fresh reviewer subagent found no blockers for P3 safety/default-off/validation/rendering scope."
+      ]
+    }
+  ],
+  "reviewWorkloadForecast": {
+    "risk": "medium",
+    "notes": "La fase 1 debería ser un PR chico/mediano centrado en contrato y builders. La fase 2 puede superar 400 líneas por UI/tests y conviene separarla. La fase 3 debería ser otro PR separado por riesgo de LLM/narration."
+  },
+  "docs": {
+    "functionalSpec": "docs/contextual-guardrail-explanations/functional-spec.md",
+    "technicalSpec": "docs/contextual-guardrail-explanations/technical-spec.md",
+    "implementationNotes": "docs/contextual-guardrail-explanations/implementation-notes.md"
+  },
+  "implementationNotes": [
+    "P1 implementation notes and manual-test operational setup are documented in implementation-notes.md.",
+    "Do not commit .env, .env.local, .env.*, credentials, app.log, app.pid, or node_modules.",
+    "For local guarded-transfer tests, prefer WALLET_SAFETY_ATTESTOR_SECRET_KEY_FILE over a direct secret value and avoid inherited direct WALLET_SAFETY_ATTESTOR_SECRET_KEY overriding the file.",
+    "Approval responses must derive missing deterministic PDAs instead of serializing blank action_approval_pda or wallet_safety_attestation_pda values.",
+    "P2 implementation adds shared progressive-disclosure UI and keeps all explanation attachment points optional with legacy fallbacks.",
+    "P3 implementation adds default-off guardrail narration, strict anti-invention validation, non-blocking fallback, and secondary UI rendering inside GuardrailExplanationCard."
+  ],
+  "phaseDocumentationReview": {
+    "P1": {
+      "status": "implemented_and_documented",
+      "notes": "Contract, builders, attachment points, tests, operational setup, and approval-field fix are documented."
+    },
+    "P2": {
+      "status": "implemented_and_documented",
+      "notes": "Shared GuardrailExplanationCard, transfer/swap/conditional slots, fallbacks, conditional-order reason mapping, and UI tests are implemented. Global tsc remains blocked only by pre-existing DesktopShell.test.tsx mock isResolved errors."
+    },
+    "P3": {
+      "status": "implemented_and_documented",
+      "notes": "Default-off narration contract/service/UI/tests are implemented. Narration input is sanitized, excludes raw user messages and technical_details, rejects invented references/protected-field mutation, and falls back without blocking proposal/approval flows."
+    }
+  }
+}

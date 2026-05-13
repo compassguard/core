@@ -68,7 +68,9 @@ export function ConditionalBuyProposalCard({
           </div>
         ))}
       </div>
-      <RiskInlineAlert risk={proposal.risk} />
+      <div aria-label="Conditional buy guardrail explanation slot">
+        <RiskInlineAlert risk={proposal.risk} />
+      </div>
       <div className="mt-5 flex flex-col gap-3 sm:flex-row">
         <button
           onClick={rejectProposal}
