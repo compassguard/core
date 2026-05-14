@@ -85,15 +85,16 @@ Según el esquema final de validación Dynamic:
 
 ```env
 DYNAMIC_ENVIRONMENT_ID=...
-DYNAMIC_API_KEY=...
-DYNAMIC_WEBHOOK_SECRET=...
 APP_SESSION_SECRET=...
 ```
+
+`DYNAMIC_API_KEY` y `DYNAMIC_WEBHOOK_SECRET` no son requeridas por la implementación actual: el backend valida el JWT de Dynamic contra el JWKS público del environment y no llama APIs privadas de Dynamic.
 
 Reglas:
 
 - `NEXT_PUBLIC_DYNAMIC_ENVIRONMENT_ID` puede ser público.
-- Secrets Dynamic/backend no deben exponerse al cliente.
+- `DYNAMIC_ENVIRONMENT_ID` identifica el environment server-side, pero no es un secreto.
+- Secrets backend como `APP_SESSION_SECRET` no deben exponerse al cliente.
 - La sesión propia debe emitirse como cookie httpOnly o token de corta vida; preferir cookie httpOnly si no complica el despliegue.
 
 ## Configuración Dynamic requerida
