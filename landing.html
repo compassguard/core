@@ -3,1133 +3,604 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Compass · Secure AI Wallet for Solana</title>
+  <title>Compass · Security layer for AI agents on Solana</title>
+  <meta name="description" content="Compass is not another wallet. It is an MCP execution firewall and security layer for AI agents operating on Solana." />
+  <link rel="icon" type="image/png" sizes="32x32" href="/compass-icon-32.png" />
+  <link rel="icon" type="image/png" sizes="256x256" href="/compass-icon.png" />
+  <link rel="apple-touch-icon" href="/compass-icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" />
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    *, *::before, *::after { box-sizing: border-box; }
+    * { margin: 0; }
 
+    /* ── Palette: near-black + ink + two brand accents from the logo ── */
     :root {
-      --bg:              #f8fafc;
-      --surface:         #ffffff;
-      --surface-hover:   #f1f5f9;
-      --outline:         #e2e8f0;
-      --outline-variant: #cbd5e1;
-      --on-surface:      #0f172a;
-      --on-surface-muted:#64748b;
-      --primary:         #0052ff;
-      --primary-hover:   #0043d1;
-      --on-primary:      #ffffff;
-      --success-bg:      #f0fdf4;
-      --success-text:    #16a34a;
-      --warning-bg:      #fffbeb;
-      --warning-border:  #fcd34d;
-      --warning-text:    #d97706;
-      --error-bg:        #fef2f2;
-      --error-border:    #fca5a5;
-      --error-text:      #dc2626;
-      --radius-sm:       6px;
-      --radius-md:       12px;
-      --radius-lg:       16px;
-      --radius-xl:       24px;
-      --radius-full:     9999px;
+      --bg:          #0a0a0c;
+      --bg-2:        #101013;
+      --ink:         #f1f1f3;
+      --ink-soft:    #a1a3aa;
+      --ink-muted:   #62656d;
+      --line:        rgba(255, 255, 255, .07);
+      --line-strong: rgba(255, 255, 255, .14);
+      --cyan:        #33e2c0;          /* top of the compass needle */
+      --cyan-soft:   rgba(51, 226, 192, .14);
+      --violet:      #8a4cff;          /* bottom of the compass needle */
+      --violet-soft: rgba(138, 76, 255, .16);
+      --grad:        linear-gradient(120deg, #33e2c0 0%, #19c8ff 45%, #8a4cff 100%);
+      --radius:      20px;
+      --shadow:      0 24px 60px rgba(0, 0, 0, .5);
     }
 
-    html { scroll-behavior: smooth; }
+    html { scroll-behavior: smooth; background: var(--bg); }
     body {
-      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: Archivo, ui-sans-serif, system-ui, sans-serif;
       background: var(--bg);
-      color: var(--on-surface);
-      line-height: 1.5;
       -webkit-font-smoothing: antialiased;
+      line-height: 1.5;
+      letter-spacing: -.005em;
+      overflow-x: hidden;
+    }
+    /* Very subtle ambient light */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(900px circle at 85% -10%, rgba(51, 226, 192, .09), transparent 60%),
+        radial-gradient(800px circle at -10% 30%, rgba(138, 76, 255, .10), transparent 60%),
+        radial-gradient(700px circle at 50% 110%, rgba(138, 76, 255, .06), transparent 60%);
+      z-index: 0;
+    }
+    /* Tiny grain */
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: .045;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
+      z-index: 0;
     }
 
-    /* ── Layout helpers ── */
-    .container { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
-    .section    { padding: 96px 0; }
-    .section--alt { background: var(--surface); }
+    a { color: inherit; text-decoration: none; }
+    img { max-width: 100%; display: block; }
+    .container { width: min(1080px, calc(100% - 40px)); margin: 0 auto; position: relative; z-index: 1; }
+    .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
 
     /* ── Nav ── */
-    nav {
-      position: sticky; top: 0; z-index: 100;
-      background: rgba(255,255,255,0.85);
-      backdrop-filter: blur(12px);
-      border-bottom: 1px solid var(--outline);
+    .nav {
+      position: sticky; top: 0; z-index: 30;
+      border-bottom: 1px solid var(--line);
+      background: rgba(10, 10, 12, .72);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
     }
-    .nav-inner {
-      display: flex; align-items: center; justify-content: space-between;
-      height: 64px;
+    .nav-inner { height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 22px; }
+    .brand { display: flex; align-items: center; height: 100%; transition: filter .25s ease; }
+    .brand-mark {
+      display: block;
+      width: 36px;
+      height: 36px;
+      filter: drop-shadow(0 6px 18px rgba(138, 76, 255, .35));
+      transition: transform .35s ease, filter .25s ease;
     }
-    .logo {
-      display: flex; align-items: center; gap: 10px;
-      font-weight: 700; font-size: 17px; color: var(--on-surface);
-      text-decoration: none;
+    .brand:hover .brand-mark { transform: rotate(-6deg) scale(1.06); filter: drop-shadow(0 8px 22px rgba(51, 226, 192, .45)); }
+    .nav-links { display: flex; align-items: center; gap: 26px; color: var(--ink-soft); font-size: 13.5px; font-weight: 500; }
+    .nav-links a:not(.nav-cta) { position: relative; padding: 4px 0; transition: color .2s; }
+    .nav-links a:not(.nav-cta):hover { color: var(--ink); }
+
+    .btn, .nav-cta {
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 8px;
+      height: 38px;
+      padding: 0 16px;
+      border-radius: 999px;
+      font-size: 13.5px;
+      font-weight: 600;
+      letter-spacing: -.005em;
+      transition: transform .2s ease, background .2s ease, border-color .2s ease, color .2s ease;
     }
-    .logo-icon {
-      width: 32px; height: 32px;
-      background: var(--primary);
-      border-radius: var(--radius-md);
-      display: flex; align-items: center; justify-content: center;
+    .btn-primary, .nav-cta {
+      position: relative;
+      color: #0a0a0c;
+      background: var(--ink);
+      isolation: isolate;
+      overflow: hidden;
     }
-    .logo-icon svg { width: 18px; height: 18px; }
-    .nav-links { display: flex; align-items: center; gap: 32px; }
-    .nav-links a {
-      font-size: 14px; font-weight: 500;
-      color: var(--on-surface-muted); text-decoration: none;
-      transition: color .15s;
+    .btn-primary::before, .nav-cta::before {
+      content: "";
+      position: absolute; inset: 0;
+      background: var(--grad);
+      opacity: 0;
+      transition: opacity .25s ease;
+      z-index: -1;
     }
-    .nav-links a:hover { color: var(--on-surface); }
-    .btn-nav {
-      padding: 8px 20px;
-      background: var(--primary); color: var(--on-primary);
-      border: none; border-radius: var(--radius-md);
-      font-size: 14px; font-weight: 600; cursor: pointer;
-      text-decoration: none; transition: background .15s;
+    .btn-primary:hover, .nav-cta:hover { color: white; transform: translateY(-1px); }
+    .btn-primary:hover::before, .nav-cta:hover::before { opacity: 1; }
+    .btn-ghost {
+      color: var(--ink-soft);
+      background: transparent;
+      border: 1px solid var(--line-strong);
     }
-    .btn-nav:hover { background: var(--primary-hover); }
+    .btn-ghost:hover { color: var(--ink); border-color: rgba(138, 76, 255, .45); }
+
+    /* ── Reveal-on-scroll ── */
+    .reveal { opacity: 0; transform: translateY(16px); transition: opacity .8s cubic-bezier(.2,.7,.2,1), transform .8s cubic-bezier(.2,.7,.2,1); }
+    .reveal.in { opacity: 1; transform: none; }
+    .reveal.d1 { transition-delay: .06s; }
+    .reveal.d2 { transition-delay: .12s; }
+    .reveal.d3 { transition-delay: .18s; }
+    .reveal.d4 { transition-delay: .24s; }
+    .reveal.d5 { transition-delay: .30s; }
+    @media (prefers-reduced-motion: reduce) {
+      .reveal { opacity: 1; transform: none; transition: none; }
+      *, *::before, *::after { animation: none !important; }
+    }
 
     /* ── Hero ── */
-    .hero {
-      padding: 88px 0 80px;
-      text-align: center;
+    .hero { padding: 96px 0 72px; }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(360px, .92fr);
+      align-items: center;
+      gap: 64px;
     }
-    .hero-tagline {
-      font-size: 14px; font-weight: 600; letter-spacing: .04em;
-      color: var(--on-surface-muted); margin-bottom: 14px;
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 5px 11px;
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      color: var(--ink-soft);
+      background: linear-gradient(180deg, rgba(138,76,255,.06), transparent);
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 11px; font-weight: 600;
+      letter-spacing: .04em;
       text-transform: uppercase;
     }
-    .hero-badge {
-      display: inline-flex; align-items: center; gap: 6px;
-      padding: 6px 14px;
-      background: var(--surface); border: 1px solid var(--outline);
-      border-radius: var(--radius-full);
-      font-size: 13px; font-weight: 500; color: var(--on-surface-muted);
-      margin-bottom: 28px;
-    }
-    .hero-badge .dot {
+    .dot-cyan {
       width: 6px; height: 6px; border-radius: 50%;
-      background: var(--success-text);
-      animation: pulse 2s infinite;
+      background: var(--cyan);
+      box-shadow: 0 0 0 0 rgba(51, 226, 192, .55);
+      animation: pulse 2.2s ease-out infinite;
     }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50%       { opacity: .4; }
+    h1 {
+      margin-top: 22px;
+      max-width: 580px;
+      font-size: clamp(34px, 4.2vw, 52px);
+      line-height: 1.04;
+      letter-spacing: -.035em;
+      font-weight: 600;
     }
-    .hero h1 {
-      font-size: clamp(36px, 5vw, 56px);
-      font-weight: 700; line-height: 1.1;
-      letter-spacing: -.02em;
-      max-width: 780px; margin: 0 auto 20px;
+    h1 em { font-style: normal; color: var(--ink-soft); }
+    h1 .accent {
+      background: var(--grad);
+      background-size: 220% 100%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      animation: shine 8s ease-in-out infinite;
     }
-    .hero h1 span { color: var(--primary); }
-    .hero p {
-      font-size: 18px; color: var(--on-surface-muted);
-      max-width: 560px; margin: 0 auto 40px; line-height: 1.6;
+    .hero-copy {
+      margin-top: 22px;
+      max-width: 520px;
+      color: var(--ink-soft);
+      font-size: 16px;
+      line-height: 1.55;
     }
-    .hero-cta {
-      display: flex; align-items: center; justify-content: center;
-      gap: 12px; flex-wrap: wrap;
-    }
-    .btn-primary {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 14px 28px;
-      background: var(--primary); color: var(--on-primary);
-      border: none; border-radius: var(--radius-md);
-      font-size: 15px; font-weight: 600; cursor: pointer;
-      text-decoration: none; transition: background .15s, box-shadow .15s;
-      box-shadow: 0 1px 3px rgba(0,82,255,.25), 0 4px 16px rgba(0,82,255,.15);
-    }
-    .btn-primary:hover { background: var(--primary-hover); box-shadow: 0 1px 3px rgba(0,82,255,.35), 0 6px 20px rgba(0,82,255,.2); }
-    .btn-secondary {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 14px 28px;
-      background: var(--surface); color: var(--on-surface);
-      border: 1px solid var(--outline);
-      border-radius: var(--radius-md);
-      font-size: 15px; font-weight: 600; cursor: pointer;
-      text-decoration: none; transition: background .15s, border-color .15s;
-    }
-    .btn-secondary:hover { background: var(--surface-hover); border-color: var(--outline-variant); }
+    .hero-actions { margin-top: 32px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .hero-note { margin-top: 22px; color: var(--ink-muted); font-size: 12px; }
 
-    /* ── UI Preview ── */
-    .hero-preview {
-      margin-top: 64px;
+    /* Banner image */
+    .banner {
       position: relative;
-    }
-    .preview-window {
-      background: var(--surface);
-      border: 1px solid var(--outline);
-      border-radius: 20px;
+      border-radius: var(--radius);
       overflow: hidden;
-      box-shadow: 0 4px 8px rgba(15,23,42,.04), 0 24px 64px rgba(15,23,42,.08);
-      max-width: 880px; margin: 0 auto;
+      border: 1px solid var(--line-strong);
+      background: var(--bg-2);
+      box-shadow: var(--shadow);
     }
-    .preview-titlebar {
-      display: flex; align-items: center; gap: 6px;
-      padding: 14px 20px;
-      background: var(--surface);
-      border-bottom: 1px solid var(--outline);
+    .banner img { width: 100%; display: block; }
+    .banner::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      box-shadow: inset 0 0 1px rgba(255,255,255,.05);
+      pointer-events: none;
+      border-radius: inherit;
     }
-    .dot-red   { width:12px;height:12px;border-radius:50%;background:#ff5f57; }
-    .dot-yellow{ width:12px;height:12px;border-radius:50%;background:#febc2e; }
-    .dot-green { width:12px;height:12px;border-radius:50%;background:#28c840; }
-    .preview-titlebar span {
-      margin-left: 8px; font-size: 13px; font-weight: 500;
-      color: var(--on-surface-muted);
+
+    /* ── Strip ── */
+    .strip {
+      margin-top: 80px;
+      padding-top: 32px;
+      border-top: 1px solid var(--line);
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 32px;
     }
-    .preview-body {
-      display: grid; grid-template-columns: 260px 1fr 300px;
-      height: 420px;
+    .stat .k {
+      font-family: "JetBrains Mono", monospace; font-size: 11px;
+      letter-spacing: .12em; text-transform: uppercase;
+      color: var(--cyan);
     }
-    /* Left sidebar */
-    .preview-sidebar-left {
-      border-right: 1px solid var(--outline);
-      padding: 20px 16px;
-      display: flex; flex-direction: column; gap: 16px;
+    .stat:nth-child(even) .k { color: var(--violet); }
+    .stat .v { margin-top: 8px; font-size: 16px; color: var(--ink); letter-spacing: -.015em; }
+
+    /* ── Sections ── */
+    section { padding: 112px 0; position: relative; z-index: 1; }
+    .section-head { max-width: 720px; margin-bottom: 56px; }
+    .kicker { font-family: "JetBrains Mono", monospace; font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-muted); }
+    h2 { margin-top: 14px; font-size: clamp(28px, 3vw, 38px); line-height: 1.1; letter-spacing: -.025em; font-weight: 600; max-width: 620px; }
+    .section-head p { margin-top: 16px; color: var(--ink-soft); font-size: 16px; max-width: 560px; }
+
+    /* ── Feature list (3 columns, minimal) ── */
+    .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border-top: 1px solid var(--line); }
+    .feature {
+      padding: 32px 28px 36px;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      transition: background .25s ease;
     }
-    .sidebar-profile {
-      display: flex; align-items: center; gap: 10px;
-      padding: 10px; border-radius: var(--radius-md);
-      background: var(--surface-hover);
-    }
-    .avatar {
-      width: 36px; height: 36px; border-radius: 50%;
-      background: var(--primary); display: flex; align-items: center;
-      justify-content: center; font-size: 14px; font-weight: 700; color: white;
-      flex-shrink: 0;
-    }
-    .sidebar-profile-info { flex: 1; min-width: 0; }
-    .sidebar-profile-info .name { font-size: 13px; font-weight: 600; }
-    .sidebar-profile-info .addr { font-size: 11px; color: var(--on-surface-muted); }
-    .sidebar-section-label {
-      font-size: 11px; font-weight: 600; text-transform: uppercase;
-      letter-spacing: .08em; color: var(--on-surface-muted);
-      padding: 0 4px;
-    }
-    .sidebar-history { display: flex; flex-direction: column; gap: 2px; }
-    .history-item {
-      padding: 8px 10px; border-radius: var(--radius-sm);
-      font-size: 13px; color: var(--on-surface-muted);
-      cursor: pointer; transition: background .12s;
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    }
-    .history-item:hover { background: var(--surface-hover); }
-    .history-item.active { background: rgba(0,82,255,.06); color: var(--primary); font-weight: 500; }
-    /* Center chat */
-    .preview-chat {
-      display: flex; flex-direction: column;
-      padding: 20px 20px 12px;
+    .feature:last-child { border-right: 0; }
+    .feature:hover { background: rgba(255,255,255,.025); }
+    .feature .n { font-family: "JetBrains Mono", monospace; font-size: 11px; letter-spacing: .14em; }
+    .feature:nth-child(1) .n { color: var(--cyan); }
+    .feature:nth-child(2) .n { color: var(--violet); }
+    .feature:nth-child(3) .n { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .feature:hover { background: linear-gradient(180deg, rgba(138, 76, 255, .04), transparent); }
+    .feature h3 { margin-top: 28px; font-size: 18px; line-height: 1.25; letter-spacing: -.015em; font-weight: 600; color: var(--ink); }
+    .feature p { margin-top: 10px; color: var(--ink-soft); font-size: 14.5px; line-height: 1.55; }
+    .feature ul { margin: 18px 0 0; padding: 0; list-style: none; }
+    .feature li { padding: 8px 0; border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-soft); font-family: "JetBrains Mono", monospace; letter-spacing: .02em; }
+
+    /* ── Flow ── */
+    .flow { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: stretch; }
+    .terminal {
+      position: relative;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      padding: 22px;
+      background: var(--bg-2);
       overflow: hidden;
     }
-    .chat-messages { flex: 1; display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
-    .bubble {
-      max-width: 78%; padding: 12px 16px;
-      font-size: 14px; line-height: 1.5;
+    .terminal-top { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+    .tdot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,.12); }
+    .tdot.on { background: var(--cyan); box-shadow: 0 0 12px rgba(51, 226, 192, .55); }
+    .tlabel { margin-left: auto; font-family: "JetBrains Mono", monospace; font-size: 10.5px; color: var(--ink-muted); letter-spacing: .12em; text-transform: uppercase; }
+    .code-line {
+      display: flex; gap: 14px; padding: 10px 0;
+      color: var(--ink-soft);
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 12.5px;
+      opacity: 0; transform: translateY(6px);
     }
-    .bubble-user {
-      align-self: flex-end;
-      background: var(--primary); color: white;
-      border-radius: 20px 20px 4px 20px;
+    .code-line b { color: var(--cyan); min-width: 70px; font-weight: 600; }
+    .code-line .ok { color: var(--cyan); }
+    .code-line .info { color: var(--ink); }
+    .code-line .verdict {
+      color: white;
+      padding: 2px 10px;
+      border-radius: 999px;
+      background: var(--grad);
+      font-weight: 600;
+      box-shadow: 0 0 20px rgba(138, 76, 255, .35);
     }
-    .bubble-agent {
-      align-self: flex-start;
-      background: var(--surface-hover); color: var(--on-surface);
-      border-radius: 20px 20px 20px 4px;
-    }
-    .risk-card {
-      border: 1px solid var(--outline); border-radius: var(--radius-lg);
-      padding: 14px; font-size: 13px; background: var(--surface);
-      box-shadow: 0 1px 3px rgba(15,23,42,.04);
-    }
-    .risk-card-header {
-      display: flex; align-items: center; justify-content: space-between;
-      margin-bottom: 10px;
-    }
-    .risk-card-title { font-weight: 600; font-size: 13px; }
-    .badge {
-      padding: 2px 8px; border-radius: var(--radius-full);
-      font-size: 11px; font-weight: 600;
-    }
-    .badge-success { background: var(--success-bg); color: var(--success-text); }
-    .badge-warning { background: var(--warning-bg); color: var(--warning-text); }
-    .badge-danger  { background: var(--error-bg); color: var(--error-text); }
-    .risk-row {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 4px 0; border-bottom: 1px solid var(--outline); font-size: 12px;
-    }
-    .risk-row:last-child { border-bottom: none; }
-    .risk-row .label { color: var(--on-surface-muted); }
-    .risk-row .value { font-weight: 500; }
-    .risk-row .value.green { color: var(--success-text); }
-    .risk-row .value.orange { color: var(--warning-text); }
-    .card-actions { display: flex; gap: 8px; margin-top: 10px; }
-    .card-btn {
-      flex: 1; padding: 8px; border-radius: var(--radius-md);
-      font-size: 12px; font-weight: 600; cursor: pointer; border: none;
-    }
-    .card-btn-primary { background: var(--primary); color: white; }
-    .card-btn-secondary { background: var(--surface-hover); color: var(--on-surface); border: 1px solid var(--outline); }
-    .chat-input-area {
-      display: flex; gap: 8px; align-items: center;
-      padding-top: 10px; border-top: 1px solid var(--outline); margin-top: 8px;
-    }
-    .chat-input {
-      flex: 1; padding: 8px 12px;
-      border: 1px solid var(--outline); border-radius: var(--radius-full);
-      font-size: 13px; color: var(--on-surface-muted); background: var(--surface-hover);
-    }
-    .chat-send-btn {
-      width: 32px; height: 32px; border-radius: 50%;
-      background: var(--primary); border: none; cursor: pointer;
-      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-    }
-    /* Right sidebar */
-    .preview-sidebar-right {
-      border-left: 1px solid var(--outline);
-      padding: 20px 16px;
-      display: flex; flex-direction: column; gap: 16px;
-    }
-    .wallet-balance { text-align: center; padding: 12px 0; }
-    .wallet-balance .label { font-size: 12px; color: var(--on-surface-muted); margin-bottom: 4px; }
-    .wallet-balance .amount { font-size: 28px; font-weight: 700; letter-spacing: -.02em; }
-    .donut-chart {
-      width: 80px; height: 80px; margin: 0 auto;
+    .terminal.in .code-line { animation: lineIn .5s cubic-bezier(.2,.7,.2,1) forwards; }
+    .terminal.in .code-line:nth-child(2) { animation-delay: .15s; }
+    .terminal.in .code-line:nth-child(3) { animation-delay: .35s; }
+    .terminal.in .code-line:nth-child(4) { animation-delay: .55s; }
+    .terminal.in .code-line:nth-child(5) { animation-delay: .75s; }
+    .terminal.in .code-line:nth-child(6) { animation-delay: .95s; }
+    .caret { display: inline-block; width: 7px; height: 14px; background: var(--cyan); margin-left: 4px; vertical-align: -2px; animation: blink 1s steps(2) infinite; }
+
+    .steps { display: grid; gap: 0; counter-reset: step; }
+    .step {
       position: relative;
+      padding: 22px 0 22px 56px;
+      border-bottom: 1px solid var(--line);
+      transition: padding-left .25s ease;
     }
-    .donut-chart svg { transform: rotate(-90deg); }
-    .assets-list { display: flex; flex-direction: column; gap: 6px; }
-    .asset-row {
-      display: flex; align-items: center; gap: 8px;
-      padding: 6px 8px; border-radius: var(--radius-sm);
+    .step:last-child { border-bottom: 0; }
+    .step::before {
+      counter-increment: step;
+      content: counter(step, decimal-leading-zero);
+      position: absolute;
+      left: 0; top: 22px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
+      color: var(--violet);
+      letter-spacing: .12em;
+      transition: color .25s ease;
     }
-    .asset-row:hover { background: var(--surface-hover); }
-    .asset-icon {
-      width: 26px; height: 26px; border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 11px; font-weight: 700; color: white; flex-shrink: 0;
-    }
-    .asset-info { flex: 1; min-width: 0; }
-    .asset-info .ticker { font-size: 13px; font-weight: 600; }
-    .asset-info .amount-small { font-size: 11px; color: var(--on-surface-muted); }
-    .asset-value { font-size: 13px; font-weight: 500; }
-    .network-status {
-      padding: 10px 12px;
-      background: var(--success-bg);
-      border: 1px solid #bbf7d0;
-      border-radius: var(--radius-md);
-      display: flex; align-items: center; gap: 8px; font-size: 12px;
-    }
-    .network-status .dot-green-sm {
-      width: 7px; height: 7px; border-radius: 50%; background: var(--success-text); flex-shrink: 0;
-      animation: pulse 2s infinite;
-    }
+    .step:hover::before { color: var(--cyan); }
+    .step:hover { padding-left: 60px; }
+    .step strong { display: block; font-size: 16px; letter-spacing: -.01em; font-weight: 600; }
+    .step span { display: block; margin-top: 6px; color: var(--ink-soft); font-size: 14px; line-height: 1.55; }
 
-    /* ── Logos / trust bar ── */
-    .trust-bar {
-      padding: 32px 0;
-      border-top: 1px solid var(--outline);
-      border-bottom: 1px solid var(--outline);
-      text-align: center;
+    /* ── Policy table ── */
+    .policy { border-top: 1px solid var(--line); }
+    .rule {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 18px;
+      padding: 20px 0;
+      border-bottom: 1px solid var(--line);
+      transition: padding-left .25s ease;
     }
-    .trust-bar p { font-size: 13px; color: var(--on-surface-muted); margin-bottom: 20px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; }
-    .trust-logos { display: flex; align-items: center; justify-content: center; gap: 40px; flex-wrap: wrap; }
-    .trust-logo {
-      font-size: 15px; font-weight: 700; color: var(--on-surface-muted);
-      letter-spacing: -.01em; opacity: .55;
-      display: flex; align-items: center; gap: 6px;
-    }
-    .trust-logo .icon { width: 20px; height: 20px; opacity: .7; }
-
-    /* ── Features ── */
-    .features-grid {
-      display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;
-      margin-top: 56px;
-    }
-    .feature-card {
-      background: var(--surface);
-      border: 1px solid var(--outline);
-      border-radius: var(--radius-lg);
-      padding: 28px;
-      transition: box-shadow .2s, transform .2s;
-    }
-    .feature-card:hover {
-      box-shadow: 0 4px 12px rgba(15,23,42,.07);
-      transform: translateY(-2px);
-    }
-    .feature-icon {
-      width: 44px; height: 44px;
-      border-radius: var(--radius-md);
-      display: flex; align-items: center; justify-content: center;
-      margin-bottom: 18px;
-    }
-    .feature-icon svg { width: 22px; height: 22px; }
-    .feature-icon.blue   { background: rgba(0,82,255,.08); color: var(--primary); }
-    .feature-icon.green  { background: var(--success-bg); color: var(--success-text); }
-    .feature-icon.orange { background: var(--warning-bg); color: var(--warning-text); }
-    .feature-icon.red    { background: var(--error-bg); color: var(--error-text); }
-    .feature-icon.purple { background: #f5f3ff; color: #7c3aed; }
-    .feature-icon.cyan   { background: #ecfeff; color: #0891b2; }
-    .feature-card h3 { font-size: 17px; font-weight: 600; margin-bottom: 10px; }
-    .feature-card p { font-size: 14px; color: var(--on-surface-muted); line-height: 1.6; }
-
-    /* ── Section headings ── */
-    .section-eyebrow {
-      font-size: 13px; font-weight: 600; letter-spacing: .06em;
-      text-transform: uppercase; color: var(--primary); margin-bottom: 12px;
-    }
-    .section-title {
-      font-size: clamp(28px, 3.5vw, 40px);
-      font-weight: 700; line-height: 1.2; letter-spacing: -.02em;
-      margin-bottom: 16px;
-    }
-    .section-subtitle {
-      font-size: 17px; color: var(--on-surface-muted);
-      max-width: 560px; line-height: 1.6;
-    }
-
-    /* ── How it works ── */
-    .how-grid {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 64px;
-      align-items: center; margin-top: 56px;
-    }
-    .how-steps { display: flex; flex-direction: column; gap: 0; }
-    .how-step {
-      display: flex; gap: 20px; padding: 20px 0;
-      border-bottom: 1px solid var(--outline);
-      position: relative;
-    }
-    .how-step:last-child { border-bottom: none; }
-    .step-num {
-      width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
-      background: var(--primary); color: white;
-      font-size: 14px; font-weight: 700;
-      display: flex; align-items: center; justify-content: center;
-    }
-    .step-content h4 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
-    .step-content p { font-size: 14px; color: var(--on-surface-muted); line-height: 1.55; }
-    .how-visual {
-      background: var(--surface);
-      border: 1px solid var(--outline);
-      border-radius: var(--radius-xl);
-      padding: 28px;
-      box-shadow: 0 2px 8px rgba(15,23,42,.04), 0 12px 40px rgba(15,23,42,.06);
-    }
-    .how-visual-title { font-size: 14px; font-weight: 600; margin-bottom: 16px; }
-    .risk-meter {
-      background: var(--surface-hover);
-      border-radius: var(--radius-lg);
-      padding: 16px; margin-bottom: 14px;
-    }
-    .risk-meter-label {
-      display: flex; justify-content: space-between;
-      font-size: 12px; margin-bottom: 8px;
-    }
-    .risk-meter-label .title { font-weight: 600; }
-    .risk-meter-label .score { font-weight: 700; color: var(--success-text); }
-    .meter-bar {
-      height: 8px; border-radius: 4px;
-      background: linear-gradient(90deg, var(--success-text) 0%, #84cc16 33%, #f59e0b 66%, var(--error-text) 100%);
-      position: relative; overflow: visible;
-    }
-    .meter-thumb {
-      position: absolute; top: 50%; transform: translate(-50%, -50%);
-      width: 14px; height: 14px; border-radius: 50%;
-      background: white; border: 2.5px solid var(--success-text);
-      box-shadow: 0 1px 4px rgba(0,0,0,.15);
-      left: 22%;
-    }
-    .signal-grid {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
-    }
-    .signal-item {
-      display: flex; align-items: center; gap: 8px;
-      padding: 8px 10px; border-radius: var(--radius-sm);
-      background: var(--surface); border: 1px solid var(--outline);
-      font-size: 12px;
-    }
-    .signal-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-    .signal-dot.green  { background: var(--success-text); }
-    .signal-dot.orange { background: var(--warning-text); }
-    .signal-dot.red    { background: var(--error-text); }
-    .signal-item span  { font-weight: 500; }
-    .guard-chip {
-      display: inline-flex; align-items: center; gap: 6px;
-      padding: 6px 12px; margin-top: 14px;
-      background: rgba(0,82,255,.06); border: 1px solid rgba(0,82,255,.15);
-      border-radius: var(--radius-full); font-size: 12px; font-weight: 600;
-      color: var(--primary);
-    }
-
-    /* ── On-chain section ── */
-    .onchain-grid {
-      display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px;
-      margin-top: 56px;
-    }
-    .onchain-card {
-      background: var(--surface);
-      border: 1px solid var(--outline);
-      border-radius: var(--radius-lg);
-      padding: 28px;
-    }
-    .onchain-card.featured {
-      border-color: rgba(0,82,255,.3);
-      background: rgba(0,82,255,.02);
-    }
-    .onchain-card h3 { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
-    .onchain-card p { font-size: 14px; color: var(--on-surface-muted); line-height: 1.6; margin-bottom: 16px; }
-    .code-chip {
-      display: inline-flex; align-items: center; gap: 6px;
+    .rule:hover { padding-left: 10px; background: rgba(255,255,255,.015); }
+    .rule .what { color: var(--ink); font-size: 15px; }
+    .rule .what em { color: var(--ink-muted); font-style: normal; font-family: "JetBrains Mono", monospace; font-size: 12px; margin-left: 10px; letter-spacing: .04em; }
+    .pill {
+      flex: 0 0 auto;
       padding: 5px 10px;
-      background: var(--surface-hover); border: 1px solid var(--outline);
-      border-radius: var(--radius-sm);
-      font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px;
-      color: var(--on-surface-muted); margin: 2px;
+      border-radius: 999px;
+      border: 1px solid var(--line-strong);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 10.5px; font-weight: 600;
+      color: var(--ink-soft);
+      letter-spacing: .1em;
     }
-    .code-chip.blue { background: rgba(0,82,255,.06); color: var(--primary); border-color: rgba(0,82,255,.2); }
+    .pill.deny    { color: white; background: var(--violet); border-color: transparent; box-shadow: 0 0 18px rgba(138, 76, 255, .35); }
+    .pill.permit  { color: #08322a; background: var(--cyan); border-color: transparent; box-shadow: 0 0 18px rgba(51, 226, 192, .3); }
+    .pill.confirm { color: var(--ink); border-color: rgba(255, 255, 255, .28); }
 
-    /* ── Use cases ── */
-    .usecases-grid {
-      display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;
-      margin-top: 56px;
+    /* ── Brand ── */
+    .brand-kit { display: grid; grid-template-columns: 1fr 1.6fr; gap: 18px; }
+    .brand-tile {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--bg-2);
+      padding: 28px;
+      display: grid;
+      place-items: center;
+      min-height: 240px;
+      overflow: hidden;
     }
-    .usecase-card {
-      background: var(--surface);
-      border: 1px solid var(--outline);
-      border-radius: var(--radius-lg);
-      padding: 24px;
-    }
-    .usecase-emoji { font-size: 28px; margin-bottom: 14px; display: block; }
-    .usecase-card h3 { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
-    .usecase-card p { font-size: 14px; color: var(--on-surface-muted); line-height: 1.55; }
-    .usecase-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
-    .chip {
-      padding: 3px 10px; border-radius: var(--radius-full);
-      font-size: 12px; font-weight: 500;
-      background: var(--surface-hover); color: var(--on-surface-muted);
-      border: 1px solid var(--outline);
-    }
-
-    /* ── Downloads ── */
-    .downloads-wrap {
-      display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
-      gap: 32px; align-items: center; margin-top: 56px;
-    }
-    .download-brand-card {
-      background: var(--surface);
-      border: 1px solid var(--outline);
-      border-radius: var(--radius-xl);
-      padding: 32px;
-      box-shadow: 0 2px 8px rgba(15,23,42,.04), 0 18px 48px rgba(15,23,42,.06);
-    }
-    .download-logo-row { display: flex; align-items: center; gap: 18px; margin-bottom: 22px; }
-    .download-logo {
-      width: 76px; height: 76px; border-radius: 22px;
-      box-shadow: 0 12px 30px rgba(0,82,255,.2);
-    }
-    .download-logo-copy h3 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
-    .download-logo-copy p { font-size: 14px; color: var(--on-surface-muted); }
-    .download-actions { display: flex; flex-wrap: wrap; gap: 10px; }
-    .download-banner {
-      width: 100%; display: block;
-      border-radius: var(--radius-xl);
-      border: 1px solid rgba(15,23,42,.08);
-      box-shadow: 0 18px 54px rgba(15,23,42,.14);
-    }
+    .brand-tile.compact { background: radial-gradient(circle at 30% 30%, rgba(51,226,192,.10), transparent 55%), radial-gradient(circle at 70% 70%, rgba(138,76,255,.12), transparent 55%), var(--bg-2); }
+    .brand-tile.compact img { max-width: 260px; width: 100%; filter: drop-shadow(0 12px 36px rgba(138, 76, 255, .25)); }
+    .brand-tile.wide img { width: 100%; }
 
     /* ── CTA ── */
-    .cta-section {
-      padding: 96px 0;
-      text-align: center;
+    .cta { padding-bottom: 64px; }
+    .cta-box {
+      position: relative;
+      padding: clamp(40px, 6vw, 72px);
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      background:
+        radial-gradient(800px circle at 100% 0%, rgba(138, 76, 255, .18), transparent 60%),
+        radial-gradient(700px circle at 0% 100%, rgba(51, 226, 192, .12), transparent 60%),
+        var(--bg-2);
+      overflow: hidden;
     }
-    .cta-inner {
-      background: var(--on-surface);
-      border-radius: 24px;
-      padding: 72px 48px;
-      max-width: 780px; margin: 0 auto;
-      position: relative; overflow: hidden;
+    .cta-box::after {
+      content: "";
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      height: 1px;
+      background: var(--grad);
+      opacity: .55;
     }
-    .cta-inner::before {
-      content: '';
-      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-      background: radial-gradient(ellipse 60% 80% at 50% -20%, rgba(0,82,255,.25), transparent);
-      pointer-events: none;
-    }
-    .cta-inner h2 {
-      font-size: clamp(26px, 4vw, 38px); font-weight: 700; line-height: 1.2;
-      color: white; margin-bottom: 16px; letter-spacing: -.02em;
-    }
-    .cta-inner p {
-      font-size: 17px; color: rgba(255,255,255,.65); margin-bottom: 36px; line-height: 1.6;
-    }
-    .cta-buttons {
-      display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;
-    }
-    .btn-white {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 14px 28px;
-      background: white; color: var(--on-surface);
-      border: none; border-radius: var(--radius-md);
-      font-size: 15px; font-weight: 600; cursor: pointer;
-      text-decoration: none; transition: background .15s;
-    }
-    .btn-white:hover { background: #f8fafc; }
-    .btn-outline-white {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 14px 28px;
-      background: transparent; color: rgba(255,255,255,.8);
-      border: 1px solid rgba(255,255,255,.2);
-      border-radius: var(--radius-md);
-      font-size: 15px; font-weight: 600; cursor: pointer;
-      text-decoration: none; transition: background .15s, border-color .15s;
-    }
-    .btn-outline-white:hover { background: rgba(255,255,255,.07); border-color: rgba(255,255,255,.35); }
+    .cta-box h2 { max-width: 640px; }
+    .cta-box p { margin-top: 14px; max-width: 560px; color: var(--ink-soft); font-size: 16px; }
+    .cta-box .hero-actions { margin-top: 28px; }
 
-    /* ── Footer ── */
-    footer {
-      border-top: 1px solid var(--outline);
-      padding: 40px 0;
-      background: var(--surface);
-    }
+    footer { padding: 36px 0 56px; color: var(--ink-muted); position: relative; z-index: 1; }
     .footer-inner {
-      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;
+      display: flex; justify-content: space-between; gap: 20px;
+      border-top: 1px solid var(--line);
+      padding-top: 24px; font-size: 13px;
     }
-    .footer-logo {
-      display: flex; align-items: center; gap: 10px;
-      font-weight: 700; font-size: 15px; color: var(--on-surface);
-      text-decoration: none;
+    .footer-inner a:hover { color: var(--ink); }
+
+    /* ── Animations ── */
+    @keyframes pulse {
+      0%   { box-shadow: 0 0 0 0 rgba(51, 226, 192, .55); }
+      70%  { box-shadow: 0 0 0 10px rgba(51, 226, 192, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(51, 226, 192, 0); }
     }
-    .footer-logo-icon {
-      width: 28px; height: 28px; background: var(--primary);
-      border-radius: var(--radius-sm);
-      display: flex; align-items: center; justify-content: center;
+    @keyframes shine {
+      0%, 100% { background-position: 0% 50%; }
+      50%      { background-position: 100% 50%; }
     }
-    .footer-logo-icon svg { width: 14px; height: 14px; }
-    .footer-links { display: flex; gap: 24px; flex-wrap: wrap; }
-    .footer-links a {
-      font-size: 14px; color: var(--on-surface-muted); text-decoration: none;
-      transition: color .15s;
-    }
-    .footer-links a:hover { color: var(--on-surface); }
-    .footer-right { font-size: 13px; color: var(--on-surface-muted); }
+    @keyframes lineIn { to { opacity: 1; transform: none; } }
+    @keyframes blink  { to { opacity: 0; } }
 
     /* ── Responsive ── */
-    @media (max-width: 900px) {
-      .preview-body { grid-template-columns: 1fr; }
-      .preview-sidebar-left, .preview-sidebar-right { display: none; }
-      .features-grid { grid-template-columns: 1fr; }
-      .how-grid { grid-template-columns: 1fr; }
-      .onchain-grid { grid-template-columns: 1fr; }
-      .usecases-grid { grid-template-columns: 1fr; }
-      .downloads-wrap { grid-template-columns: 1fr; }
-      .nav-links { display: none; }
+    @media (max-width: 920px) {
+      .hero-grid { grid-template-columns: 1fr; gap: 48px; }
+      .strip { grid-template-columns: 1fr 1fr; gap: 24px; }
+      .features { grid-template-columns: 1fr; }
+      .feature { border-right: 0; }
+      .flow { grid-template-columns: 1fr; }
+      .brand-kit { grid-template-columns: 1fr; }
+      .nav-links a:not(.nav-cta) { display: none; }
     }
-    @media (max-width: 600px) {
-      .cta-inner { padding: 48px 24px; }
+    @media (max-width: 560px) {
+      .container { width: min(100% - 28px, 1080px); }
+      h1 { font-size: clamp(30px, 8vw, 40px); }
+      section { padding: 80px 0; }
+      .strip { grid-template-columns: 1fr; }
+      .footer-inner { flex-direction: column; }
     }
   </style>
 </head>
 <body>
-
-<!-- NAV -->
-<nav>
-  <div class="container nav-inner">
-    <a href="#" class="logo">
-      <span class="logo-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-        </svg>
-      </span>
-      Compass
-    </a>
-    <div class="nav-links">
-      <a href="#features">Features</a>
-      <a href="#how-it-works">How it works</a>
-      <a href="#security">Security</a>
-      <a href="#downloads">Downloads</a>
-      <a href="/home" class="btn-nav">Launch App</a>
-    </div>
-  </div>
-</nav>
-
-<!-- HERO -->
-<section class="hero">
-  <div class="container">
-    <div class="hero-badge">
-      <span class="dot"></span>
-      Built on Solana · Hackathon 2026
-    </div>
-    <div class="hero-tagline">Compass &mdash; your direction in crypto</div>
-    <h1>The AI wallet that <span>guards every move</span> on Solana</h1>
-    <p>
-      Talk to your wallet. Every swap, transfer, and conditional order is evaluated
-      for risk before it ever touches the blockchain.
-    </p>
-    <div class="hero-cta">
-      <a href="/home" class="btn-primary">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="5 3 19 12 5 21 5 3"/>
-        </svg>
-        Try Demo
+  <nav class="nav" aria-label="Main navigation">
+    <div class="container nav-inner">
+      <a class="brand" href="#top" aria-label="Compass home">
+        <img class="brand-mark" src="/compass-icon.png" alt="Compass" />
       </a>
-      <a href="#how-it-works" class="btn-secondary">See how it works</a>
+      <div class="nav-links">
+        <a href="#layer">Security</a>
+        <a href="#flow">Flow</a>
+        <a href="#policy">Policy</a>
+        <a href="#brand">Brand</a>
+        <a href="/home" class="nav-cta">Open guard</a>
+      </div>
     </div>
+  </nav>
 
-    <!-- App preview mockup -->
-    <div class="hero-preview">
-      <div class="preview-window">
-        <div class="preview-titlebar">
-          <span class="dot-red"></span>
-          <span class="dot-yellow"></span>
-          <span class="dot-green"></span>
-          <span>Compass — Solana Devnet</span>
-        </div>
-        <div class="preview-body">
-          <!-- Left sidebar -->
-          <div class="preview-sidebar-left">
-            <div class="sidebar-profile">
-              <div class="avatar">R</div>
-              <div class="sidebar-profile-info">
-                <div class="name">ramiro.sol</div>
-                <div class="addr">4K9m…gaBV</div>
-              </div>
+  <main id="top">
+    <section class="hero">
+      <div class="container">
+        <div class="hero-grid">
+          <div>
+            <div class="eyebrow reveal"><span class="dot-cyan"></span> MCP execution firewall · Solana</div>
+            <h1 class="reveal d1">A <span class="accent">security layer</span> for AI agents on Solana. <em>Not a wallet.</em></h1>
+            <p class="hero-copy reveal d2">
+              Compass sits between agents, MCP clients, users and execution. Every critical action is decoded, simulated, evaluated against policy and audited — before it can be signed.
+            </p>
+            <div class="hero-actions reveal d3">
+              <a href="/home" class="btn btn-primary">Open Compass</a>
+              <a href="#flow" class="btn btn-ghost">See the flow</a>
             </div>
-            <div class="sidebar-section-label">History</div>
-            <div class="sidebar-history">
-              <div class="history-item active">Swap USDC → SOL</div>
-              <div class="history-item">Set buy order $130</div>
-              <div class="history-item">Check SOL balance</div>
-              <div class="history-item">Send 0.5 SOL</div>
-              <div class="history-item">Token risk check</div>
+            <p class="hero-note mono reveal d4">Built for transfers, swaps and conditional orders.</p>
+          </div>
+
+          <div class="banner reveal d2">
+            <img src="/compass-banner.png" alt="Compass · security layer for AI execution on Solana" />
+          </div>
+        </div>
+
+        <div class="strip">
+          <div class="stat reveal"><div class="k">Tool boundary</div><div class="v">MCP calls pass through Compass first</div></div>
+          <div class="stat reveal d1"><div class="k">Risk engine</div><div class="v">Wallet, token, protocol, amount</div></div>
+          <div class="stat reveal d2"><div class="k">Policy gates</div><div class="v">Limits, denylist, slippage, cadence</div></div>
+          <div class="stat reveal d3"><div class="k">Audit trail</div><div class="v">Decision, reason, approval, execution</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="layer">
+      <div class="container">
+        <div class="section-head reveal">
+          <div class="kicker">Security layer · not custody</div>
+          <h2>Wallets hold keys. Compass controls what reaches them.</h2>
+          <p>An execution firewall that decides whether an AI-triggered operation is safe enough to be signed.</p>
+        </div>
+        <div class="features">
+          <article class="feature reveal d1">
+            <div class="n">01 / Gateway</div>
+            <h3>Agent requests enter a controlled boundary.</h3>
+            <p>Every tool call is normalized, classified and routed through the same guardrail pipeline.</p>
+            <ul><li>transfer</li><li>swap</li><li>conditional execution</li></ul>
+          </article>
+          <article class="feature reveal d2">
+            <div class="n">02 / Context</div>
+            <h3>Compass reads what the signature would mean.</h3>
+            <p>Decode, simulate and score the operation before users or agents can approve it.</p>
+            <ul><li>destination reputation</li><li>token safety</li><li>transaction effects</li></ul>
+          </article>
+          <article class="feature reveal d3">
+            <div class="n">03 / Verdict</div>
+            <h3>Unsafe actions stop with a reason.</h3>
+            <p>Permit, deny or require stronger confirmation. Critical rules can be enforced on-chain.</p>
+            <ul><li>spend limits</li><li>denylist</li><li>expiry &amp; replay</li></ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="flow">
+      <div class="container">
+        <div class="section-head reveal">
+          <div class="kicker">Execution flow</div>
+          <h2>Before signing is the product.</h2>
+          <p>Compass turns vague agent intent into a reviewed, explainable, policy-bound operation.</p>
+        </div>
+        <div class="flow">
+          <div class="terminal reveal" id="terminal" aria-label="Compass guardrail terminal example">
+            <div class="terminal-top">
+              <span class="tdot"></span><span class="tdot"></span><span class="tdot on"></span>
+              <span class="tlabel">compass · guard.log</span>
             </div>
+            <div class="code-line"><b>intent</b><span>send 2.5 SOL to 8rQ…x1</span></div>
+            <div class="code-line"><b>decode</b><span class="info">system transfer · native SOL</span></div>
+            <div class="code-line"><b>risk</b><span>new destination · above soft limit</span></div>
+            <div class="code-line"><b>policy</b><span>require explicit approval + memo</span></div>
+            <div class="code-line"><b>verdict</b><span class="verdict">permit · reinforced</span><span class="caret"></span></div>
           </div>
-          <!-- Center chat -->
-          <div class="preview-chat">
-            <div class="chat-messages">
-              <div class="bubble bubble-user">Swap 200 USDC to SOL</div>
-              <div class="bubble bubble-agent">Analyzing swap route and token risk… one sec.</div>
-              <!-- Rich risk card -->
-              <div class="risk-card" style="align-self: flex-start; max-width: 90%;">
-                <div class="risk-card-header">
-                  <span class="risk-card-title">Swap Proposal · 200 USDC → SOL</span>
-                  <span class="badge badge-success">LOW RISK</span>
-                </div>
-                <div class="risk-row"><span class="label">You receive</span><span class="value">1.418 SOL</span></div>
-                <div class="risk-row"><span class="label">Price impact</span><span class="value green">0.02%</span></div>
-                <div class="risk-row"><span class="label">Risk score</span><span class="value green">18 / 100</span></div>
-                <div class="risk-row"><span class="label">Verified token</span><span class="value green">Jupiter listed</span></div>
-                <div class="risk-row"><span class="label">Network fee</span><span class="value">~$0.001</span></div>
-                <div class="card-actions">
-                  <button class="card-btn card-btn-secondary">Reject</button>
-                  <button class="card-btn card-btn-primary">Sign with Phantom</button>
-                </div>
-              </div>
-            </div>
-            <div class="chat-input-area">
-              <div class="chat-input">Ask anything about your wallet…</div>
-              <button class="chat-send-btn">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-              </button>
-            </div>
-          </div>
-          <!-- Right sidebar -->
-          <div class="preview-sidebar-right">
-            <div class="wallet-balance">
-              <div class="label">Total Balance</div>
-              <div class="amount">$843.20</div>
-            </div>
-            <!-- Donut chart -->
-            <div class="donut-chart">
-              <svg width="80" height="80" viewBox="0 0 80 80">
-                <circle cx="40" cy="40" r="30" fill="none" stroke="#e2e8f0" stroke-width="10"/>
-                <circle cx="40" cy="40" r="30" fill="none" stroke="#0052ff" stroke-width="10"
-                  stroke-dasharray="94.2 94.2" stroke-dashoffset="0"/>
-                <circle cx="40" cy="40" r="30" fill="none" stroke="#16a34a" stroke-width="10"
-                  stroke-dasharray="56.5 131.9" stroke-dashoffset="-94.2"/>
-                <circle cx="40" cy="40" r="30" fill="none" stroke="#f59e0b" stroke-width="10"
-                  stroke-dasharray="37.7 150.7" stroke-dashoffset="-150.7"/>
-              </svg>
-            </div>
-            <div class="sidebar-section-label">Assets</div>
-            <div class="assets-list">
-              <div class="asset-row">
-                <div class="asset-icon" style="background:#9945ff;">SOL</div>
-                <div class="asset-info">
-                  <div class="ticker">SOL</div>
-                  <div class="amount-small">4.22 SOL</div>
-                </div>
-                <div class="asset-value">$612</div>
-              </div>
-              <div class="asset-row">
-                <div class="asset-icon" style="background:#2775ca;">USDC</div>
-                <div class="asset-info">
-                  <div class="ticker">USDC</div>
-                  <div class="amount-small">200 USDC</div>
-                </div>
-                <div class="asset-value">$200</div>
-              </div>
-              <div class="asset-row">
-                <div class="asset-icon" style="background:#f59e0b;">JUP</div>
-                <div class="asset-info">
-                  <div class="ticker">JUP</div>
-                  <div class="amount-small">22.4 JUP</div>
-                </div>
-                <div class="asset-value">$31</div>
-              </div>
-            </div>
-            <div class="network-status">
-              <span class="dot-green-sm"></span>
-              <span>Mainnet · 12ms · Normal</span>
-            </div>
+          <div class="steps">
+            <div class="step reveal d1"><strong>Agent proposes action</strong><span>Compass receives the MCP / tool call instead of letting it execute directly.</span></div>
+            <div class="step reveal d2"><strong>Simulation &amp; decoding</strong><span>The transaction is interpreted in human terms against network and protocol context.</span></div>
+            <div class="step reveal d3"><strong>Policy verdict</strong><span>Allow, block or escalate — with a clear reason and suggested next action.</span></div>
+            <div class="step reveal d4"><strong>Approval &amp; audit</strong><span>Only approved operations proceed; every decision is written to an audit trail.</span></div>
           </div>
         </div>
       </div>
-    </div>
-  </div>
-</section>
+    </section>
 
-<!-- TRUST BAR -->
-<div class="trust-bar">
-  <div class="container">
-    <p>Powered by</p>
-    <div class="trust-logos">
-      <span class="trust-logo">
-        <svg class="icon" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
-        Solana
-      </span>
-      <span class="trust-logo">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
-        Jupiter
-      </span>
-      <span class="trust-logo">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
-        Birdeye
-      </span>
-      <span class="trust-logo">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="4"/><path d="M8 12h8M12 8v8"/></svg>
-        Helius
-      </span>
-      <span class="trust-logo">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-        AgentActionGuard
-      </span>
-      <span class="trust-logo">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-        Phantom
-      </span>
-    </div>
-  </div>
-</div>
+    <section id="policy">
+      <div class="container">
+        <div class="section-head reveal">
+          <div class="kicker">Policy engine</div>
+          <h2>Programmable safety for common Solana actions.</h2>
+          <p>Use Compass as the execution firewall for transfers, swaps and recurring conditional orders.</p>
+        </div>
+        <div class="policy reveal">
+          <div class="rule"><div class="what">Destination wallet flagged as scam <em>reputation</em></div><span class="pill confirm">ESCALATE</span></div>
+          <div class="rule"><div class="what">Swap output token has rug-risk signals <em>token</em></div><span class="pill deny">DENY</span></div>
+          <div class="rule"><div class="what">Slippage exceeds user policy <em>execution</em></div><span class="pill deny">DENY</span></div>
+          <div class="rule"><div class="what">Recurring condition met within window <em>conditional</em></div><span class="pill permit">PERMIT</span></div>
+          <div class="rule"><div class="what">Amount exceeds daily agent limit <em>limits</em></div><span class="pill confirm">CONFIRM</span></div>
+        </div>
+      </div>
+    </section>
 
-<!-- FEATURES -->
-<section class="section section--alt" id="features">
-  <div class="container">
-    <div class="section-eyebrow">Features</div>
-    <h2 class="section-title">Everything you need, nothing you don't</h2>
-    <p class="section-subtitle">
-      Compass combines conversational AI with multi-layer security so every
-      on-chain action is verified before it's signed.
-    </p>
-    <div class="features-grid">
-      <!-- 1 -->
-      <div class="feature-card">
-        <div class="feature-icon blue">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-          </svg>
+    <section id="brand">
+      <div class="container">
+        <div class="section-head reveal">
+          <div class="kicker">Identity</div>
+          <h2>One mark for the guardrail layer.</h2>
+          <p>The landing leads with the Compass mark and the security-layer banner. No wallet metaphor.</p>
         </div>
-        <h3>Conversational Wallet</h3>
-        <p>Just tell the wallet what you want. "Swap 200 USDC to SOL" or "Send 0.5 SOL to Alice" — the agent handles the rest, showing a rich proposal card before any signing.</p>
-      </div>
-      <!-- 2 -->
-      <div class="feature-card">
-        <div class="feature-icon green">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-          </svg>
+        <div class="brand-kit">
+          <div class="brand-tile compact reveal"><img src="/compass-logo-mark.png" alt="Compass logo" /></div>
+          <div class="brand-tile wide reveal d1"><img src="/compass-banner.png" alt="Compass banner" /></div>
         </div>
-        <h3>Token Risk Scoring</h3>
-        <p>Every swap is analyzed: liquidity depth, holder concentration, mint/freeze authority, Token-2022 extensions, blocklists, and price impact — all scored before you sign.</p>
       </div>
-      <!-- 3 -->
-      <div class="feature-card">
-        <div class="feature-icon orange">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-          </svg>
-        </div>
-        <h3>Conditional Orders</h3>
-        <p>"Buy SOL when it drops below $130." The keeper monitors the market and executes automatically through an on-chain conditional escrow contract — no babysitting required.</p>
-      </div>
-      <!-- 4 -->
-      <div class="feature-card">
-        <div class="feature-icon red">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
-        </div>
-        <h3>On-chain Enforcement</h3>
-        <p>The <code>AgentActionGuard</code> program verifies every critical action on-chain — hashes, signatures, expiry, and anti-replay — so guardrails can't be bypassed at the protocol level.</p>
-      </div>
-      <!-- 5 -->
-      <div class="feature-card">
-        <div class="feature-icon purple">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-          </svg>
-        </div>
-        <h3>Self-Custodial</h3>
-        <p>Your keys, your crypto. The backend prepares unsigned transactions; Phantom signs. The backend never holds your private key or signed transactions.</p>
-      </div>
-      <!-- 6 -->
-      <div class="feature-card">
-        <div class="feature-icon cyan">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
-            <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
-          </svg>
-        </div>
-        <h3>Full Audit Trail</h3>
-        <p>Every action is logged with the canonical quote hash, risk report hash, oracle signature, provider sources, and on-chain tx signature — fully auditable after the fact.</p>
-      </div>
-    </div>
-  </div>
-</section>
+    </section>
 
-<!-- HOW IT WORKS -->
-<section class="section" id="how-it-works">
-  <div class="container">
-    <div class="section-eyebrow">How it works</div>
-    <h2 class="section-title">Zero trust, every trade</h2>
-    <p class="section-subtitle">
-      Every operation goes through a multi-layer evaluation pipeline before a single satoshi moves.
-    </p>
-    <div class="how-grid">
-      <div class="how-steps">
-        <div class="how-step">
-          <div class="step-num">1</div>
-          <div class="step-content">
-            <h4>You express intent</h4>
-            <p>Type a natural language request — swap, transfer, or set a conditional order. The AI agent parses your intent and kicks off evaluation.</p>
-          </div>
-        </div>
-        <div class="how-step">
-          <div class="step-num">2</div>
-          <div class="step-content">
-            <h4>Off-chain risk engine runs</h4>
-            <p>The backend queries Jupiter, Birdeye, and Helius in parallel. It calculates a risk score (0–100), checks blocklists, token extensions, and liquidity depth. A signed <code>TokenRiskReport</code> is generated with a canonical hash.</p>
-          </div>
-        </div>
-        <div class="how-step">
-          <div class="step-num">3</div>
-          <div class="step-content">
-            <h4>You review the proposal</h4>
-            <p>A rich card shows the quote, risk score, warnings, and expiry. REJECT stops here. WARN requires explicit acknowledgment. APPROVE is ready to sign.</p>
-          </div>
-        </div>
-        <div class="how-step">
-          <div class="step-num">4</div>
-          <div class="step-content">
-            <h4>On-chain guard enforces</h4>
-            <p>The <code>AgentActionGuard</code> program verifies hashes, the oracle signature, expiry, and anti-replay before executing the CPI. If anything changed since preview, the transaction is rejected on-chain.</p>
+    <section class="cta">
+      <div class="container">
+        <div class="cta-box reveal">
+          <div class="kicker">Compass MCP Guard</div>
+          <h2>Let agents act — without letting them bypass your rules.</h2>
+          <p>Put Compass in front of every critical Solana operation and make safety the default execution path.</p>
+          <div class="hero-actions">
+            <a href="/home" class="btn btn-primary">Open Compass</a>
+            <a href="#layer" class="btn btn-ghost">Review guardrails</a>
           </div>
         </div>
       </div>
-      <!-- Visual panel -->
-      <div class="how-visual">
-        <div class="how-visual-title">Risk evaluation · USDC → RAY</div>
-        <div class="risk-meter">
-          <div class="risk-meter-label">
-            <span class="title">Risk Score</span>
-            <span class="score">22 / 100 — LOW</span>
-          </div>
-          <div class="meter-bar"><div class="meter-thumb"></div></div>
-        </div>
-        <div class="signal-grid">
-          <div class="signal-item"><span class="signal-dot green"></span><span>Jupiter verified</span></div>
-          <div class="signal-item"><span class="signal-dot green"></span><span>Liquidity $4.2M</span></div>
-          <div class="signal-item"><span class="signal-dot green"></span><span>Mint auth disabled</span></div>
-          <div class="signal-item"><span class="signal-dot green"></span><span>No blocklist hits</span></div>
-          <div class="signal-item"><span class="signal-dot orange"></span><span>Age: 8 months</span></div>
-          <div class="signal-item"><span class="signal-dot green"></span><span>Price impact 0.03%</span></div>
-          <div class="signal-item"><span class="signal-dot green"></span><span>Holders: 45k</span></div>
-          <div class="signal-item"><span class="signal-dot green"></span><span>No Token-2022 risk</span></div>
-        </div>
-        <span class="guard-chip">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          AgentActionGuard · Oracle signed · Anti-replay protected
-        </span>
-      </div>
-    </div>
-  </div>
-</section>
+    </section>
+  </main>
 
-<!-- SECURITY -->
-<section class="section section--alt" id="security">
-  <div class="container">
-    <div class="section-eyebrow">Security</div>
-    <h2 class="section-title">Guardrails at every layer</h2>
-    <p class="section-subtitle">
-      Off-chain risk signals feed an on-chain program that enforces every approval cryptographically.
-    </p>
-    <div class="onchain-grid">
-      <div class="onchain-card featured">
-        <h3>AgentActionGuard Program</h3>
-        <p>The Solana program at the core of every guarded action. It validates the oracle signature, checks PDAs for active approvals and wallet attestations, enforces expiry, and prevents replay attacks — all on-chain.</p>
-        <div>
-          <span class="code-chip blue">ActionApproval PDA</span>
-          <span class="code-chip blue">WalletSafetyAttestation PDA</span>
-          <span class="code-chip blue">guarded_transfer</span>
-          <span class="code-chip blue">anti-replay nonce</span>
-        </div>
-      </div>
-      <div class="onchain-card">
-        <h3>ConditionalEscrowBuy Program</h3>
-        <p>Locks funds in a devnet escrow contract. The keeper monitors prices and triggers execution only when your price condition is met — fully auditable and non-custodial.</p>
-        <div>
-          <span class="code-chip">devnet: FDwv…Ut7u</span>
-          <span class="code-chip">escrow account</span>
-          <span class="code-chip">price oracle</span>
-        </div>
-      </div>
-      <div class="onchain-card">
-        <h3>Oracle-signed Risk Reports</h3>
-        <p>The backend signs every <code>TokenRiskReport</code> with an authorized oracle key. The on-chain program verifies the signature and the canonical hash so the frontend can't slip in a different quote.</p>
-        <div>
-          <span class="code-chip">riskReportHash</span>
-          <span class="code-chip">quoteHash</span>
-          <span class="code-chip">oracleSignature</span>
-          <span class="code-chip">policyVersion</span>
-        </div>
-      </div>
-      <div class="onchain-card">
-        <h3>Hard Reject Rules</h3>
-        <p>Certain conditions always block the action, no matter the context: blocklisted tokens, scam-flagged mints, active freeze authority on non-allowlisted tokens, dangerous Token-2022 extensions, or expired reports.</p>
-        <div>
-          <span class="code-chip">blocklist check</span>
-          <span class="code-chip">freeze authority</span>
-          <span class="code-chip">Token-2022 ext</span>
-          <span class="code-chip">freshness window</span>
-        </div>
-      </div>
+  <footer>
+    <div class="container footer-inner">
+      <span>© 2026 Compass · Security layer for AI execution on Solana.</span>
+      <a href="/home">Launch app →</a>
     </div>
-  </div>
-</section>
+  </footer>
 
-<!-- USE CASES -->
-<section class="section">
-  <div class="container">
-    <div class="section-eyebrow">Use cases</div>
-    <h2 class="section-title">Built for real Solana users</h2>
-    <p class="section-subtitle">Three core flows, each protected end-to-end.</p>
-    <div class="usecases-grid">
-      <div class="usecase-card">
-        <span class="usecase-emoji">💸</span>
-        <h3>Safe Transfers</h3>
-        <p>Send SOL to another wallet with reputation checks, heuristic analysis, and on-chain enforcement. The destination wallet is attested before a single lamport moves.</p>
-        <div class="usecase-chips">
-          <span class="chip">Reputation check</span>
-          <span class="chip">Blocklist</span>
-          <span class="chip">On-chain attestation</span>
-        </div>
-      </div>
-      <div class="usecase-card">
-        <span class="usecase-emoji">🔄</span>
-        <h3>Guarded Swaps</h3>
-        <p>Swap any token on Jupiter with a full risk report: liquidity, route depth, holder concentration, mint authority, and Token-2022 extension analysis — all before you sign.</p>
-        <div class="usecase-chips">
-          <span class="chip">Jupiter routing</span>
-          <span class="chip">Birdeye signals</span>
-          <span class="chip">Risk scoring</span>
-        </div>
-      </div>
-      <div class="usecase-card">
-        <span class="usecase-emoji">⏰</span>
-        <h3>Conditional Orders</h3>
-        <p>Set price triggers and let the keeper execute automatically. Funds are locked in an escrow contract so the order can only execute under your exact conditions.</p>
-        <div class="usecase-chips">
-          <span class="chip">Price trigger</span>
-          <span class="chip">Escrow contract</span>
-          <span class="chip">Keeper bot</span>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- DOWNLOADS -->
-<section class="section section--alt" id="downloads">
-  <div class="container">
-    <div class="section-eyebrow">Downloads</div>
-    <h2 class="section-title">Compass brand kit and app entrypoint</h2>
-    <p class="section-subtitle">
-      Grab the Compass logo and banner for demos, docs, and hackathon material —
-      or jump straight into the app at its new home.
-    </p>
-    <div class="downloads-wrap">
-      <div class="download-brand-card">
-        <div class="download-logo-row">
-          <img class="download-logo" src="/compass-logo.svg" alt="Compass logo" />
-          <div class="download-logo-copy">
-            <h3>Compass Logo</h3>
-            <p>Square SVG mark for profiles, docs, and deck covers.</p>
-          </div>
-        </div>
-        <div class="download-actions">
-          <a href="/compass-logo.svg" download class="btn-secondary">Download logo</a>
-          <a href="/home" class="btn-primary">Open app</a>
-        </div>
-      </div>
-      <a href="/compass-banner.svg" download aria-label="Download Compass banner">
-        <img class="download-banner" src="/compass-banner.svg" alt="Compass banner" />
-      </a>
-    </div>
-  </div>
-</section>
-
-<!-- CTA -->
-<section class="cta-section" id="demo">
-  <div class="container">
-    <div class="cta-inner">
-      <h2>Try Compass on Solana Devnet</h2>
-      <p>
-        Connect your Phantom wallet and explore all three features live —
-        no real funds required.
-      </p>
-      <div class="cta-buttons">
-        <a href="/home" class="btn-white">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          Launch App
-        </a>
-        <a href="https://github.com/ram4-dev/solana_hackathon" target="_blank" rel="noopener" class="btn-outline-white">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/></svg>
-          View on GitHub
-        </a>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- FOOTER -->
-<footer>
-  <div class="container footer-inner">
-    <a href="#" class="footer-logo">
-      <span class="footer-logo-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-        </svg>
-      </span>
-      Compass
-    </a>
-    <div class="footer-links">
-      <a href="#features">Features</a>
-      <a href="#how-it-works">How it works</a>
-      <a href="#security">Security</a>
-      <a href="/home">Demo</a>
-    </div>
-    <div class="footer-right">Solana Hackathon 2026 · Built with Next.js + Anchor</div>
-  </div>
-</footer>
-
+  <script>
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting) {
+          e.target.classList.add('in');
+          io.unobserve(e.target);
+        }
+      }
+    }, { threshold: 0.14, rootMargin: '0px 0px -40px 0px' });
+    document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
+  </script>
 </body>
 </html>
