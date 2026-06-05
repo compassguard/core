@@ -83,7 +83,7 @@
       background: transparent;
     }
     .nav-inner { height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 22px; }
-    .brand { display: flex; align-items: center; height: 100%; transition: filter .25s ease; }
+    .brand { display: inline-flex; align-items: center; gap: 12px; height: 100%; transition: filter .25s ease; }
     .brand-mark {
       display: block;
       width: 48px;
@@ -91,7 +91,21 @@
       filter: drop-shadow(0 8px 18px rgba(112, 66, 232, .18));
       transition: transform .35s ease, filter .25s ease;
     }
+    .brand-word {
+      font-family: Archivo, ui-sans-serif, system-ui, sans-serif;
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: -.02em;
+      color: var(--ink);
+      transition: color .25s ease;
+    }
     .brand:hover .brand-mark { transform: rotate(-6deg) scale(1.06); filter: drop-shadow(0 10px 24px rgba(0, 169, 143, .24)); }
+    .brand:hover .brand-word {
+      background: var(--grad);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
     .nav-links { display: flex; align-items: center; gap: 26px; color: var(--ink-soft); font-size: 13.5px; font-weight: 500; }
     .nav-links a:not(.nav-cta) { position: relative; padding: 4px 0; transition: color .2s; }
     .nav-links a:not(.nav-cta):hover { color: var(--ink); }
@@ -567,6 +581,7 @@
     <div class="container nav-inner">
       <a class="brand" href="#top" aria-label="Compass home">
         <img class="brand-mark" src="/compass-icon.png" alt="Compass" />
+        <span class="brand-word">Compass</span>
       </a>
       <div class="nav-links">
         <a href="#layer">Security</a>
