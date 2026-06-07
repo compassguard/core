@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
-import '../front/src/styles/globals.css';
+// The old chat-app React tree, including its Tailwind globals, lives under
+// legacy/ now. The public landing at `/` is served by app/route.ts from
+// landing.html with inline CSS, so no global stylesheet is needed here.
 
 export const metadata: Metadata = {
   title: 'Compass · The execution firewall for Solana AI agents',

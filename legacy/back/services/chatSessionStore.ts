@@ -5,6 +5,7 @@
  */
 
 import type { GuardrailExplanation } from './guardrailExplanations';
+import type { TransferGatewayDecisionMetadata, TransferGatewayEvaluation } from './transferGatewayContracts';
 import type { WalletSafetyDecisionResult } from './walletSafetyValidation';
 
 export type SolanaNetwork = 'devnet' | 'mainnet-beta';
@@ -112,6 +113,8 @@ export type PendingProposal = {
   actionType?: string;
   actionCreatedAt?: string;
   actionExpiresAt?: string;
+  transferGatewayMetadata?: TransferGatewayDecisionMetadata;
+  transferGatewayEvaluation?: TransferGatewayEvaluation;
   // Guard rejection info for bypass flow
   guardRejection?: GuardRejectionInfo;
 };

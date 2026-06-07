@@ -1,4 +1,4 @@
-import { quoteOrcaUsdcToSol, type OrcaSwapParams } from './tools/orcaSwap';
+import { quoteOrcaUsdcToSol, type OrcaSwapParams } from './priceProviders/orcaUsdcSol';
 import {
   getSolanaNetworkConfig,
   resolveSolanaNetwork,

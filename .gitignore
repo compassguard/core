@@ -54,6 +54,8 @@ progress.md
 # Local Pi runtime state
 .atl/
 .pi/
+.pi-lens/
+.agents/
 
 # Local agent/worktree state
 .claude/

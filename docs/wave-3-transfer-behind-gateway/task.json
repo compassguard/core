@@ -1,0 +1,476 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-06-06T12:30:00Z",
+  "goal": "Integrar el flujo existente de transferencia SOL detrás del execution gateway y policy engine de Compass MCP Guard, preservando approval card, wallet signing, wallet safety y guardrails on-chain, con TDD estricto y audit events mínimos.",
+  "status": "implemented_with_architectural_followup",
+  "branch": {
+    "name": "feature/wave-3-transfer-behind-gateway",
+    "base": "release/compass_migration",
+    "strategy": "single_pr_default"
+  },
+  "reviewStrategy": {
+    "reviewWorkloadForecast": "Medium/high backend PR touching chat transfer orchestration plus new focused services/tests. No fixed LOC limit, but protect review by keeping gateway/policy/audit helpers extracted and tests colocated by slice.",
+    "singlePrNote": "Use one PR for Wave 3 unless implementation expands into frontend signer changes, durable audit storage, new provider dependencies, or swap/conditional scope. Those require pausing and splitting or asking for approval.",
+    "riskBoundaries": [
+      "Do not change signer model or backend custody.",
+      "Do not migrate swap or conditional flows in this wave.",
+      "Do not weaken fail-closed policy behavior when amount_usd or recipient evidence is missing.",
+      "Do not introduce heavy durable audit persistence."
+    ]
+  },
+  "context": {
+    "relatedDocs": [
+      "docs/PRODUCT_CONSTITUTION.md",
+      "docs/compass-monad-on-solana/mvp-migration-plan.md",
+      "docs/wave-2-policy-engine/functional-spec.md",
+      "docs/wave-2-policy-engine/technical-spec.md",
+      "docs/wave-3-transfer-behind-gateway/functional-spec.md",
+      "docs/wave-3-transfer-behind-gateway/technical-spec.md"
+    ],
+    "relatedCode": [
+      "back/services/executionGatewayContracts.ts",
+      "back/services/executionGateway.ts",
+      "back/services/policy/policyContracts.ts",
+      "back/services/policy/policyEngine.ts",
+      "back/services/policy/loadPolicy.ts",
+      "back/services/policy/defaultPolicy.yaml",
+      "back/services/chat.ts",
+      "back/services/chatSessionStore.ts",
+      "back/services/tools/transfer.ts",
+      "back/services/walletSafetyValidation.ts",
+      "back/services/onchainApproval.ts"
+    ]
+  },
+  "acceptanceCriteria": [
+    "Transfer tool calls are classified through Wave 1 gateway contracts before proposal creation.",
+    "Transfer ActionCandidate is created with Solana chain/network, actor wallet, actionKind transfer and redacted params/evidence.",
+    "Default policy is loaded and evaluateAction() runs before transfer PendingProposal creation.",
+    "DENY and REQUIRE_ADDITIONAL_CONTEXT block/fail closed before proposal or unsigned transaction creation with clear reasons.",
+    "ALLOW and REQUIRE_HUMAN_APPROVAL preserve current approval card and wallet signing flow.",
+    "Existing transfer validation, wallet safety validation, on-chain guard metadata and action hash checks remain enforced.",
+    "Approval verifies stored gateway/policy metadata still matches the pending proposal before buildUnsignedSolTransferTx().",
+    "Audit events exist for proposal, approval, unsigned tx prepared, reject and result paths with redaction.",
+    "No frontend signer model change and no backend private-key custody are introduced.",
+    "Strict TDD is followed: tests fail before production code changes for each runtime slice."
+  ],
+  "constraints": [
+    "Types, interfaces, constants and contracts must live in dedicated *Contracts.ts or equivalent files separate from behavior.",
+    "Critical operations must pass guardrails before signing/execution.",
+    "No OpenSpec duplicate artifacts for this wave.",
+    "No swaps, conditional orders, MCP compatibility server, or durable audit DB in this wave.",
+    "Do not read or log secrets; audit metadata must be redacted."
+  ],
+  "tasks": [
+    {
+      "id": "T1_RED_TRANSFER_GATEWAY_UNIT_TESTS",
+      "title": "Write RED tests for transfer gateway policy decisions",
+      "status": "completed",
+      "dependencies": [],
+      "type": "test",
+      "filesToCreate": [
+        "back/services/__tests__/transferGateway.test.ts"
+      ],
+      "filesToModify": [],
+      "description": "Add failing backend tests for candidate creation, context derivation, default policy decisions, conservative quote failure, metadata fingerprint verification and audit redaction. Production transferGateway files should not exist or should fail behavior at this stage.",
+      "acceptanceCriteria": [
+        "Tests use real classifyToolCall/createActionCandidate/evaluateAction where possible.",
+        "ALLOW, REQUIRE_HUMAN_APPROVAL, REQUIRE_ADDITIONAL_CONTEXT and DENY are covered for transfer.",
+        "Future/unhandled decisions such as REQUIRE_SIMULATION and REQUIRE_POLICY_UPDATE are specified as fail-closed for transfer.",
+        "A quote/price failure scenario expects fail-closed behavior.",
+        "Metadata mismatch detection is specified by tests.",
+        "Audit event redaction is asserted, including that policy reason codes live in redacted metadata rather than being confused with classification reason codes."
+      ],
+      "validation": [
+        "npm run test:back -- back/services/__tests__/transferGateway.test.ts (expected RED before implementation)"
+      ],
+      "evidence": [
+        {
+          "timestamp": "2026-06-06T09:57:42Z",
+          "command": "npm run test:back -- back/services/__tests__/transferGateway.test.ts",
+          "result": "RED as expected: 1 test file failed, 11 failed / 1 passed. Failures are explicit Wave 3 missing implementation errors for back/services/transferGateway.ts and back/services/transferGatewayContracts.ts; Vitest collected and ran the suite, and the existing Wave 1 audit redaction assertion passed.",
+          "exitCode": 1
+        }
+      ]
+    },
+    {
+      "id": "T2_GREEN_TRANSFER_GATEWAY_SERVICE",
+      "title": "Implement transfer gateway contracts and service",
+      "status": "completed",
+      "dependencies": [
+        "T1_RED_TRANSFER_GATEWAY_UNIT_TESTS"
+      ],
+      "type": "implementation",
+      "filesToCreate": [
+        "back/services/transferGatewayContracts.ts",
+        "back/services/transferGateway.ts"
+      ],
+      "filesToModify": [],
+      "description": "Create separated contracts/types and behavior helpers for transfer gateway evaluation: build ActionCandidate, derive PolicyEvaluationContext, load/evaluate default policy, produce deterministic metadata/fingerprints and expose verification helper.",
+      "acceptanceCriteria": [
+        "All canonical transfer gateway types/constants live in transferGatewayContracts.ts.",
+        "transferGateway.ts contains behavior only and imports contracts.",
+        "No raw prompt, auth token, raw tx or secret is stored in metadata.",
+        "Missing amount_usd or recipient evidence fails closed through policy evaluation.",
+        "T1 tests pass."
+      ],
+      "validation": [
+        "npm run test:back -- back/services/__tests__/transferGateway.test.ts"
+      ],
+      "evidence": [
+        {
+          "timestamp": "2026-06-06T13:00:33Z",
+          "command": "npm run test:back -- back/services/__tests__/transferGateway.test.ts",
+          "result": "GREEN: transferGateway focused backend suite passed with 12 tests / 1 file passing after adding separated transferGatewayContracts.ts and transferGateway.ts.",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "id": "T3_RED_CHAT_PROPOSAL_POLICY_TESTS",
+      "title": "Write RED chat/session tests for policy-gated transfer proposal",
+      "status": "completed",
+      "dependencies": [
+        "T2_GREEN_TRANSFER_GATEWAY_SERVICE"
+      ],
+      "type": "test",
+      "filesToCreate": [],
+      "filesToModify": [
+        "back/services/__tests__/chat.test.ts"
+      ],
+      "description": "Add failing tests proving chat transfer proposal creation is gated by policy and that policy DENY/REQUIRE_ADDITIONAL_CONTEXT does not create pending proposals or unsigned tx paths.",
+      "acceptanceCriteria": [
+        "A policy DENY path returns a clear error/message and leaves session.pendingProposal null.",
+        "A REQUIRE_ADDITIONAL_CONTEXT path leaves session.pendingProposal null.",
+        "Future/unhandled policy decisions fail closed before proposal creation.",
+        "An ALLOW path still creates current approval proposal and does not auto-execute.",
+        "A REQUIRE_HUMAN_APPROVAL path creates current approval proposal.",
+        "Tests avoid live secrets/providers by mocking injectable helpers."
+      ],
+      "validation": [
+        "npm run test:back -- back/services/__tests__/chat.test.ts (expected RED before wiring)"
+      ],
+      "evidence": [
+        {
+          "timestamp": "2026-06-06T11:02:36Z",
+          "command": "npm run test:back -- back/services/__tests__/chat.test.ts",
+          "result": "RED as expected: chat backend suite collected successfully with 38 tests; 33 passed and the 5 new Wave 3 policy-gating tests failed because transferGateway.evaluateTransferGateway was never called, while chat still created transfer proposals. This confirms missing production wiring in chat.ts rather than syntax/import/test-env failure.",
+          "exitCode": 1
+        },
+        {
+          "timestamp": "2026-06-06T11:03:37Z",
+          "command": "npm run test:back -- back/services/__tests__/chat.test.ts",
+          "result": "RED as expected: chat.test.ts collected and ran 38 tests; 33 passed and 5 Wave 3 gating tests failed because transfer proposals are still created without calling evaluateTransferGateway (spy called 0 times). This demonstrates missing chat transfer gateway wiring, not syntax/import/test-env breakage.",
+          "exitCode": 1
+        }
+      ]
+    },
+    {
+      "id": "T4_GREEN_CHAT_PROPOSAL_WIRING",
+      "title": "Wire transfer proposal path through gateway/policy",
+      "status": "completed",
+      "dependencies": [
+        "T3_RED_CHAT_PROPOSAL_POLICY_TESTS"
+      ],
+      "type": "implementation",
+      "filesToCreate": [],
+      "filesToModify": [
+        "back/services/chat.ts",
+        "back/services/chatSessionStore.ts"
+      ],
+      "description": "Invoke transfer gateway evaluation in handleTransferToolCall after existing validation/evidence is available and before PendingProposal creation. Store gateway/policy metadata on transfer PendingProposal. Preserve wallet safety and on-chain guard behavior.",
+      "acceptanceCriteria": [
+        "Policy DENY/REQUIRE_ADDITIONAL_CONTEXT blocks before PendingProposal creation.",
+        "Policy ALLOW/REQUIRE_HUMAN_APPROVAL creates existing approval card.",
+        "PendingProposal contains gateway/policy metadata typed from contracts file.",
+        "Existing wallet safety REJECT still blocks.",
+        "Existing action hash, policy PDA and on-chain guard metadata are preserved."
+      ],
+      "validation": [
+        "npm run test:back -- back/services/__tests__/chat.test.ts",
+        "npm run test:back -- back/services/__tests__/transferGateway.test.ts"
+      ],
+      "evidence": [
+        {
+          "timestamp": "2026-06-06T11:08:33Z",
+          "command": "npm run test:back -- back/services/__tests__/chat.test.ts",
+          "result": "GREEN: chat backend suite passed after wiring transfer proposals through evaluateTransferGateway. 38 tests / 1 file passed; Wave 3 policy DENY, REQUIRE_ADDITIONAL_CONTEXT, future fail-closed, ALLOW, and REQUIRE_HUMAN_APPROVAL proposal-gating tests now pass.",
+          "exitCode": 0
+        },
+        {
+          "timestamp": "2026-06-06T11:08:40Z",
+          "command": "npm run test:back -- back/services/__tests__/transferGateway.test.ts",
+          "result": "REGRESSION CHECK GREEN: focused transferGateway suite still passes with 12 tests / 1 file passed after chat wiring.",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "id": "T5_RED_APPROVAL_MISMATCH_TESTS",
+      "title": "Write RED tests for approval-time gateway metadata verification",
+      "status": "completed",
+      "dependencies": [
+        "T4_GREEN_CHAT_PROPOSAL_WIRING"
+      ],
+      "type": "test",
+      "filesToCreate": [],
+      "filesToModify": [
+        "back/services/__tests__/chat.test.ts",
+        "back/services/__tests__/transferGateway.test.ts"
+      ],
+      "description": "Add failing tests that approving a transfer with missing/mismatched gateway metadata blocks before unsigned tx build.",
+      "acceptanceCriteria": [
+        "Missing Wave 3 gateway metadata on a transfer approval fails closed.",
+        "Changed amount/recipient/wallet/policy fingerprint fails with conflict.",
+        "buildUnsignedSolTransferTx path is not reached on mismatch (assert via observable response/state).",
+        "Existing action_hash mismatch behavior remains covered."
+      ],
+      "validation": [
+        "npm run test:back -- back/services/__tests__/transferGateway.test.ts back/services/__tests__/chat.test.ts (expected RED before implementation)"
+      ],
+      "evidence": [
+        {
+          "timestamp": "2026-06-06T11:15:58Z",
+          "command": "npm run test:back -- back/services/__tests__/transferGateway.test.ts back/services/__tests__/chat.test.ts",
+          "result": "RED as expected: transferGateway suite passed (12 tests). chat.test.ts collected and ran 41 tests with 39 passing and 2 new Wave 3 approval metadata tests failing because function_approve still does not call verifyTransferGatewayMetadata for missing or mismatched transferGatewayMetadata. The new action_hash mismatch regression passed, confirming existing action_hash protection remains intact. Failure is missing approval-time gateway verification, not syntax/import/test-env breakage.",
+          "exitCode": 1
+        }
+      ]
+    },
+    {
+      "id": "T6_GREEN_APPROVAL_VERIFICATION",
+      "title": "Implement approval-time metadata verification",
+      "status": "completed",
+      "dependencies": [
+        "T5_RED_APPROVAL_MISMATCH_TESTS"
+      ],
+      "type": "implementation",
+      "filesToCreate": [],
+      "filesToModify": [
+        "back/services/chat.ts",
+        "back/services/transferGateway.ts"
+      ],
+      "description": "Before buildUnsignedSolTransferTx(), verify transfer gateway metadata/fingerprint against pending proposal, actor wallet, action hash and stored policy evaluation. Fail closed on missing/mismatch.",
+      "acceptanceCriteria": [
+        "Verification runs before unsigned transfer tx creation.",
+        "Missing/mismatched metadata returns clear fail-closed error.",
+        "Valid metadata preserves existing approval response and unsigned tx path.",
+        "No fresh nondeterministic price/provider lookup is required during approval verification."
+      ],
+      "validation": [
+        "npm run test:back -- back/services/__tests__/transferGateway.test.ts back/services/__tests__/chat.test.ts"
+      ],
+      "evidence": [
+        {
+          "timestamp": "2026-06-06T11:22:09Z",
+          "command": "npm run test:back -- back/services/__tests__/transferGateway.test.ts back/services/__tests__/chat.test.ts",
+          "result": "GREEN: focused Wave 3 transfer gateway and chat suites passed after approval-time metadata verification. 2 files passed with 54 tests passing. function_approve now verifies transferGatewayMetadata after action_hash checks and before on-chain readiness/unsigned tx build; missing or mismatched metadata returns HTTP 409 and marks the pending proposal failed. The transferGateway unit suite also covers deterministic approval metadata recomputation from proposal fields.",
+          "exitCode": 0
+        },
+        {
+          "timestamp": "2026-06-06T11:31:02Z",
+          "command": "npm run test:back -- back/services/__tests__/transferGateway.test.ts back/services/__tests__/chat.test.ts && npx tsc --noEmit --pretty false",
+          "result": "GREEN revalidated after tightening approval metadata recomputation to use expected candidateId derived from current action hash instead of stored candidateId. Focused backend suites passed with 54 tests; typecheck produced no TypeScript errors.",
+          "exitCode": 0
+        },
+        {
+          "timestamp": "2026-06-06T11:38:44Z",
+          "command": "npm run test:back -- back/services/__tests__/transferGateway.test.ts back/services/__tests__/chat.test.ts && npx tsc --noEmit --pretty false",
+          "result": "GREEN revalidated after resolving reviewer blocker: approval metadata builder now recomputes candidateId/fingerprint from current action hash, recomputes policyId from default policy, recomputes classification reason codes, and rejects non proposal-eligible stored decisions through verification mismatch. Focused backend suites passed with 54 tests and typecheck had no TypeScript errors.",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "id": "T7_RED_AUDIT_LIFECYCLE_TESTS",
+      "title": "Write RED audit lifecycle tests",
+      "status": "completed",
+      "dependencies": [
+        "T6_GREEN_APPROVAL_VERIFICATION"
+      ],
+      "type": "test",
+      "filesToCreate": [],
+      "filesToModify": [
+        "back/services/__tests__/transferGateway.test.ts",
+        "back/services/__tests__/chat.test.ts"
+      ],
+      "description": "Specify minimal audit lifecycle behavior for transfer proposal, rejection, approval, unsigned tx prepared, user reject and result events.",
+      "acceptanceCriteria": [
+        "Proposal created event includes candidateId, policyId, decision and redacted metadata.",
+        "Policy rejection/fail-closed event includes reasonCodes/evaluatedRules.",
+        "Approval and unsigned tx prepared events omit raw tx bytes.",
+        "Function reject/result paths emit or store structured events."
+      ],
+      "validation": [
+        "npm run test:back -- back/services/__tests__/transferGateway.test.ts back/services/__tests__/chat.test.ts (expected RED before audit implementation)"
+      ],
+      "evidence": [
+        {
+          "timestamp": "2026-06-06T11:44:35Z",
+          "command": "npm run test:back -- back/services/__tests__/transferGateway.test.ts back/services/__tests__/chat.test.ts",
+          "result": "RED as expected: transferGateway suite passed (13 tests). chat.test.ts collected and ran 46 tests with 41 passing and 5 new Wave 3 audit lifecycle tests failing because no proposal_created, proposal_rejected, approval_received, unsigned_tx_prepared, user_rejected, or result_submitted transfer audit calls are emitted/stored yet. The successful non-audit assertions in those tests reached proposal, approval, reject, and result paths, confirming the failure is missing audit lifecycle emission/sink rather than syntax/import/test-env breakage.",
+          "exitCode": 1
+        },
+        {
+          "timestamp": "2026-06-06T11:45:21Z",
+          "command": "npm run test:back -- back/services/__tests__/transferGateway.test.ts back/services/__tests__/chat.test.ts",
+          "result": "RED revalidated after cleaning accidental generated JS/JSX artifacts: transferGateway suite still passed (13 tests); chat suite still failed only the 5 new audit lifecycle expectations because getTransferAuditCall(...) returns undefined for proposal_created, proposal_rejected, approval_received/unsigned_tx_prepared, user_rejected, and result_submitted.",
+          "exitCode": 1
+        }
+      ]
+    },
+    {
+      "id": "T8_GREEN_MINIMAL_AUDIT_EVENTS",
+      "title": "Implement minimal transfer audit events",
+      "status": "completed",
+      "dependencies": [
+        "T7_RED_AUDIT_LIFECYCLE_TESTS"
+      ],
+      "type": "implementation",
+      "filesToCreate": [
+        "back/services/transferAuditLog.ts"
+      ],
+      "filesToModify": [
+        "back/services/chat.ts",
+        "back/services/chatSessionStore.ts",
+        "back/services/transferGateway.ts",
+        "back/services/transferGatewayContracts.ts"
+      ],
+      "description": "Add a minimal structured audit sink using Wave 1 buildAuditEvent and emit lifecycle events from proposal/reject/approval/result paths. Keep storage in-memory/log/session-level only unless existing persistence is enough without broad changes.",
+      "acceptanceCriteria": [
+        "Audit event shape follows Wave 1 redaction boundary.",
+        "No durable DB or external dependency is introduced.",
+        "No raw unsigned/signed transaction bytes are stored.",
+        "Audit tests pass."
+      ],
+      "validation": [
+        "npm run test:back -- back/services/__tests__/transferGateway.test.ts back/services/__tests__/chat.test.ts",
+        "npx tsc --noEmit --pretty false"
+      ],
+      "evidence": [
+        {
+          "timestamp": "2026-06-06T11:51:46Z",
+          "command": "npm run test:back -- back/services/__tests__/transferGateway.test.ts back/services/__tests__/chat.test.ts",
+          "result": "GREEN: focused Wave 3 transfer gateway and chat suites passed after minimal transfer audit lifecycle emission. 2 files passed with 59 tests passing, including proposal_created, proposal_rejected, approval_received, unsigned_tx_prepared, user_rejected, and result_submitted audit lifecycle tests.",
+          "exitCode": 0
+        },
+        {
+          "timestamp": "2026-06-06T11:51:46Z",
+          "command": "npx tsc --noEmit --pretty false",
+          "result": "GREEN: TypeScript no-emit check completed without TypeScript errors.",
+          "exitCode": 0
+        },
+        {
+          "timestamp": "2026-06-06T12:05:13Z",
+          "command": "npm run test:back -- back/services/__tests__/transferGateway.test.ts back/services/__tests__/chat.test.ts && npx tsc --noEmit --pretty false",
+          "result": "GREEN revalidated after fixing audit privacy blocker: focused suites passed with 60 tests and typecheck had no errors. Freeform result error messages are not stored in transfer audit metadata; rejection reason is normalized to a safe sentinel.",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "id": "T9_FINAL_BACKEND_VALIDATION",
+      "title": "Run focused and full backend validation",
+      "status": "completed",
+      "dependencies": [
+        "T8_GREEN_MINIMAL_AUDIT_EVENTS"
+      ],
+      "type": "verification",
+      "filesToCreate": [],
+      "filesToModify": [],
+      "description": "Run final validation for Wave 3 backend changes and update task evidence with commands/results.",
+      "acceptanceCriteria": [
+        "Focused transfer gateway tests pass.",
+        "Chat/session tests pass.",
+        "Full backend test suite passes.",
+        "Lint passes for runtime changes.",
+        "npm test is run if frontend or public UI contracts changed."
+      ],
+      "validation": [
+        "npm run test:back -- back/services/__tests__/transferGateway.test.ts",
+        "npm run test:back -- back/services/__tests__/chat.test.ts",
+        "npm run test:back",
+        "npm run lint",
+        "npm test (only if frontend/public UI contracts changed)"
+      ],
+      "evidence": [
+        {
+          "timestamp": "2026-06-06T11:59:11Z",
+          "command": "npm run test:back",
+          "result": "PASS: full backend/API Vitest suite passed. 20 files passed, 186 tests passed.",
+          "exitCode": 0
+        },
+        {
+          "timestamp": "2026-06-06T11:59:11Z",
+          "command": "npm run lint",
+          "result": "PASS with warnings: ESLint completed with 0 errors and 7 existing react-refresh warnings in frontend/layout/ui component files not touched by Wave 3.",
+          "exitCode": 0
+        },
+        {
+          "timestamp": "2026-06-06T11:59:11Z",
+          "command": "npx tsc --noEmit --pretty false",
+          "result": "PASS: typecheck produced no TypeScript errors.",
+          "exitCode": 0
+        },
+        {
+          "timestamp": "2026-06-06T12:05:58Z",
+          "command": "npm run test:back && npm run lint",
+          "result": "PASS after audit privacy fix: full backend/API Vitest suite passed with 20 files and 187 tests. ESLint passed with 0 errors and the same 7 existing frontend react-refresh warnings in untouched files.",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "id": "T10_DOCS_AND_PR_CHECK",
+      "title": "Update docs/evidence and prepare PR summary",
+      "status": "completed",
+      "dependencies": [
+        "T9_FINAL_BACKEND_VALIDATION"
+      ],
+      "type": "documentation",
+      "filesToCreate": [],
+      "filesToModify": [
+        "docs/wave-3-transfer-behind-gateway/task.json",
+        "docs/api-reference.md"
+      ],
+      "description": "Record implementation evidence in this task file. Update API reference only if /api chat request/response contracts changed. Prepare single-PR summary with risk notes.",
+      "acceptanceCriteria": [
+        "Task evidence records tests and lint commands/results.",
+        "API docs updated if externally visible contract changed; otherwise evidence says no update needed.",
+        "PR summary explains preserve-UX decision, policy fail-closed behavior, approval metadata check and audit limitations."
+      ],
+      "validation": [
+        "git diff -- docs/wave-3-transfer-behind-gateway/task.json docs/api-reference.md",
+        "git status --short"
+      ],
+      "evidence": [
+        {
+          "timestamp": "2026-06-06T12:00:00Z",
+          "command": "git diff -- docs/wave-3-transfer-behind-gateway/task.json docs/api-reference.md && git status --short",
+          "result": "Docs evidence updated in task.json. No docs/api-reference.md update needed because Wave 3 kept transfer metadata backend-only and did not change public /api chat request/response contracts consumed by frontend.",
+          "exitCode": 0
+        },
+        {
+          "timestamp": "2026-06-06T12:08:00Z",
+          "command": "fresh final reviewer audit",
+          "result": "GO after audit privacy blocker fix. Freeform error/rejection strings are no longer stored in audit metadata; final reviewer found no blockers.",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "pendingArchitecturalFollowups": [
+    {
+      "id": "P1_DECOUPLE_FROM_CHAT",
+      "title": "Move guarded transfer flow out of chat.ts",
+      "why": "docs/PRODUCT_CONSTITUTION.md positions Compass as MCP Guard/execution firewall and explicitly not a chatbot; chat.ts is the legacy /api/chat entrypoint and currently owns the new gateway/policy/audit wiring.",
+      "plannedActions": [
+        "Audit repo legacy footprint vs Compass MCP Guard direction.",
+        "Move chat/frontend artifacts to legacy/ isolated folder if confirmed legacy.",
+        "Extract guarded transfer service to a tool boundary module (e.g. back/services/guardedTransfer.ts or back/services/mcpGuard/*).",
+        "Reorient backend tests to the tool boundary instead of chat.test.ts.",
+        "Allow LLM use only as part of security resolver (intent/risk explanation), not as front-facing chat."
+      ],
+      "status": "pending"
+    }
+  ]
+}

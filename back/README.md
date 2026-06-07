@@ -1,95 +1,75 @@
-# back
+# `back/`
 
-Código backend/server-side reutilizable para la app Next. Esta carpeta **no** corre como servidor separado: las funciones de `back/services/*` son llamadas por route handlers estándar en `app/api/*`.
+Backend del **Compass MCP Guard**: servicios, contratos, policy engine, transfer guard, audit log y programas Anchor.
 
-## Quick path
-
-- API reference: `../docs/api-reference.md`
-- Workflow/tests: `../docs/development-workflow.md`
-- On-chain devnet config: `../docs/onchain-deployments.md`
-
-## Boundary
+## Layout
 
 ```txt
-front/src/lib/api/client.ts
-  -> app/api/*/route.ts
-    -> back/services/*
-      -> providers externos / RPC / programas Solana
+back/
+├── services/
+│   ├── executionGateway.ts            # Wave 1: classifyToolCall, createActionCandidate, buildAuditEvent
+│   ├── executionGatewayContracts.ts   # tipos canonicales del gateway
+│   ├── policy/
+│   │   ├── defaultPolicy.yaml         # política MVP conservadora
+│   │   ├── loadPolicy.ts              # parser y cache YAML
+│   │   ├── policyEngine.ts            # evaluador puro
+│   │   ├── policyContracts.ts         # tipos
+│   │   ├── policyEvaluationResult.ts  # helpers de outcomes
+│   │   └── policySchema.ts            # validación
+│   ├── transferGateway.ts             # Wave 3: evaluate/verify/audit del transfer guard
+│   ├── transferGatewayContracts.ts    # tipos del transfer guard
+│   ├── transferAuditLog.ts            # sink in-memory bounded
+│   ├── walletSafetyValidation.ts      # safety primitives
+│   ├── onchainApproval.ts             # verificación contra agent-action-guard program
+│   ├── priceQuote.ts                  # USD context para policy
+│   ├── priceProviders/
+│   │   └── orcaUsdcSol.ts             # quote devnet USDC/SOL para priceQuote
+│   ├── solanaConnection.ts            # conexión RPC centralizada
+│   ├── solanaNetworkConfig.ts         # constantes de red, mints
+│   ├── envConfig.ts                   # minimal env lookup helper
+│   └── __tests__/                     # tests de Vitest backend
+└── solana/
+    ├── agent-action-guard/            # Anchor program: políticas, approvals, attestations
+    └── conditional-escrow-buy/        # Anchor program: conditional buy oracle-triggered
 ```
 
-Reglas:
+## Reglas
 
-- Secrets y API keys viven server-side.
-- No importar `back/*` desde componentes/hook browser-side.
-- Las acciones críticas deben pasar por guardrails antes de construir o pedir firma de transacciones.
-- Los route handlers validan input en el borde y delegan lógica real a `back/services/*`.
-
-## Route/service map
-
-| Ruta | Servicio dueño | Nota |
-|---|---|---|
-| `/api/chat` | `services/chat.ts` | Chat agentic, proposals, approvals, historial y resultados. |
-| `/api/conditional-orders` | `services/conditionalOrders.ts` | Lista/refresco de órdenes condicionales devnet. |
-| `/api/conditional-orders/[orderPda]` | `services/conditionalOrders.ts` | Detalle y trigger manual de ejecución. |
-| `/api/quotes/usdc-sol` | `services/priceQuote.ts` | Quote Orca devnet USDC/SOL. |
-| `/api/wallet/balances` | `services/walletHoldings.ts` | Holdings nativos/SPL. |
-| `/api/wallet/transactions` | `services/transactionHistory.ts` | Historial vía provider. |
-| `/api/jupiter/quote` | `services/jupiter.ts` | Proxy Jupiter. |
-| `/api/birdeye/token-security` | `services/birdeye.ts` | Seguridad de token. |
-| `/api/risk-score` | `services/riskScore.ts` | Score de riesgo. |
-| `/api/helius/transactions` | `services/helius.ts` | Proxy Helius. |
-
-Los endpoints mock/demo están documentados en `../docs/api-reference.md`.
-
-## Servicios importantes
-
-| Servicio | Responsabilidad |
-|---|---|
-| `chat.ts` | Orquestación del agente, tools, proposals, approval flow y SSE. |
-| `walletSafetyValidation.ts` | Evaluación de seguridad de destino/token/políticas. |
-| `onchainApproval.ts` | Verificaciones on-chain relacionadas a guardrails. |
-| `conditionalOrders.ts` | Indexer/watcher/keeper de conditional orders. |
-| `tools/*` | Tools invocadas por el agente: transfer, swap, conditional buy, guardrails. |
-| `solanaConnection.ts` | Conexión RPC centralizada para evitar rate limiting y drift de configuración. |
+1. **Nada de `back/` puede importar de `legacy/`.** ESLint enforza esto con `no-restricted-imports`. Si necesitás algo que vive en legacy, refactorealo en el árbol nuevo.
+2. **Types separados del comportamiento.** Tipos canonicos, interfaces y constantes viven en `*Contracts.ts` (o equivalente). El comportamiento importa los tipos desde ahí.
+3. **Critical operations pasan por guardrails.** Cualquier acción mutante (transfer, swap futuro, conditional futuro) tiene que pasar por gateway/policy antes de construir tx no firmada.
+4. **No raw transactions ni prompts en audit metadata.** El sink usa `buildAuditEvent` que tiene redaction; cualquier campo freeform debe pasar por sanitización o ser omitido.
 
 ## Variables de entorno
 
-Configurar en Vercel o `.env.local` en la raíz. No commitear valores reales.
+Ver `back/.env.example`. Mínimo para el MCP Guard hoy:
 
-| Grupo | Variables | Requerimiento |
-|---|---|---|
-| Jupiter | `JUPITER_API_URL` | Opcional con default según servicio. |
-| Birdeye | `BIRDEYE_API_KEY`, `BIRDEYE_API_URL` | Necesario para token security live. |
-| Risk score | `RISK_SCORE_API_URL`, `RISK_SCORE_API_KEY` | Necesario para provider externo si está activo. |
-| Helius | `HELIUS_API_KEY`, `HELIUS_API_URL` | Necesario para historial/provider Helius. |
-| LLM | `OPENAI_API_KEY`, `OPENAI_CHAT_MODEL`, `OPENAI_RESPONSES_ENDPOINT` | Necesario para chat agentic live; modelo y endpoint se configuran por entorno. `OPENAI_API_URL` + `AZURE_OPENAI_API_VERSION` quedan como fallback legacy. |
-| Chat store | `CHAT_SESSION_REDIS_REST_URL`, `CHAT_SESSION_REDIS_REST_TOKEN` | Recomendado en Vercel para persistir sesiones. |
-| Upstash/Vercel KV aliases | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `KV_REST_API_URL`, `KV_REST_API_TOKEN` | Alternativas aceptadas para chat store. |
-| Solana/devnet | Ver `../docs/onchain-deployments.md` y `.env.example` | Program IDs, mints, feeds y keeper opcional. |
+- `AGENT_ACTION_GUARD_PROGRAM_ID`: program ID del agent-action-guard deployado.
+- `SOLANA_RPC_URL`: endpoint RPC para Solana (devnet por default).
+- `WALLET_SAFETY_ATTESTOR_SECRET_KEY` (opcional): keypair JSON usado para firmar attestations on-chain.
+- `WALLET_SAFETY_ATTESTOR_SECRET_KEY_FILE` (opcional alternativa): path a un archivo con el keypair.
 
-## Tests backend
+## Comandos
 
 ```bash
-npm run test:back
+npm run test:back          # vitest backend
+npm run lint               # eslint app + back/services
+npx tsc --noEmit           # typecheck
 ```
 
-Incluye:
+## Programas Anchor
 
-- `back/services/**/*.{test,spec}.*`
-- `app/api/**/*.{test,spec}.*`
+| Programa                  | Path                                | Rol                                                                         |
+| ------------------------- | ----------------------------------- | --------------------------------------------------------------------------- |
+| `agent-action-guard`      | `back/solana/agent-action-guard/`   | Approvals, attestations y enforcement on-chain de transfers/swaps guardados.|
+| `conditional-escrow-buy`  | `back/solana/conditional-escrow-buy/` | Conditional buy SOL via oracle (Pyth) y escrow devnet.                     |
 
-Si tocás route handlers o servicios, corré también:
+Direcciones devnet en [`docs/onchain-deployments.md`](../docs/onchain-deployments.md).
 
-```bash
-npm run lint
-npm run build
-```
+## Pendientes (post Wave 3.5)
 
-## Checklist para sumar un servicio
-
-- [ ] Crear servicio en `back/services/*` o `back/services/tools/*`.
-- [ ] Mantener secrets/env access dentro del backend.
-- [ ] Crear/actualizar route handler en `app/api/*` si el frontend lo consume.
-- [ ] Agregar tests de servicio o route handler.
-- [ ] Actualizar `../docs/api-reference.md`.
-- [ ] Actualizar feature spec en `../docs/<feature>/` si cambia comportamiento.
+- **Tool boundary dedicado.** El transfer guard hoy se invoca a través de helpers, no de un MCP server. Próxima wave: definir el entrypoint MCP/tool boundary que el agente consume.
+- **Swap y conditional behind gateway** (Wave 4 según el migration plan).
+- **Signer adapter explícito** (Wave 5).
+- **Audit persistente.** Hoy es in-memory bounded; cuando haga falta retención, agregar una sink durable.
+- **README/docs nuevos** cuando aterricen las próximas waves.

@@ -1,57 +1,48 @@
-# Documentación
+# Compass docs
 
-Este directorio concentra documentación transversal y specs por feature. Si estás buscando cómo usar el repo, empezá por `README.md`; si estás cambiando comportamiento, buscá o creá la carpeta de feature correspondiente.
+This folder contains the active product and migration documentation for **Compass MCP Guard**.
 
-## Quick path
+## Canonical source
 
-1. Entendé arquitectura y setup en `../README.md`.
-2. Revisá APIs internas en `api-reference.md`.
-3. Revisá workflow de desarrollo en `development-workflow.md`.
-4. Para features, trabajá en `docs/<feature-kebab-case>/`.
+- [`PRODUCT_CONSTITUTION.md`](PRODUCT_CONSTITUTION.md) is the product source of truth.
+- Feature specs live in their own folders: `docs/<feature-name>/functional-spec.md`, `technical-spec.md`, and `task.json`.
+- Do not mirror the same proposal/spec/task in both `docs/` and `openspec/changes/` unless explicitly requested.
 
-## Convención de specs por feature
+## Active migration docs
 
-- Cada feature nueva debe vivir en `docs/<feature-kebab-case>/`.
-- Una carpeta de feature debe usar estos archivos canónicos cuando aplique:
-  - `functional-spec.md`
-  - `technical-spec.md`
-  - `task.json`
-- La raíz de `docs/` queda reservada para documentación transversal, índices, decisiones históricas o artifacts legacy.
+| Area | Path | Notes |
+| ---- | ---- | ----- |
+| Product constitution | [`PRODUCT_CONSTITUTION.md`](PRODUCT_CONSTITUTION.md) | Canonical product definition for Compass MCP Guard. |
+| Migration proposal / plan | [`compass-monad-on-solana/`](compass-monad-on-solana/) | High-level migration from the old Solana app into Compass MCP Guard. |
+| Wave 2 policy engine | [`wave-2-policy-engine/`](wave-2-policy-engine/) | Functional/technical specs and tasks for the policy engine. |
+| Wave 3 transfer gateway | [`wave-3-transfer-behind-gateway/`](wave-3-transfer-behind-gateway/) | Transfer evaluation behind the execution gateway. |
+| Wave 3.5 legacy isolation | [`wave-3.5-legacy-isolation/`](wave-3.5-legacy-isolation/) | Plan, inventory, and review notes for moving old chat-product code under `legacy/`. |
+| On-chain deployments | [`onchain-deployments.md`](onchain-deployments.md) | Devnet program IDs and deployment notes. |
 
-## Índice transversal
+## What moved to `legacy/`
 
-| Documento | Estado | Uso |
-|---|---|---|
-| `api-reference.md` | activo | Rutas `app/api/*`, modo de datos, servicio dueño y guardrail. |
-| `development-workflow.md` | activo | Scripts, aliases, tests, lint y checklist de review. |
-| `onchain-deployments.md` | activo | Direcciones devnet y workspaces Solana relacionados. |
-| `architecture-design.md` | histórico | Diseño/arquitectura general previa; usar como contexto, no como contrato único. |
-| `phantom-external-transaction-contracts.md` | activo/referencia | Contratos y flujo de transacciones externas con Phantom. |
-| `token-risk-guard-backend.md` | referencia | Notas de guardrails/riesgo de token en backend. |
-| `simulated-swap-safety-guard.md` | histórico | Documento histórico del guardrail de swap simulado. |
-| `swap-guard-explainer.html` | referencia visual | Explainer HTML de arquitectura, guardrails, APIs, on-chain y keeper condicional. |
-| `compass_artifact_*.md` | artifact histórico | Mantener como evidencia/contexto; no implementar desde ahí sin validar. |
+Wave 3.5 isolated the previous chat/wallet application under [`../legacy/`](../legacy/):
 
-## Specs por feature
+- `legacy/front/` — old React chat/wallet UI.
+- `legacy/app/` — old App Router routes: `/home`, `/dynamic-reset`, and `/api/**`.
+- `legacy/back/` — old chat-product backend services and tests.
+- `legacy/docs/`, `legacy/sdd/`, `legacy/learning-explanations/` — historical docs and SDD artifacts.
+- `legacy/scripts/` — old devnet/chat utility scripts.
+- `legacy/public/architecture-explainer.html` — old Wallet Copilot branded static page.
 
-| Feature | Carpeta |
-|---|---|
-| Agent action guard guarded transfer | `agent-action-guard-guarded-transfer/` |
-| Agent quotes and holdings | `agent-quotes-and-holdings/` |
-| Backend chat session history | `backend-chat-session-history/` |
-| Chat session history | `chat-session-history/` |
-| Conditional order DB keeper | `conditional-order-db-keeper/` |
-| Devnet conditional escrow buy SOL | `devnet-conditional-escrow-buy-sol/` |
-| Phantom direct connection | `phantom-direct-connection/` |
-| Transaction history | `transaction-history/` |
-| Transaction logic | `transaction-logic/` |
-| Wallet balance display | `wallet-balance-display/` |
-| Wallet linked chat history | `wallet-linked-chat-history/` |
-| Wallet safety validation | `wallet-safety-validation/` |
-| Wallet safety validation on-chain enforcement | `wallet-safety-validation-onchain-enforcement/` |
+The main tree must not import from `legacy/`. ESLint blocks this explicitly.
 
-## Nota de mantenimiento
+## Main-tree docs rule
 
-No agregues specs nuevas como `docs/functional-spec.md` o `docs/technical-spec.md` globales. Si una feature ya existe, continuá en su carpeta; si no existe, creá una carpeta nueva en kebab-case.
+Use this structure for new feature work:
 
-Al cambiar una API, actualizá `api-reference.md`. Al cambiar scripts/config/testing, actualizá `development-workflow.md`. Al cambiar contratos/direcciones devnet, actualizá `onchain-deployments.md`.
+```txt
+docs/<feature-name>/
+├── functional-spec.md
+├── technical-spec.md
+└── task.json
+```
+
+Use kebab-case feature names, for example `docs/mcp-tool-boundary/` or `docs/swap-behind-gateway/`.
+
+Root-level docs should be only cross-cutting documents, indices, or historical files that remain relevant to the MCP Guard direction.

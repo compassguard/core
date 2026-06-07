@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import * as orca from '../tools/orcaSwap';
+import * as orca from '../priceProviders/orcaUsdcSol';
 import { getUsdcSolQuote } from '../priceQuote';
 
 const COMMON_QUOTE = {

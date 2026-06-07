@@ -76,12 +76,12 @@ Use `compass_monad` as an architectural reference, not as the Solana codebase.
 
 | Area                    | Current Compass asset                                                                                                 |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Wallet UX               | `front/src/providers/DynamicWalletProvider.tsx`, `front/src/hooks/useWallet.ts`, `front/src/hooks/useAgentMessage.ts` |
-| API boundary            | `app/api/*` route handlers backed by `back/services/*`                                                                |
-| Guardrail orchestration | `back/services/chat.ts`, `back/services/walletSafetyValidation.ts`, `back/services/onchainApproval.ts`                |
-| Action tools            | `back/services/tools/*` for transfer, swap, conditional order, holdings, and quotes                                   |
+| Wallet UX               | Legacy references now isolated under `legacy/front/src/`                                                              |
+| API boundary            | Legacy routes now isolated under `legacy/app/api/*`; new MCP/tool boundary is pending                                |
+| Guardrail orchestration | New guard primitives in `back/services/*`; legacy chat orchestration in `legacy/back/services/chat.ts`                |
+| Action tools            | Legacy tools now isolated under `legacy/back/services/tools/*`; new tool adapters are pending                         |
 | Solana enforcement      | `back/solana/agent-action-guard/*`, `back/solana/conditional-escrow-buy/*`                                            |
-| Product surface         | Chat proposals, approval cards, balances, allocation, history, conditional orders                                     |
+| Product surface         | Landing at `/` plus temporary `/launch`; legacy chat product isolated under `legacy/`                                 |
 
 Rebuilding those inside `compass_monad` would add risk and delay without improving product direction.
 
