@@ -13,7 +13,7 @@
     "test:back": "vitest --config vitest.back.config.ts --run",
     "test:legacy": "vitest --config vitest.legacy.config.ts --run",
     "test:watch": "vitest",
-    "bootstrap:conditional": "node scripts/bootstrap-conditional-devnet.mjs",
+    "bootstrap:conditional": "node legacy/scripts/bootstrap-conditional-devnet.mjs",
     "dev:back": "next dev"
   },
   "dependencies": {

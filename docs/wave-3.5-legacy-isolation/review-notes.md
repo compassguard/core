@@ -138,3 +138,11 @@ Con Next 15 App Router, `app/route.ts` (handler GET) en `/` reemplaza a `app/pag
 ## Resumen
 
 Bloqueos críticos: **ninguno**. El plan principal es correcto; las correcciones son ajustes de alcance, no de dirección. Después de aplicar G1–G9 sobre `proposal.md` e `inventory.md`, podemos arrancar Wave 3.5a con confianza.
+
+## Execution closure notes
+
+- Wave 3.5a/b/c/d/e/f/g/h completed on `feature/wave-3.5-legacy-isolation`.
+- The main tree is now MCP Guard backend + public landing + Anchor programs; the previous chat/wallet product is isolated under `legacy/`.
+- Planned CTA fallback was `#flow`; final tree uses a temporary `/launch` WIP page instead, so landing CTAs have a live internal destination while the real MCP Guard entrypoint is pending.
+- `credentials` and `dynamic_private_key` were not rotated in this wave; they remain ignored/untracked.
+- Main validation target after closure: `npm run test:back`, `npm run lint`, `npx tsc --noEmit --pretty false`, `npm run build`.

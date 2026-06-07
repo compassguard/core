@@ -29,16 +29,16 @@ Direcciones devnet usadas por la demo actual de guardrails Solana.
 |---|---|
 | AgentActionGuard Anchor workspace | `back/solana/agent-action-guard/` |
 | ConditionalEscrowBuy Anchor workspace | `back/solana/conditional-escrow-buy/` |
-| Backend conditional orders | `back/services/conditionalOrders.ts` |
-| Conditional buy tool | `back/services/tools/conditionalBuySol.ts` |
+| Backend conditional orders (legacy app) | `legacy/back/services/conditionalOrders.ts` |
+| Conditional buy tool (legacy app) | `legacy/back/services/tools/conditionalBuySol.ts` |
 | Wallet safety/on-chain checks | `back/services/walletSafetyValidation.ts`, `back/services/onchainApproval.ts` |
-| Devnet bootstrap | `scripts/bootstrap-conditional-devnet.mjs` |
+| Devnet bootstrap (legacy utility) | `legacy/scripts/bootstrap-conditional-devnet.mjs` |
 
 ## Feature docs
 
-- `docs/agent-action-guard-guarded-transfer/`
-- `docs/wallet-safety-validation-onchain-enforcement/`
-- `docs/devnet-conditional-escrow-buy-sol/`
+- `legacy/docs/agent-action-guard-guarded-transfer/`
+- `legacy/docs/wallet-safety-validation-onchain-enforcement/`
+- `legacy/docs/devnet-conditional-escrow-buy-sol/`
 
 ## Checklist al cambiar una dirección
 

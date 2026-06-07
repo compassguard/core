@@ -10,7 +10,7 @@ Compass is **not** another AI wallet. Wallets control signing. Compass controls 
 
 The canonical product source is:
 
-- `docs/PRODUCT_CONSTITUTION.md`
+- [`docs/PRODUCT_CONSTITUTION.md`](docs/PRODUCT_CONSTITUTION.md)
 
 Current positioning:
 
@@ -23,18 +23,18 @@ The MVP target is **Compass MCP Guard v0**:
 3. Tool calls go through registry, policy, simulation/decoding, approval, signer adapter, execution, and audit.
 4. Dangerous actions are denied, gated by policy, or sent to human approval before signing.
 
-## What Compass does
+## What Compass does (today, after Wave 3.5)
 
-| Capability              | Current role                                                                                        |
-| ----------------------- | --------------------------------------------------------------------------------------------------- |
-| MCP / execution gateway | Future MVP boundary for Claude, Cursor, Codex, and custom agents.                                   |
-| Tool registry           | Defines which tools are read-only, preparatory, sensitive, or blocked.                              |
-| Policy engine           | Applies limits, allowlists, deny rules, approval thresholds, and signer rules.                      |
-| Risk engine             | Evaluates action type, amount, recipient, token/protocol, intent mismatch, and transaction effects. |
-| Simulation / decoding   | Verifies unsigned Solana transactions before signature or execution.                                |
-| Approval layer          | Shows clear explanations and lets a human approve/reject risky actions.                             |
-| Signer adapter          | Keeps signing behind Compass-controlled approval instead of raw agent access.                       |
-| Audit log               | Records decisions and outcomes for debugging, trust, and team workflows.                            |
+| Capability              | Status                                                                                                    |
+| ----------------------- | --------------------------------------------------------------------------------------------------------- |
+| Execution gateway       | ✅ Implemented in `back/services/executionGateway.ts` (Wave 1).                                            |
+| Policy engine           | ✅ Conservative default policy + evaluator in `back/services/policy/` (Wave 2).                            |
+| Transfer guard          | ✅ End-to-end SOL transfer evaluation in `back/services/transferGateway.ts` (Wave 3).                      |
+| Audit log               | ✅ Bounded in-memory sink in `back/services/transferAuditLog.ts` (Wave 3).                                 |
+| Wallet safety primitives| ✅ `back/services/walletSafetyValidation.ts` (shared with the on-chain guard).                            |
+| On-chain guard programs | ✅ Anchor programs in `back/solana/agent-action-guard/` and `back/solana/conditional-escrow-buy/`.        |
+| MCP server / tool boundary | ⏳ Pending. Wave 3 wired the transfer guard inside the legacy chat entrypoint; the dedicated tool boundary lives in a follow-up wave. |
+| Signer adapter / risk engine / simulation | ⏳ Pending. Programs are deployed, integration with the Compass tool boundary will land in later waves.   |
 
 ## What Compass is not
 
@@ -49,130 +49,98 @@ Compass should not become:
 
 Compass integrates with wallets and signer infrastructure. Its moat is agent-aware execution control: intent, policy, risk, simulation, approval, and audit.
 
-## Current repository shape
+## Repository shape
 
-This repo is a **Next.js fullstack app** with a clear physical split between frontend and backend logic.
+After Wave 3.5 the main tree only contains Compass MCP Guard pieces plus the public landing. The previous chat-product code lives isolated under `legacy/` for reference.
 
 ```txt
 .
-├── app/                 # Next.js App Router pages and API route handlers
-├── front/               # Browser UI, hooks, providers, stores, components
-├── back/                # Server-side services, Solana logic, guardrails, programs
-├── shared/              # Shared contracts/utilities
-├── docs/                # Product docs, API docs, feature specs, migration plans
+├── app/                  # Next.js entrypoints for the public landing
+│   ├── route.ts          # GET / serves landing.html
+│   ├── landing/route.ts  # redirect /landing -> /
+│   ├── launch/route.ts   # temporary WIP app page for landing CTAs
+│   ├── layout.tsx        # minimal root layout (no front/ CSS)
+│   └── not-found.tsx
+├── back/
+│   ├── services/         # Execution gateway, policy engine, transfer guard, wallet safety,
+│   │                     # on-chain approval, audit log, price providers, env/http helpers
+│   └── solana/           # Anchor programs (agent-action-guard, conditional-escrow-buy)
+├── docs/                 # PRODUCT_CONSTITUTION + migration plan + active wave specs
+├── legacy/               # Isolated archive of the previous chat product (read-only reference)
+├── public/               # Landing assets (compass-icon, needle-mascot, banners)
+├── scripts/build-favicon.mjs
+├── shared/               # Placeholder for cross-runtime shared contracts
+├── landing.html          # Public landing page
 ├── package.json
-└── README.md
+├── tsconfig.json         # excludes legacy/
+├── vitest.back.config.ts # excludes legacy/
+├── vitest.config.ts      # excludes legacy/
+└── eslint.config.js      # blocks imports from legacy/ via no-restricted-imports
 ```
 
-Runtime boundary today:
+The main tree never imports anything under `legacy/`. ESLint and tsconfig enforce that.
+
+For details on `legacy/`, see [`legacy/README.md`](legacy/README.md) and the Wave 3.5 docs under [`docs/wave-3.5-legacy-isolation/`](docs/wave-3.5-legacy-isolation/).
+
+## Runtime boundary today
 
 ```txt
-Browser / Agent surface
-  -> app/api/* route handlers
-    -> back/services/*
-      -> Solana RPC / providers / Anchor programs
-  -> frontend wallet path signs approved unsigned transactions
+Browser request → app/route.ts → landing.html (public landing)
+Browser request → app/launch/route.ts → launch.html (temporary WIP app page)
+
+AI agent / future MCP client →
+  Compass tool boundary (pending dedicated entrypoint) →
+    back/services/executionGateway      (classify)
+    back/services/policy                (evaluate)
+    back/services/walletSafetyValidation
+    back/services/transferGateway       (guarded action)
+    back/services/onchainApproval       (on-chain check)
+    back/services/transferAuditLog      (lifecycle events)
+  → unsigned tx returned for wallet to sign
 ```
 
-The backend prepares and validates unsigned transactions. The current product signing path remains the frontend wallet/Dynamic/Solana wallet flow after Compass approval. Future signer adapters must preserve that guarded boundary.
-
-Primary app routes:
-
-| Route            | Purpose                                                      |
-| ---------------- | ------------------------------------------------------------ |
-| `/`              | Static landing page from `landing.html`.                     |
-| `/home`          | Current Compass app UI from `front/src/App.tsx`.             |
-| `/landing`       | Redirects legacy landing URL to `/`.                         |
-| `/dynamic-reset` | Clears Dynamic wallet state and returns the user to `/home`. |
-| `/api/*`         | Backend route handlers backed by `back/services/*`.          |
-
-## Current Solana capabilities to preserve
-
-The current Compass app already has Solana-native assets that the new product should reuse instead of rebuilding from scratch:
-
-- Dynamic wallet auth and Solana wallet connectors.
-- Backend-prepared unsigned transaction flow.
-- Frontend wallet signing and approve/reject/result feedback.
-- Guarded SOL transfer proposals.
-- Orca USDC/SOL quote and guarded swap flow.
-- Conditional SOL buy flow.
-- Balance, allocation, network, and transaction-history panels.
-- `agent-action-guard` Anchor program for policies, approvals, attestations, and guarded execution.
-- `conditional-escrow-buy` Anchor program for oracle-triggered conditional orders.
-
-## Target MVP migration
-
-The migration target is documented in:
-
-- `docs/compass-monad-on-solana/proposal.md`
-- `docs/compass-monad-on-solana/mvp-migration-plan.md`
-
-Short version:
-
-1. Keep this repo as the Solana implementation base.
-2. Reposition Compass around the product constitution: Agent Execution Security Gateway / MCP Guard.
-3. Reuse the current app as approval/signing/product surface.
-4. Add a Solana-native registry, policy, audit, digest, and guard pipeline.
-5. Add MCP Guard v0 after the existing guarded flows are stable behind reusable services.
-
-Branching rule for this migration:
-
-- Keep `main` stable while the current app is still running there.
-- Use `release/compass_migration` as the integration branch for the MVP migration.
-- Use `feature/wave-<n>-<description>` branches for each wave.
-- Merge wave branches into `release/compass_migration`, not into `main`, until explicitly approved.
+Until the dedicated MCP boundary lands, the transfer guard primitives are reachable directly through the backend services and Anchor programs. The legacy `/api/chat` entrypoint that drove the previous app lives at `legacy/app/api/chat/` and is not served by the main tree.
 
 ## Documentation map
 
-| Need                              | Read                                                 |
-| --------------------------------- | ---------------------------------------------------- |
-| Product constitution              | `docs/PRODUCT_CONSTITUTION.md`                       |
-| Current proposal                  | `docs/compass-monad-on-solana/proposal.md`           |
-| MVP migration plan                | `docs/compass-monad-on-solana/mvp-migration-plan.md` |
-| API routes and contracts          | `docs/api-reference.md`                              |
-| Scripts, tests, aliases, workflow | `docs/development-workflow.md`                       |
-| Dynamic wallet auth               | `docs/dynamic-wallet-auth/`                          |
-| Devnet/on-chain deployments       | `docs/onchain-deployments.md`                        |
-| Feature spec index                | `docs/README.md`                                     |
-| Frontend details                  | `front/README.md`                                    |
-| Backend details                   | `back/README.md`                                     |
-| Shared code                       | `shared/README.md`                                   |
+| Need                                  | Read                                                                                |
+| ------------------------------------- | ----------------------------------------------------------------------------------- |
+| Product constitution                  | [`docs/PRODUCT_CONSTITUTION.md`](docs/PRODUCT_CONSTITUTION.md)                      |
+| Compass MCP Guard migration plan      | [`docs/compass-monad-on-solana/`](docs/compass-monad-on-solana/)                    |
+| Policy engine spec                    | [`docs/wave-2-policy-engine/`](docs/wave-2-policy-engine/)                          |
+| Transfer behind gateway (current)     | [`docs/wave-3-transfer-behind-gateway/`](docs/wave-3-transfer-behind-gateway/)      |
+| Legacy isolation plan and inventory   | [`docs/wave-3.5-legacy-isolation/`](docs/wave-3.5-legacy-isolation/)                |
+| On-chain deployments / program IDs    | [`docs/onchain-deployments.md`](docs/onchain-deployments.md)                        |
+| Legacy chat-product reference         | [`legacy/README.md`](legacy/README.md)                                              |
 
 ## Scripts
 
-| Command                                             | What it does                                  |
-| --------------------------------------------------- | --------------------------------------------- |
-| `npm install --registry=https://registry.npmjs.org` | Install dependencies.                         |
-| `npm run dev`                                       | Run the full Next.js app.                     |
-| `npm run build`                                     | Production build.                             |
-| `npm test`                                          | Frontend/unit tests through Vitest.           |
-| `npm run test:back`                                 | Backend/API tests.                            |
-| `npm run lint`                                      | Lint `app`, `front/src`, and `back/services`. |
-| `npm run bootstrap:conditional`                     | Bootstrap conditional escrow devnet state.    |
+| Command                                             | What it does                                                                  |
+| --------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `npm install --registry=https://registry.npmjs.org` | Install dependencies.                                                         |
+| `npm run dev`                                       | Run the Next.js app (currently only serves the public landing).               |
+| `npm run build`                                     | Production build.                                                             |
+| `npm run test:back`                                 | Backend tests for the Compass MCP Guard surface.                              |
+| `npm run lint`                                      | Lint `app` and `back/services`.                                               |
+| `npm run lint:legacy`                               | Optional: lint the isolated legacy tree.                                      |
+| `npm run test:legacy`                               | Optional: run the legacy chat-product tests on demand.                        |
+| `npm run bootstrap:conditional`                     | Legacy devnet bootstrap utility; runs `legacy/scripts/bootstrap-conditional-devnet.mjs`. |
 
-`dev:front`, `dev:back`, and `build:front` are convenience aliases; they do not represent separate deploys.
-
-## Testing expectations
-
-For future implementation, this repo uses strict TDD expectations from `openspec/config.yaml` and local project rules:
-
-| Change type                 | Evidence            |
-| --------------------------- | ------------------- |
-| Frontend/UI                 | `npm test`          |
-| Backend/API/guardrails      | `npm run test:back` |
-| Runtime code                | `npm run lint`      |
-| Route/config/global imports | `npm run build`     |
-
-Do not implement product behavior without relevant tests first.
+`npm test` (front Vitest) currently has no targets because the React app moved to `legacy/`. The script stays for the day a fresh approval/inspection UI lands in the main tree.
 
 ## Security rules
 
-- Do not put private API keys or secrets in `front/`.
-- Browser code must call internal `/api/*` routes for provider or RPC work that needs secrets.
 - Critical operations must pass backend guardrails before signing/execution.
-- `sign_and_send_transaction` style flows should be denied unless Compass built and approved the transaction.
-- Missing evidence, unsafe policy state, or unverifiable high-risk actions should fail closed.
-- Compass backend and MCP surfaces must not hold or expose user private keys.
+- `sign_and_send_transaction` style flows must be denied unless Compass built and approved the transaction.
+- Missing evidence, unsafe policy state, or unverifiable high-risk actions must fail closed.
+- The Compass backend must not hold or expose user private keys.
+- Compass MCP Guard code must never import from `legacy/`. ESLint enforces this.
+
+## Branching
+
+- `main`: stable; does not receive Compass MCP Guard waves until explicitly approved.
+- `release/compass_migration`: integration branch for the migration waves.
+- `feature/wave-<n>-<description>`: per-wave branches. Always branch from and merge back into `release/compass_migration`, never `main`.
 
 ## Deployment
 
@@ -184,4 +152,4 @@ Root Directory: ./
 Build Command: npm run build
 ```
 
-Do not deploy `front/` and `back/` separately. Next.js serves pages from `app/` and backend APIs from `app/api/*`.
+After Wave 3.5, the deployed app serves the public landing at `/`, redirects `/landing` to `/`, and exposes a temporary `/launch` WIP page for landing CTAs. The previous `/api/*` and `/home` routes are not deployed because they live under `legacy/`.
