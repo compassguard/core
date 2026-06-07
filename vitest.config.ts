@@ -8,6 +8,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     include: ['front/src/**/*.{test,spec}.?(c|m)[jt]s?(x)'],
+    exclude: ['legacy/**', 'node_modules/**', '.next/**'],
   },
   resolve: {
     alias: {

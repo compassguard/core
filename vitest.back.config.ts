@@ -8,6 +8,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['back/services/**/*.{test,spec}.?(c|m)[jt]s?(x)', 'app/api/**/*.{test,spec}.?(c|m)[jt]s?(x)'],
+    exclude: ['legacy/**', 'node_modules/**', '.next/**'],
   },
   resolve: {
     alias: {
