@@ -6,7 +6,7 @@ import {
   SystemProgram,
 } from '@solana/web3.js';
 
-import { getEnv } from './envHttp';
+import { getEnv } from './envConfig';
 
 export const DEFAULT_MAX_TRANSFER_SOL = Number(getEnv('WALLET_SAFETY_MAX_TRANSFER_SOL') || '20');
 export const DEFAULT_WARN_TRANSFER_SOL = Number(getEnv('WALLET_SAFETY_WARN_TRANSFER_SOL') || '5');

@@ -118,15 +118,15 @@ Until the dedicated MCP boundary lands, the transfer guard primitives are reacha
 | Command                                             | What it does                                                                  |
 | --------------------------------------------------- | ----------------------------------------------------------------------------- |
 | `npm install --registry=https://registry.npmjs.org` | Install dependencies.                                                         |
-| `npm run dev`                                       | Run the Next.js app (currently only serves the public landing).               |
+| `npm run dev`                                       | Run the Next.js app (public landing + temporary `/launch`).                   |
 | `npm run build`                                     | Production build.                                                             |
+| `npm test`                                          | Alias for the active backend test suite.                                      |
 | `npm run test:back`                                 | Backend tests for the Compass MCP Guard surface.                              |
+| `npm run test:watch`                                | Watch the active backend test suite.                                          |
 | `npm run lint`                                      | Lint `app` and `back/services`.                                               |
 | `npm run lint:legacy`                               | Optional: lint the isolated legacy tree.                                      |
 | `npm run test:legacy`                               | Optional: run the legacy chat-product tests on demand.                        |
-| `npm run bootstrap:conditional`                     | Legacy devnet bootstrap utility; runs `legacy/scripts/bootstrap-conditional-devnet.mjs`. |
-
-`npm test` (front Vitest) currently has no targets because the React app moved to `legacy/`. The script stays for the day a fresh approval/inspection UI lands in the main tree.
+| `npm run bootstrap:conditional:legacy`              | Legacy devnet bootstrap utility; runs `legacy/scripts/bootstrap-conditional-devnet.mjs`. |
 
 ## Security rules
 

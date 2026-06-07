@@ -15,8 +15,6 @@
     "incremental": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["front/src/*"],
-      "@front/*": ["front/src/*"],
       "@back/*": ["back/*"],
       "@shared/*": ["shared/*"]
     },
@@ -28,5 +26,5 @@
     "**/*.tsx",
     ".next/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "front/node_modules", "front/src/main.tsx", "legacy/**"]
+  "exclude": ["node_modules", "legacy/**"]
 }

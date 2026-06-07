@@ -26,7 +26,7 @@ back/
 │   │   └── orcaUsdcSol.ts             # quote devnet USDC/SOL para priceQuote
 │   ├── solanaConnection.ts            # conexión RPC centralizada
 │   ├── solanaNetworkConfig.ts         # constantes de red, mints
-│   ├── envHttp.ts                     # getEnv, jsonResponse, passthrough
+│   ├── envConfig.ts                   # minimal env lookup helper
 │   └── __tests__/                     # tests de Vitest backend
 └── solana/
     ├── agent-action-guard/            # Anchor program: políticas, approvals, attestations

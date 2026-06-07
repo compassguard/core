@@ -1,5 +1,5 @@
 {
-  "name": "promisekeeper-next-fullstack",
+  "name": "compass-mcp-guard",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -9,12 +9,11 @@
     "start": "next start",
     "lint": "eslint app back/services",
     "lint:legacy": "eslint --config eslint.legacy.config.js legacy",
-    "test": "vitest --run",
+    "test": "vitest --config vitest.back.config.ts --run",
     "test:back": "vitest --config vitest.back.config.ts --run",
     "test:legacy": "vitest --config vitest.legacy.config.ts --run",
-    "test:watch": "vitest",
-    "bootstrap:conditional": "node legacy/scripts/bootstrap-conditional-devnet.mjs",
-    "dev:back": "next dev"
+    "test:watch": "vitest --config vitest.back.config.ts",
+    "bootstrap:conditional:legacy": "node legacy/scripts/bootstrap-conditional-devnet.mjs"
   },
   "dependencies": {
     "@coral-xyz/anchor": "~0.32.1",
@@ -103,6 +102,7 @@
     "happy-dom": "^12.10.3",
     "jsdom": "^23.0.1",
     "postcss": "^8.4.35",
+    "sharp": "^0.34.5",
     "tailwindcss": "^3.4.11",
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.3.0",

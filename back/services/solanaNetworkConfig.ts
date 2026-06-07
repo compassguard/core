@@ -25,7 +25,7 @@ const FALLBACK_NETWORK = 'devnet' as const;
 function buildDevnetConfig(): SolanaNetworkConfig {
   return {
     network: 'devnet',
-    rpcUrl: process.env.SOLANA_RPC_URL?.trim() || process.env.VITE_HELIUS_RPC_URL?.trim() || DEVNET_RPC_URL,
+    rpcUrl: process.env.SOLANA_RPC_URL?.trim() || DEVNET_RPC_URL,
     mints: {
       SOL: process.env.DEVNET_SOL_MINT?.trim() || DEVNET_SOL_MINT,
       USDC: process.env.DEVNET_USDC_MINT?.trim() || DEVNET_USDC_MINT,
