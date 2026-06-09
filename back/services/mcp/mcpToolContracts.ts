@@ -1,3 +1,4 @@
+import type { ConditionalGatewayDecisionMetadata } from "../conditionalGatewayContracts";
 import type {
 	CompassDecision,
 	ToolRiskClass,
@@ -8,8 +9,11 @@ import type { TransferGatewayDecisionMetadata } from "../transferGatewayContract
 export const MCP_TOOL_NAMES = {
 	GET_USDC_SOL_QUOTE: "get_usdc_sol_quote",
 	QUOTE_SWAP: "quote_swap",
+	SIMULATE_CONDITIONAL_BUY_ORACLE_CHECK:
+		"simulate_conditional_buy_oracle_check",
 	GUARDED_TRANSFER_SOL: "guarded_transfer_sol",
 	GUARDED_SWAP_SOL_USDC: "guarded_swap_sol_usdc",
+	CREATE_CONDITIONAL_BUY_SOL: "create_conditional_buy_sol",
 	SIGN_AND_SEND_TRANSACTION: "sign_and_send_transaction",
 } as const;
 
@@ -57,7 +61,10 @@ export type CompassMcpToolCallInput = {
 
 export type CompassMcpApproval = {
 	required: boolean;
-	metadata?: TransferGatewayDecisionMetadata | SwapGatewayDecisionMetadata;
+	metadata?:
+		| TransferGatewayDecisionMetadata
+		| SwapGatewayDecisionMetadata
+		| ConditionalGatewayDecisionMetadata;
 };
 
 export type CompassMcpToolResult = {

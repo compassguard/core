@@ -240,6 +240,70 @@ describe("policy engine", () => {
 		);
 	});
 
+	it("requires approval by default for valid conditional SOL buy creation", () => {
+		const now = 1_780_966_400;
+		const result = evaluateTool("conditional_buy_sol", "conditional_buy", {
+			amount_usd: 50,
+			target_price_usd: 130,
+			slippage_bps: 100,
+			oracle_feed_pubkey: "pyth-sol-usd-devnet",
+			oracle_price_usd: 135,
+			oracle_age_seconds: 15,
+			max_oracle_age_seconds: 60,
+			oracle_confidence_bps: 25,
+			max_confidence_bps: 100,
+			recipient_address: "known_safe_address",
+			expires_at_unix: now + 3600,
+			current_unix_timestamp: now,
+		});
+
+		expectDecision(
+			result,
+			"REQUIRE_HUMAN_APPROVAL",
+			"CONDITIONAL_DEFAULT_REQUIRES_APPROVAL",
+			"conditional_buys.default",
+		);
+	});
+
+	it("fails closed when conditional SOL buy context is incomplete", () => {
+		const result = evaluateTool("conditional_buy_sol", "conditional_buy", {
+			amount_usd: 50,
+			target_price_usd: 130,
+		});
+
+		expectDecision(
+			result,
+			"REQUIRE_ADDITIONAL_CONTEXT",
+			"CONDITIONAL_MISSING_CONTEXT",
+			"conditional_buys.required_context",
+		);
+	});
+
+	it("denies expired conditional SOL buy orders", () => {
+		const now = 1_780_966_400;
+		const result = evaluateTool("conditional_buy_sol", "conditional_buy", {
+			amount_usd: 50,
+			target_price_usd: 130,
+			slippage_bps: 100,
+			oracle_feed_pubkey: "pyth-sol-usd-devnet",
+			oracle_price_usd: 135,
+			oracle_age_seconds: 15,
+			max_oracle_age_seconds: 60,
+			oracle_confidence_bps: 25,
+			max_confidence_bps: 100,
+			recipient_address: "known_safe_address",
+			expires_at_unix: now - 1,
+			current_unix_timestamp: now,
+		});
+
+		expectDecision(
+			result,
+			"DENY",
+			"CONDITIONAL_EXPIRED",
+			"conditional_buys.expires_at_unix",
+		);
+	});
+
 	it("fails closed when swap context is incomplete", () => {
 		const result = evaluateTool("orca_swap", "swap", {
 			amount_usd: 5,

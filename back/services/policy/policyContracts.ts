@@ -31,6 +31,14 @@ export const POLICY_REASON_CODES = {
 	SWAP_EXCEEDS_LIMIT: "SWAP_EXCEEDS_LIMIT",
 	SWAP_MISSING_CONTEXT: "SWAP_MISSING_CONTEXT",
 	SWAP_INVALID_CONTEXT: "SWAP_INVALID_CONTEXT",
+	CONDITIONAL_DEFAULT_REQUIRES_APPROVAL:
+		"CONDITIONAL_DEFAULT_REQUIRES_APPROVAL",
+	CONDITIONAL_MISSING_CONTEXT: "CONDITIONAL_MISSING_CONTEXT",
+	CONDITIONAL_INVALID_CONTEXT: "CONDITIONAL_INVALID_CONTEXT",
+	CONDITIONAL_EXPIRED: "CONDITIONAL_EXPIRED",
+	CONDITIONAL_ORACLE_UNSAFE: "CONDITIONAL_ORACLE_UNSAFE",
+	CONDITIONAL_SLIPPAGE_EXCEEDS_LIMIT:
+		"CONDITIONAL_SLIPPAGE_EXCEEDS_LIMIT",
 	SIGN_MESSAGE_REQUIRES_APPROVAL: "SIGN_MESSAGE_REQUIRES_APPROVAL",
 	SIGN_TRANSACTION_REQUIRES_SIMULATION: "SIGN_TRANSACTION_REQUIRES_SIMULATION",
 	DIRECT_SIGN_AND_SEND_BLOCKED: "DIRECT_SIGN_AND_SEND_BLOCKED",
@@ -69,6 +77,13 @@ export type SwapsRules = {
 	allowed_protocols: string[];
 };
 
+export type ConditionalBuyRules = {
+	default: PolicyOutcome;
+	max_slippage_bps: number;
+	max_oracle_age_seconds: number;
+	max_confidence_bps: number;
+};
+
 export type BridgesRules = {
 	default: PolicyOutcome;
 	max_usd_per_day: number;
@@ -95,6 +110,7 @@ export type CompassPolicy = {
 	read_only: ReadOnlyRules;
 	transfers: TransfersRules;
 	swaps: SwapsRules;
+	conditional_buys: ConditionalBuyRules;
 	bridges: BridgesRules;
 	signing: SigningRules;
 	blocked: BlockedPatterns;
@@ -108,6 +124,15 @@ export type PolicyEvaluationContext = {
 	token_known?: boolean;
 	protocol?: string;
 	slippage_bps?: number;
+	target_price_usd?: number;
+	oracle_feed_pubkey?: string;
+	oracle_price_usd?: number;
+	oracle_age_seconds?: number;
+	max_oracle_age_seconds?: number;
+	oracle_confidence_bps?: number;
+	max_confidence_bps?: number;
+	expires_at_unix?: number;
+	current_unix_timestamp?: number;
 	compass_built?: boolean;
 	flags?: {
 		unknown_program?: boolean;

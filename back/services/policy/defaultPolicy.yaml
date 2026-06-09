@@ -22,6 +22,12 @@ swaps:
     - "Raydium"
     - "Orca"
 
+conditional_buys:
+  default: require_approval
+  max_slippage_bps: 300
+  max_oracle_age_seconds: 60
+  max_confidence_bps: 100
+
 bridges:
   default: require_approval
   max_usd_per_day: 100

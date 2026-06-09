@@ -18,6 +18,10 @@ const SIGN_MESSAGE_TOOL = "sign_message";
 const SIGN_TRANSACTION_TOOL = "sign_transaction";
 const SIGN_AND_SEND_TRANSACTION_TOOL = "sign_and_send_transaction";
 
+function isPositiveFiniteNumber(value: number): boolean {
+	return Number.isFinite(value) && value > 0;
+}
+
 export function evaluateAction(input: EvaluateActionInput): PolicyEvaluation {
 	const { candidate, classification, policy } = input;
 
@@ -59,6 +63,10 @@ export function evaluateAction(input: EvaluateActionInput): PolicyEvaluation {
 
 	if (candidate.actionKind === "swap") {
 		return evaluateSwap(input);
+	}
+
+	if (candidate.actionKind === "conditional_buy") {
+		return evaluateConditionalBuy(input);
 	}
 
 	return decision(
@@ -249,6 +257,97 @@ function evaluateTransfer(input: EvaluateActionInput): PolicyEvaluation {
 		COMPASS_DECISIONS.ALLOW,
 		[POLICY_REASON_CODES.TRANSFER_WITHIN_LIMIT_KNOWN_RECIPIENT],
 		["transfers.max_usd_without_approval"],
+	);
+}
+
+function evaluateConditionalBuy(input: EvaluateActionInput): PolicyEvaluation {
+	const { context, policy } = input;
+	const conditionalPolicy = policy.conditional_buys;
+
+	if (
+		typeof context.amount_usd !== "number" ||
+		typeof context.target_price_usd !== "number" ||
+		typeof context.slippage_bps !== "number" ||
+		typeof context.oracle_feed_pubkey !== "string" ||
+		context.oracle_feed_pubkey.length === 0 ||
+		typeof context.oracle_price_usd !== "number" ||
+		typeof context.oracle_age_seconds !== "number" ||
+		typeof context.max_oracle_age_seconds !== "number" ||
+		typeof context.oracle_confidence_bps !== "number" ||
+		typeof context.max_confidence_bps !== "number" ||
+		typeof context.recipient_address !== "string" ||
+		context.recipient_address.length === 0 ||
+		typeof context.expires_at_unix !== "number" ||
+		typeof context.current_unix_timestamp !== "number"
+	) {
+		return result(
+			input,
+			COMPASS_DECISIONS.REQUIRE_ADDITIONAL_CONTEXT,
+			[POLICY_REASON_CODES.CONDITIONAL_MISSING_CONTEXT],
+			["conditional_buys.required_context"],
+		);
+	}
+
+	if (
+		!isNonNegativeFiniteNumber(context.amount_usd) ||
+		!isPositiveFiniteNumber(context.target_price_usd) ||
+		!isNonNegativeFiniteNumber(context.slippage_bps) ||
+		!isPositiveFiniteNumber(context.oracle_price_usd) ||
+		!isNonNegativeFiniteNumber(context.oracle_age_seconds) ||
+		!isPositiveFiniteNumber(context.max_oracle_age_seconds) ||
+		!isNonNegativeFiniteNumber(context.oracle_confidence_bps) ||
+		!isPositiveFiniteNumber(context.max_confidence_bps) ||
+		!isPositiveFiniteNumber(context.expires_at_unix) ||
+		!isPositiveFiniteNumber(context.current_unix_timestamp)
+	) {
+		return result(
+			input,
+			COMPASS_DECISIONS.REQUIRE_ADDITIONAL_CONTEXT,
+			[POLICY_REASON_CODES.CONDITIONAL_INVALID_CONTEXT],
+			["conditional_buys.required_context"],
+		);
+	}
+
+	if (context.expires_at_unix <= context.current_unix_timestamp) {
+		return result(
+			input,
+			COMPASS_DECISIONS.DENY,
+			[POLICY_REASON_CODES.CONDITIONAL_EXPIRED],
+			["conditional_buys.expires_at_unix"],
+		);
+	}
+
+	if (
+		context.oracle_age_seconds >
+		Math.min(
+			context.max_oracle_age_seconds,
+			conditionalPolicy.max_oracle_age_seconds,
+		) ||
+		context.oracle_confidence_bps >
+		Math.min(context.max_confidence_bps, conditionalPolicy.max_confidence_bps)
+	) {
+		return result(
+			input,
+			COMPASS_DECISIONS.REQUIRE_ADDITIONAL_CONTEXT,
+			[POLICY_REASON_CODES.CONDITIONAL_ORACLE_UNSAFE],
+			["conditional_buys.oracle_safety"],
+		);
+	}
+
+	if (context.slippage_bps > conditionalPolicy.max_slippage_bps) {
+		return result(
+			input,
+			COMPASS_DECISIONS.REQUIRE_HUMAN_APPROVAL,
+			[POLICY_REASON_CODES.CONDITIONAL_SLIPPAGE_EXCEEDS_LIMIT],
+			["conditional_buys.max_slippage_bps"],
+		);
+	}
+
+	return decision(
+		input,
+		conditionalPolicy.default,
+		[POLICY_REASON_CODES.CONDITIONAL_DEFAULT_REQUIRES_APPROVAL],
+		["conditional_buys.default"],
 	);
 }
 

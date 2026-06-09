@@ -72,8 +72,10 @@ describe("Wave 4 local MCP server entrypoint", () => {
 		expect(response.tools.map((tool) => tool.name)).toEqual([
 			"get_usdc_sol_quote",
 			"quote_swap",
+			"simulate_conditional_buy_oracle_check",
 			"guarded_transfer_sol",
 			"guarded_swap_sol_usdc",
+			"create_conditional_buy_sol",
 			"sign_and_send_transaction",
 		]);
 		expect(JSON.stringify(response)).not.toMatch(

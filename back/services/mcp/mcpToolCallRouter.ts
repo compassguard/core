@@ -1,3 +1,5 @@
+import * as conditionalGateway from "../conditionalGateway";
+import type { EvaluateConditionalGatewayInput } from "../conditionalGatewayContracts";
 import {
 	buildAuditEvent,
 	classifyToolCall,
@@ -85,10 +87,18 @@ export async function handleMcpToolCall(
 				classification.reasonCodes,
 				input.arguments,
 			);
+		case MCP_TOOL_NAMES.SIMULATE_CONDITIONAL_BUY_ORACLE_CHECK:
+			return handleConditionalOracleSimulationTool(
+				registryEntry,
+				classification.reasonCodes,
+				input.arguments,
+			);
 		case MCP_TOOL_NAMES.GUARDED_TRANSFER_SOL:
 			return handleTransferTool(registryEntry, input.arguments);
 		case MCP_TOOL_NAMES.GUARDED_SWAP_SOL_USDC:
 			return handleSwapTool(registryEntry, input.arguments);
+		case MCP_TOOL_NAMES.CREATE_CONDITIONAL_BUY_SOL:
+			return handleConditionalTool(registryEntry, input.arguments);
 	}
 }
 
@@ -204,6 +214,72 @@ async function handleQuoteTool(
 			auditId,
 		});
 	}
+}
+
+function handleConditionalOracleSimulationTool(
+	registryEntry: CompassMcpToolRegistryEntry,
+	classificationReasonCodes: string[],
+	args: Record<string, unknown> | undefined,
+): CompassMcpToolResult {
+	const classification = classifyToolCall({
+		toolName: registryEntry.classificationToolName,
+		mutates: registryEntry.mutates,
+	});
+	const parsed = parseConditionalOracleSimulationInput(args);
+
+	if (parsed.ok === false) {
+		const auditId = emitMcpAudit({
+			publicToolName: registryEntry.name,
+			actionKind: registryEntry.actionKind,
+			classification,
+			decision: COMPASS_DECISIONS.REQUIRE_ADDITIONAL_CONTEXT,
+			result: "failed",
+			metadata: { registeredTool: true, validationErrors: parsed.reasonCodes },
+		});
+
+		return buildRequireAdditionalContextResult({
+			toolName: registryEntry.name,
+			riskClass: registryEntry.metadata.riskClass,
+			reasonCodes: parsed.reasonCodes,
+			message:
+				"Compass requires valid oracle price, age, and confidence evidence.",
+			auditId,
+		});
+	}
+
+	const data = {
+		...parsed.value,
+		withinMaxAge:
+			parsed.value.oracleAgeSeconds <= parsed.value.maxOracleAgeSeconds,
+		withinMaxConfidence:
+			parsed.value.oracleConfidenceBps <= parsed.value.maxConfidenceBps,
+	};
+	const auditId = emitMcpAudit({
+		publicToolName: registryEntry.name,
+		actionKind: registryEntry.actionKind,
+		classification,
+		decision: COMPASS_DECISIONS.ALLOW,
+		result: "success",
+		network: parsed.value.network,
+		metadata: {
+			registeredTool: true,
+			withinMaxAge: data.withinMaxAge,
+			withinMaxConfidence: data.withinMaxConfidence,
+		},
+		params: {
+			oracleFeedPubkey: parsed.value.oracleFeedPubkey,
+			oracleAgeSeconds: parsed.value.oracleAgeSeconds,
+			oracleConfidenceBps: parsed.value.oracleConfidenceBps,
+		},
+	});
+
+	return buildAllowResult({
+		toolName: registryEntry.name,
+		riskClass: registryEntry.metadata.riskClass,
+		reasonCodes: classificationReasonCodes,
+		data,
+		auditId,
+	});
 }
 
 async function handleTransferTool(
@@ -346,7 +422,8 @@ async function handleSwapTool(
 			toolName: registryEntry.name,
 			riskClass: registryEntry.metadata.riskClass,
 			reasonCodes: parsed.reasonCodes,
-			message: "Compass requires valid swap amount, slippage, protocol, and token context.",
+			message:
+				"Compass requires valid swap amount, slippage, protocol, and token context.",
 			auditId,
 		});
 	}
@@ -431,6 +508,129 @@ async function handleSwapTool(
 		riskClass: registryEntry.metadata.riskClass,
 		reasonCodes,
 		data: buildSwapResultData(evaluation),
+		auditId,
+	});
+}
+
+async function handleConditionalTool(
+	registryEntry: CompassMcpToolRegistryEntry,
+	args: Record<string, unknown> | undefined,
+): Promise<CompassMcpToolResult> {
+	const classification = classifyToolCall({
+		toolName: registryEntry.classificationToolName,
+		mutates: registryEntry.mutates,
+	});
+	const parsed = parseConditionalInput(args);
+
+	if (parsed.ok === false) {
+		const auditId = emitMcpAudit({
+			publicToolName: registryEntry.name,
+			actionKind: registryEntry.actionKind,
+			classification,
+			decision: COMPASS_DECISIONS.REQUIRE_ADDITIONAL_CONTEXT,
+			result: "failed",
+			metadata: {
+				registeredTool: true,
+				validationErrors: parsed.reasonCodes,
+			},
+		});
+
+		return buildRequireAdditionalContextResult({
+			toolName: registryEntry.name,
+			riskClass: registryEntry.metadata.riskClass,
+			reasonCodes: parsed.reasonCodes,
+			message:
+				"Compass requires valid conditional amount, target, oracle, expiry, and slippage context.",
+			auditId,
+		});
+	}
+
+	const evaluation = await conditionalGateway.evaluateConditionalGateway({
+		...parsed.value,
+		toolName: registryEntry.classificationToolName,
+	});
+	const decision = evaluation.policyEvaluation.decision;
+	const reasonCodes = evaluation.policyEvaluation.reasonCodes;
+	const auditId = emitMcpAudit({
+		publicToolName: registryEntry.name,
+		actionKind: registryEntry.actionKind,
+		classification: evaluation.classification,
+		decision,
+		result: decision === COMPASS_DECISIONS.DENY ? "denied" : "pending",
+		network: parsed.value.network,
+		metadata: {
+			registeredTool: true,
+			policyId: evaluation.policyEvaluation.policyId,
+			policyReasonCodes: reasonCodes,
+			evaluatedRules: evaluation.policyEvaluation.evaluatedRules,
+			proposalEligible: evaluation.proposalEligible,
+			requiresApprovalCard: evaluation.requiresApprovalCard,
+			failClosedReason: evaluation.failClosedReason,
+			gatewayCandidateId: evaluation.metadata.candidateId,
+			candidateFingerprint: evaluation.metadata.candidateFingerprint,
+			contextFingerprint: evaluation.metadata.contextFingerprint,
+			conditionSummary: {
+				targetPriceUsd: parsed.value.targetPriceUsd,
+				expiresAtUnix: parsed.value.expiresAtUnix,
+			},
+			oracleSummary: {
+				oracleFeedPubkey: parsed.value.oracleFeedPubkey,
+				oracleAgeSeconds: parsed.value.oracleAgeSeconds,
+				oracleConfidenceBps: parsed.value.oracleConfidenceBps,
+			},
+		},
+		params: {
+			inputAmountUsdc: parsed.value.inputAmountUsdc,
+			targetPriceUsd: parsed.value.targetPriceUsd,
+			maxSlippageBps: parsed.value.maxSlippageBps,
+			oracleFeedPubkey: parsed.value.oracleFeedPubkey,
+			recipient: parsed.value.recipient,
+			expiresAtUnix: parsed.value.expiresAtUnix,
+		},
+	});
+
+	if (decision === COMPASS_DECISIONS.ALLOW) {
+		return buildAllowResult({
+			toolName: registryEntry.name,
+			riskClass: registryEntry.metadata.riskClass,
+			reasonCodes,
+			data: buildConditionalResultData(evaluation),
+			approval: {
+				required: evaluation.requiresApprovalCard,
+				metadata: evaluation.requiresApprovalCard
+					? evaluation.metadata
+					: undefined,
+			},
+			auditId,
+		});
+	}
+
+	if (decision === COMPASS_DECISIONS.REQUIRE_HUMAN_APPROVAL) {
+		return buildRequireApprovalResult({
+			toolName: registryEntry.name,
+			riskClass: registryEntry.metadata.riskClass,
+			reasonCodes,
+			data: buildConditionalResultData(evaluation),
+			approval: { required: true, metadata: evaluation.metadata },
+			auditId,
+		});
+	}
+
+	if (decision === COMPASS_DECISIONS.REQUIRE_ADDITIONAL_CONTEXT) {
+		return buildRequireAdditionalContextResult({
+			toolName: registryEntry.name,
+			riskClass: registryEntry.metadata.riskClass,
+			reasonCodes,
+			data: buildConditionalResultData(evaluation),
+			auditId,
+		});
+	}
+
+	return buildDenyResult({
+		toolName: registryEntry.name,
+		riskClass: registryEntry.metadata.riskClass,
+		reasonCodes,
+		data: buildConditionalResultData(evaluation),
 		auditId,
 	});
 }
@@ -580,7 +780,9 @@ function parseSwapInput(
 	const normalizedInputToken = inputToken.toUpperCase();
 	const normalizedOutputToken = outputToken.toUpperCase();
 
-	if (!isSupportedSolUsdcSwapPair(normalizedInputToken, normalizedOutputToken)) {
+	if (
+		!isSupportedSolUsdcSwapPair(normalizedInputToken, normalizedOutputToken)
+	) {
 		return { ok: false, reasonCodes: ["UNSUPPORTED_SWAP_PAIR"] };
 	}
 
@@ -593,13 +795,14 @@ function parseSwapInput(
 		protocol,
 		tokenKnown,
 		tokenMint,
-		quoteUsd: async () => quoteSwapAmountUsd({
-			network,
-			inputToken: normalizedInputToken,
-			outputToken: normalizedOutputToken,
-			inputAmount,
-			slippageBps,
-		}),
+		quoteUsd: async () =>
+			quoteSwapAmountUsd({
+				network,
+				inputToken: normalizedInputToken,
+				outputToken: normalizedOutputToken,
+				inputAmount,
+				slippageBps,
+			}),
 	};
 
 	if (typeof args.actorWallet === "string") {
@@ -645,6 +848,138 @@ async function quoteSwapAmountUsd(input: {
 	return { amountUsd: quote.output_amount, source: quote.quote_source };
 }
 
+function parseConditionalOracleSimulationInput(
+	args: Record<string, unknown> | undefined,
+):
+	| {
+			ok: true;
+			value: {
+				network: string;
+				oracleFeedPubkey: string;
+				oraclePriceUsd: number;
+				oracleAgeSeconds: number;
+				maxOracleAgeSeconds: number;
+				oracleConfidenceBps: number;
+				maxConfidenceBps: number;
+			};
+	  }
+	| { ok: false; reasonCodes: string[] } {
+	if (!args) {
+		return { ok: false, reasonCodes: ["INVALID_ORACLE_INPUT"] };
+	}
+
+	const oracleFeedPubkey = args.oracleFeedPubkey;
+	const oraclePriceUsd = args.oraclePriceUsd;
+	const oracleAgeSeconds = args.oracleAgeSeconds;
+	const maxOracleAgeSeconds = args.maxOracleAgeSeconds;
+	const oracleConfidenceBps = args.oracleConfidenceBps;
+	const maxConfidenceBps = args.maxConfidenceBps;
+
+	if (
+		typeof oracleFeedPubkey !== "string" ||
+		oracleFeedPubkey.trim().length === 0 ||
+		!isPositiveNumber(oraclePriceUsd) ||
+		!isNonNegativeNumber(oracleAgeSeconds) ||
+		!isPositiveNumber(maxOracleAgeSeconds) ||
+		!isNonNegativeNumber(oracleConfidenceBps) ||
+		!isPositiveNumber(maxConfidenceBps)
+	) {
+		return { ok: false, reasonCodes: ["INVALID_ORACLE_INPUT"] };
+	}
+
+	return {
+		ok: true,
+		value: {
+			network:
+				typeof args.network === "string" ? args.network : DEFAULT_NETWORK,
+			oracleFeedPubkey,
+			oraclePriceUsd,
+			oracleAgeSeconds,
+			maxOracleAgeSeconds,
+			oracleConfidenceBps,
+			maxConfidenceBps,
+		},
+	};
+}
+
+function parseConditionalInput(
+	args: Record<string, unknown> | undefined,
+):
+	| { ok: true; value: EvaluateConditionalGatewayInput }
+	| { ok: false; reasonCodes: string[] } {
+	if (!args) {
+		return { ok: false, reasonCodes: ["INVALID_CONDITIONAL_INPUT"] };
+	}
+
+	const inputAmountUsdc = args.inputAmountUsdc;
+	const targetPriceUsd = args.targetPriceUsd;
+	const maxSlippageBps = args.maxSlippageBps;
+	const oracleFeedPubkey = args.oracleFeedPubkey;
+	const oraclePriceUsd = args.oraclePriceUsd;
+	const oracleAgeSeconds = args.oracleAgeSeconds;
+	const maxOracleAgeSeconds = args.maxOracleAgeSeconds;
+	const oracleConfidenceBps = args.oracleConfidenceBps;
+	const maxConfidenceBps = args.maxConfidenceBps;
+	const recipient = args.recipient;
+	const expiresAtUnix = args.expiresAtUnix;
+
+	if (
+		!isPositiveNumber(inputAmountUsdc) ||
+		!isPositiveNumber(targetPriceUsd) ||
+		!isNonNegativeNumber(maxSlippageBps) ||
+		typeof oracleFeedPubkey !== "string" ||
+		oracleFeedPubkey.trim().length === 0 ||
+		!isPositiveNumber(oraclePriceUsd) ||
+		!isNonNegativeNumber(oracleAgeSeconds) ||
+		!isPositiveNumber(maxOracleAgeSeconds) ||
+		!isNonNegativeNumber(oracleConfidenceBps) ||
+		!isPositiveNumber(maxConfidenceBps) ||
+		typeof recipient !== "string" ||
+		recipient.trim().length === 0 ||
+		!isPositiveNumber(expiresAtUnix)
+	) {
+		return { ok: false, reasonCodes: ["INVALID_CONDITIONAL_INPUT"] };
+	}
+
+	const input: EvaluateConditionalGatewayInput = {
+		network: typeof args.network === "string" ? args.network : DEFAULT_NETWORK,
+		inputToken: "USDC",
+		inputAmountUsdc,
+		targetPriceUsd,
+		maxSlippageBps,
+		oracleFeedPubkey,
+		oraclePriceUsd,
+		oracleAgeSeconds,
+		maxOracleAgeSeconds,
+		oracleConfidenceBps,
+		maxConfidenceBps,
+		recipient,
+		expiresAtUnix,
+	};
+
+	if (typeof args.actorWallet === "string") {
+		input.actorWallet = args.actorWallet;
+	}
+
+	if (isNonNegativeNumber(args.desiredSolLamports)) {
+		input.desiredSolLamports = args.desiredSolLamports;
+	}
+
+	if (isPositiveNumber(args.currentUnixTimestamp)) {
+		input.currentUnixTimestamp = args.currentUnixTimestamp;
+	}
+
+	return { ok: true, value: input };
+}
+
+function isPositiveNumber(value: unknown): value is number {
+	return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function isNonNegativeNumber(value: unknown): value is number {
+	return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
 function buildTransferResultData(
 	evaluation: Awaited<
 		ReturnType<typeof transferGateway.evaluateTransferGateway>
@@ -660,6 +995,19 @@ function buildTransferResultData(
 
 function buildSwapResultData(
 	evaluation: Awaited<ReturnType<typeof swapGateway.evaluateSwapGateway>>,
+): Record<string, unknown> {
+	return {
+		proposalEligible: evaluation.proposalEligible,
+		requiresApprovalCard: evaluation.requiresApprovalCard,
+		failClosedReason: evaluation.failClosedReason,
+		policyId: evaluation.policyEvaluation.policyId,
+	};
+}
+
+function buildConditionalResultData(
+	evaluation: Awaited<
+		ReturnType<typeof conditionalGateway.evaluateConditionalGateway>
+	>,
 ): Record<string, unknown> {
 	return {
 		proposalEligible: evaluation.proposalEligible,

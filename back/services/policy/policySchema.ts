@@ -65,6 +65,32 @@ export function validateCompassPolicy(input: unknown): PolicyValidationResult {
 		"allowed_protocols",
 	);
 
+	const conditionalBuys = requireRecord(input, "conditional_buys", errors) ?? {};
+	requirePolicyOutcome(
+		conditionalBuys,
+		"conditional_buys.default",
+		errors,
+		"default",
+	);
+	requireNumber(
+		conditionalBuys,
+		"conditional_buys.max_slippage_bps",
+		errors,
+		"max_slippage_bps",
+	);
+	requireNumber(
+		conditionalBuys,
+		"conditional_buys.max_oracle_age_seconds",
+		errors,
+		"max_oracle_age_seconds",
+	);
+	requireNumber(
+		conditionalBuys,
+		"conditional_buys.max_confidence_bps",
+		errors,
+		"max_confidence_bps",
+	);
+
 	const bridges = requireRecord(input, "bridges", errors) ?? {};
 	requirePolicyOutcome(bridges, "bridges.default", errors, "default");
 	requireNumber(bridges, "bridges.max_usd_per_day", errors, "max_usd_per_day");

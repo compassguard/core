@@ -16,6 +16,7 @@ const PREPARATION_SIMULATION_TOOLS = new Set([
 	"quote_swap",
 	"simulate_transaction",
 	"decode_transaction",
+	"simulate_conditional_buy_oracle_check",
 ]);
 const SENSITIVE_EXECUTION_TOOLS = new Set([
 	"transfer_sol",

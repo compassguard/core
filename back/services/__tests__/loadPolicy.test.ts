@@ -26,6 +26,12 @@ describe("policy loader", () => {
 				require_approval_for_unknown_token: true,
 				allowed_protocols: ["Jupiter", "Raydium", "Orca"],
 			},
+			conditional_buys: {
+				default: "require_approval",
+				max_slippage_bps: 300,
+				max_oracle_age_seconds: 60,
+				max_confidence_bps: 100,
+			},
 			bridges: {
 				default: "require_approval",
 				max_usd_per_day: 100,
@@ -65,6 +71,11 @@ swaps:
   max_slippage_bps: 300
   require_approval_for_unknown_token: true
   allowed_protocols: [Jupiter]
+conditional_buys:
+  default: require_approval
+  max_slippage_bps: 300
+  max_oracle_age_seconds: 60
+  max_confidence_bps: 100
 bridges:
   default: require_approval
   max_usd_per_day: 100
@@ -120,6 +131,12 @@ blocked:
 				require_approval_for_unknown_token: true,
 				allowed_protocols: ["Jupiter"],
 			},
+			conditional_buys: {
+				default: "require_approval",
+				max_slippage_bps: 300,
+				max_oracle_age_seconds: 60,
+				max_confidence_bps: 100,
+			},
 			bridges: {
 				default: "require_approval",
 				max_usd_per_day: 100,
@@ -174,6 +191,11 @@ swaps:
   max_slippage_bps: 300
   require_approval_for_unknown_token: true
   allowed_protocols: [Jupiter]
+conditional_buys:
+  default: require_approval
+  max_slippage_bps: 300
+  max_oracle_age_seconds: 60
+  max_confidence_bps: 100
 bridges:
   default: require_approval
   max_usd_per_day: 100
