@@ -38,6 +38,13 @@ If validation fails, return a clear reason and suggested action: block, request 
 - Use `feature/wave-<n>-<description>` branches for wave/sub-feature work.
 - Feature wave branches should branch from and merge back into `release/compass_migration`.
 
+## GitHub Account
+
+- The correct GitHub account for pushing this project is `ram4_dev`.
+- `gh` can sometimes be active as `rcarnicer_meli` because credentials are shared in this environment.
+- In this environment, `gh auth status` may show that account as `ram4-dev`.
+- If push fails with permissions against `ram4-dev/solana_hackathon`, run `gh auth switch -u ram4-dev` and retry the push.
+
 ## Type Convention
 
 Canonical types, interfaces, enums/constants, and shared contracts must live in files separate from behavior/business logic.

@@ -95,6 +95,13 @@ Usar esta estructura:
 Cada rama `feature/wave-*` debe salir de `release/compass_migration` y mergearse de vuelta a `release/compass_migration`, no a `main`.
 Si una herramienta propone abrir PR contra `main`, corregir la base a `release/compass_migration` antes de continuar.
 
+## Cuenta GitHub del proyecto
+
+La cuenta GitHub correcta para pushear este proyecto es `ram4_dev`.
+Puede pasar que `gh` quede autenticado como `rcarnicer_meli` porque el entorno comparte credenciales.
+En este entorno `gh auth status` puede mostrar esa cuenta como `ram4-dev`.
+Si un push falla por permisos contra `ram4-dev/solana_hackathon`, ejecutar `gh auth switch -u ram4-dev` y reintentar el push.
+
 ## Principio de implementacion
 
 Ninguna operacion critica debe ejecutarse sin pasar primero por la capa de guardrails.
