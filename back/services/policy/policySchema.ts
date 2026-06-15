@@ -91,16 +91,6 @@ export function validateCompassPolicy(input: unknown): PolicyValidationResult {
 		"max_confidence_bps",
 	);
 
-	const bridges = requireRecord(input, "bridges", errors) ?? {};
-	requirePolicyOutcome(bridges, "bridges.default", errors, "default");
-	requireNumber(bridges, "bridges.max_usd_per_day", errors, "max_usd_per_day");
-	requireStringArray(
-		bridges,
-		"bridges.allowed_chains",
-		errors,
-		"allowed_chains",
-	);
-
 	const signing = requireRecord(input, "signing", errors) ?? {};
 	requirePolicyOutcome(signing, "signing.sign_message", errors, "sign_message");
 	requirePolicyOutcome(

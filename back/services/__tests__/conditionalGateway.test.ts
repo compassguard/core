@@ -1,6 +1,3 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
-
 import { describe, expect, it } from "vitest";
 
 import { COMPASS_DECISIONS } from "../executionGatewayContracts";
@@ -58,16 +55,6 @@ function baseConditionalInput(
 		policy,
 		...overrides,
 	};
-}
-
-function listTsFiles(path: string): string[] {
-	return readdirSync(path).flatMap((entry) => {
-		const entryPath = join(path, entry);
-		if (statSync(entryPath).isDirectory()) {
-			return listTsFiles(entryPath);
-		}
-		return entryPath.endsWith(".ts") ? [entryPath] : [];
-	});
 }
 
 describe("Wave 5b conditional gateway", () => {
@@ -193,17 +180,4 @@ describe("Wave 5b conditional gateway", () => {
 		expect(result.proposalEligible).toBe(false);
 	});
 
-	it("gateway and MCP modules do not import from legacy", () => {
-		const files = [
-			...listTsFiles(join(process.cwd(), "back/services/mcp")),
-			join(process.cwd(), "back/services/conditionalGateway.ts"),
-			join(process.cwd(), "back/services/conditionalGatewayContracts.ts"),
-		];
-		const legacyImportPattern = /from\s+["'][^"']*legacy|import\s*\([^)]*legacy/;
-
-		for (const file of files) {
-			const source = readFileSync(file, "utf8");
-			expect(source, file).not.toMatch(legacyImportPattern);
-		}
-	});
 });

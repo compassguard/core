@@ -28,7 +28,7 @@ import type {
 	ProxyListToolsResult,
 } from "./mcpProxyContracts";
 import { createProxyDispatcher } from "./mcpProxyDispatcher";
-import { isSafeNonToolMethod } from "./mcpProxySafeMethods";
+import { isSafeNonToolMethod } from "./mcpProxyContracts";
 import type { ProxyMcpServerHandlerDependencies } from "./mcpProxyServerContracts";
 import { parseDownstreamMcpRuntimeConfig } from "./mcpRuntimeConfig";
 

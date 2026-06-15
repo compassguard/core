@@ -17,7 +17,7 @@ import type {
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { ResultSchema, type ClientNotification } from "@modelcontextprotocol/sdk/types.js";
-import { isSafeNonToolMethod } from "./mcpProxySafeMethods";
+import { isSafeNonToolMethod } from "./mcpProxyContracts";
 
 /**
  * Create a downstream stdio MCP client that manages a child process.

@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -22,16 +22,6 @@ async function loadMcpServer() {
 			`Wave 11 MCP proxy server entrypoint is missing or not loadable: ${String(error)}`,
 		);
 	}
-}
-
-function listTsFiles(path: string): string[] {
-	return readdirSync(path).flatMap((entry) => {
-		const entryPath = join(path, entry);
-		if (statSync(entryPath).isDirectory()) {
-			return listTsFiles(entryPath);
-		}
-		return entryPath.endsWith(".ts") ? [entryPath] : [];
-	});
 }
 
 const downstreamTools: DownstreamMcpTool[] = [
@@ -266,16 +256,6 @@ describe("Wave 11 proxy-only MCP server entrypoint", () => {
 		expect(source).not.toMatch(/\.\/mcpToolCallRouter/);
 		expect(source).not.toMatch(/\.\/mcpToolContracts/);
 		expect(source).not.toMatch(/\.\/mcpServerContracts/);
-	});
-
-	it("MCP modules do not import from legacy after adding the server entrypoint", () => {
-		const files = listTsFiles(join(process.cwd(), "back/services/mcp"));
-		const legacyImportPattern = /from\s+["'][^"']*legacy|import\s*\([^)]*legacy/;
-
-		for (const file of files) {
-			const source = readFileSync(file, "utf8");
-			expect(source, file).not.toMatch(legacyImportPattern);
-		}
 	});
 
 	it("parses downstream config from CLI flags and resolves env references without reading secret files", async () => {

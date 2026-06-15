@@ -348,28 +348,3 @@ describe("LocalKeypairAdapter", () => {
 		expect(address).toBe(configKeypair.publicKey.toBase58()); // Uses config key, not env var
 	});
 });
-
-describe("No legacy imports", () => {
-	it("signerAdapter module does not import from legacy", async () => {
-		const fs = await import("node:fs");
-		const path = await import("node:path");
-
-		const contractsPath = path.join(
-			process.cwd(),
-			"back/services/signerAdapterContracts.ts",
-		);
-		const adapterPath = path.join(
-			process.cwd(),
-			"back/services/signerAdapter.ts",
-		);
-
-		const contractsSource = fs.readFileSync(contractsPath, "utf8");
-		const adapterSource = fs.readFileSync(adapterPath, "utf8");
-
-		const legacyImportPattern =
-			/from\s+["'][^"']*legacy|import\s*\([^)]*legacy/;
-
-		expect(contractsSource).not.toMatch(legacyImportPattern);
-		expect(adapterSource).not.toMatch(legacyImportPattern);
-	});
-});

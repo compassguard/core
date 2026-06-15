@@ -1,20 +1,17 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "instructions": [
-    ".opencode/AGENTS.md",
-    "AGENTS.md"
-  ],
+  "instructions": [".opencode/AGENTS.md", "AGENTS.md"],
   "mcp": {
     "compass": {
       "type": "local",
-      "command": [
-        "npm",
-        "run",
-        "--silent",
-        "mcp:dev"
-      ],
+      "command": ["npm", "run", "--silent", "mcp:dev"],
       "enabled": true,
       "env": {}
+    },
+    "supabase": {
+      "type": "remote",
+      "url": "https://mcp.supabase.com/mcp",
+      "enabled": true
     }
   }
 }

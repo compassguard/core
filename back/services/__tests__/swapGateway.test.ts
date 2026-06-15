@@ -1,6 +1,3 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
-
 import { describe, expect, it } from "vitest";
 
 import { COMPASS_DECISIONS } from "../executionGatewayContracts";
@@ -48,16 +45,6 @@ function baseSwapInput(overrides: Record<string, unknown> = {}) {
 		policy,
 		...overrides,
 	};
-}
-
-function listTsFiles(path: string): string[] {
-	return readdirSync(path).flatMap((entry) => {
-		const entryPath = join(path, entry);
-		if (statSync(entryPath).isDirectory()) {
-			return listTsFiles(entryPath);
-		}
-		return entryPath.endsWith(".ts") ? [entryPath] : [];
-	});
 }
 
 describe("Wave 5a swap gateway", () => {
@@ -168,17 +155,4 @@ describe("Wave 5a swap gateway", () => {
 		expect(result.failClosedReason).toBe("policy_requires_additional_context");
 	});
 
-	it("gateway and MCP modules do not import from legacy", () => {
-		const files = [
-			...listTsFiles(join(process.cwd(), "back/services/mcp")),
-			join(process.cwd(), "back/services/swapGateway.ts"),
-			join(process.cwd(), "back/services/swapGatewayContracts.ts"),
-		];
-		const legacyImportPattern = /from\s+["'][^"']*legacy|import\s*\([^)]*legacy/;
-
-		for (const file of files) {
-			const source = readFileSync(file, "utf8");
-			expect(source, file).not.toMatch(legacyImportPattern);
-		}
-	});
 });

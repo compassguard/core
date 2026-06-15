@@ -84,12 +84,6 @@ export type ConditionalBuyRules = {
 	max_confidence_bps: number;
 };
 
-export type BridgesRules = {
-	default: PolicyOutcome;
-	max_usd_per_day: number;
-	allowed_chains: string[];
-};
-
 export type SigningRules = {
 	sign_message: PolicyOutcome;
 	sign_transaction: PolicyOutcome;
@@ -111,7 +105,6 @@ export type CompassPolicy = {
 	transfers: TransfersRules;
 	swaps: SwapsRules;
 	conditional_buys: ConditionalBuyRules;
-	bridges: BridgesRules;
 	signing: SigningRules;
 	blocked: BlockedPatterns;
 };

@@ -18,7 +18,7 @@ import type {
 	ProxyDispatcherConfig,
 	ProxyListToolsResult,
 } from "./mcpProxyContracts";
-import { isSafeNonToolMethod } from "./mcpProxySafeMethods";
+import { isSafeNonToolMethod } from "./mcpProxyContracts";
 import { evaluateProxyToolCallPolicy } from "./mcpProxyPolicyInterceptor";
 import {
 	markProxyAuditFailure,

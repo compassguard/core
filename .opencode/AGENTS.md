@@ -10,7 +10,6 @@ High-level active architecture:
 
 - `app/`: minimal Next.js entrypoints for the public landing, `/landing` redirect, and `/launch` WIP page.
 - `back/`: MCP Guard server-side services, execution gateway, policy, transfer/swap/conditional guards, audit, on-chain approval, shared providers, and Anchor programs.
-- `legacy/`: historical snapshot of the old chat/wallet product. The active tree must not import from `legacy/`.
 
 ## Documentation Source Of Truth
 
@@ -24,12 +23,6 @@ High-level active architecture:
 No critical operation should execute without passing through Compass guardrails first.
 
 If validation fails, return a clear reason and suggested action: block, request stronger confirmation, or retry with corrected conditions.
-
-## Legacy Isolation
-
-- Do not import from `legacy/` in active `app/`, `back/`, `shared/`, `docs/`, or new scripts.
-- If a legacy capability is still needed, extract it into a new active-tree module with its own types/contracts.
-- Keep `legacy/` excluded from main lint/test/typecheck flows unless working explicitly on legacy.
 
 ## Branch Policy
 

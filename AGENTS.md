@@ -7,11 +7,10 @@ La fuente canónica de producto es `docs/PRODUCT_CONSTITUTION.md`.
 
 La idea principal es permitir que agentes y usuarios ejecuten operaciones comunes, pero siempre con una capa extra de validación, policy, simulación/decoding, aprobación y auditoría antes de ejecutar acciones on-chain.
 
-Arquitectura actual despues de Wave 3.5 (alto nivel):
+Arquitectura actual (alto nivel):
 
 - `app`: entrypoints mínimos de Next para la landing pública (`/`), redirect `/landing` y página WIP `/launch`.
 - `back`: servicios MCP Guard server-side (execution gateway, policy, transfer guard, audit, on-chain approval, providers compartidos) y programas Anchor.
-- `legacy`: snapshot del producto anterior chat/wallet (`front`, `app/api`, `app/home`, servicios legacy y docs historicos). El árbol principal no debe importar desde `legacy/`.
 
 ## Objetivo del guardrail
 
@@ -51,14 +50,6 @@ Para cada feature, aplicar una combinacion de controles:
 - **Enforcement**:
   - Backend rules engine para validaciones rapidas y decision de permit/deny.
   - Smart contracts cuando se requiera garantia on-chain o restricciones no bypassables.
-
-## Regla de aislamiento legacy
-
-`legacy/` es solo referencia historica del producto anterior. No usarlo como dependencia del MCP Guard nuevo.
-
-- No importar desde `legacy/` en `app/`, `back/`, `shared/`, `docs/` activos ni scripts nuevos.
-- Si una capacidad legacy sigue siendo necesaria, extraerla a un módulo nuevo del árbol principal con tipos/contratos propios.
-- Mantener `legacy/` excluido de lint/test/typecheck principales; usar `lint:legacy` o `test:legacy` solo cuando se trabaje explícitamente sobre legacy.
 
 ## Convencion de specs por feature
 
