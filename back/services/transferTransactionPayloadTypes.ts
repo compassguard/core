@@ -1,4 +1,4 @@
-import type { ExecuteApprovedActionTransactionPayload } from "./mcp/mcpToolContracts";
+import type { Base64VersionedTransactionPayload } from "./transactionPayloadTypes";
 
 export type BuildSolTransferTransactionPayloadInput = {
 	candidateId: string;
@@ -12,7 +12,7 @@ export type BuildSolTransferTransactionPayloadInput = {
 export type BuildSolTransferTransactionPayloadResult =
 	| {
 			ok: true;
-			payload: ExecuteApprovedActionTransactionPayload;
+			payload: Base64VersionedTransactionPayload;
 			lamports: number;
 			sourceWallet: string;
 			recipientAddress: string;

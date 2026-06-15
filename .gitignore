@@ -62,6 +62,7 @@ tmp/
 .claude/
 .codex/
 .octto/
+.opencode/opencode.json.backup-*
 
 # Local env/secrets (examples stay allowed)
 .env.*
