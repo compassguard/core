@@ -4,7 +4,7 @@ import {
 	LLM_GUARD_DECISIONS,
 	type LlmJudgeConfig,
 	type LlmJudgeInput,
-} from "../intelligence/llm-decision/llmDecisionContracts";
+} from "@shared/llmDecisionContracts";
 import {
 	callLlmJudge,
 	clampLlmDecision,
@@ -12,7 +12,7 @@ import {
 	resolveLlmConfig,
 	validateLlmGuardOutput,
 	type LlmProviderFn,
-} from "../intelligence/llm-decision/llmDecisionAdapter";
+} from "@hosted/llm/llmDecisionAdapter";
 
 // ---------------------------------------------------------------------------
 // resolveLlmConfig

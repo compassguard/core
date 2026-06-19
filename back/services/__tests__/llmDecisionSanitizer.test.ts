@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { LLM_REDACTED, LLM_TRUNCATED } from "../intelligence/llm-decision/llmDecisionContracts";
-import { sanitizeLlmJudgeInput } from "../intelligence/llm-decision/llmDecisionSanitizer";
+import { LLM_REDACTED, LLM_TRUNCATED } from "@shared/llmDecisionContracts";
+import { sanitizeLlmJudgeInput } from "@hosted/llm/llmDecisionSanitizer";
 
 describe("LLM Decision Sanitizer", () => {
 	it("redacts keys matching sensitive patterns", () => {

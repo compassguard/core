@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { classifyToolCall, createActionCandidate } from "../guardrail/execution/executionGateway";
-import { loadDefaultPolicy } from "../guardrail/policy/loadPolicy";
-import { evaluateAction } from "../guardrail/policy/policyEngine";
-import type { PolicyEvaluationContext } from "../guardrail/policy/policyContracts";
+import { classifyToolCall, createActionCandidate } from "@back/guardrail/execution/executionGateway";
+import { loadDefaultPolicy } from "@hosted/policy/loadPolicy";
+import { evaluateAction } from "@hosted/policy/policyEngine";
+import type { PolicyEvaluationContext } from "@shared/policyContracts";
 
 const policy = loadDefaultPolicy();
 

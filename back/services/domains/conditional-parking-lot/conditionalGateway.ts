@@ -1,14 +1,18 @@
 import { createHash } from "node:crypto";
 
-import { debug } from "../../guardrail/debugLogger";
-import { classifyToolCall, createActionCandidate } from "../../guardrail/execution/executionGateway";
-import { COMPASS_DECISIONS } from "../../guardrail/execution/executionGatewayContracts";
-import { loadDefaultPolicy } from "../../guardrail/policy/loadPolicy";
-import { evaluateAction } from "../../guardrail/policy/policyEngine";
+import { debug } from "@back/guardrail/debugLogger";
+import { getPostHogClient, getInstallationDistinctId } from "@back/posthog/posthogClient";
+import {
+	classifyToolCall,
+	createActionCandidate,
+} from "@back/guardrail/execution/executionGateway";
+import { COMPASS_DECISIONS } from "@shared/executionGatewayContracts";
+import { loadDefaultPolicy } from "@hosted/policy/loadPolicy";
+import { evaluateAction } from "@hosted/policy/policyEngine";
 import type {
 	PolicyEvaluation,
 	PolicyEvaluationContext,
-} from "../../guardrail/policy/policyContracts";
+} from "@shared/policyContracts";
 import {
 	CONDITIONAL_FAIL_CLOSED_REASONS,
 	type ConditionalGatewayDecisionMetadata,
@@ -73,6 +77,24 @@ export async function evaluateConditionalGateway(
 		policyEvaluation,
 		classificationReasonCodes: classification.reasonCodes,
 		evaluatedAt,
+	});
+
+	getPostHogClient().capture({
+		distinctId: input.actorWallet ?? getInstallationDistinctId(),
+		event: "conditional_buy_evaluated",
+		properties: {
+			tool_name: toolName,
+			network: input.network,
+			decision: policyEvaluation.decision,
+			proposal_eligible: gate.proposalEligible,
+			requires_approval_card: gate.requiresApprovalCard,
+			input_token: input.inputToken,
+			input_amount_usdc: input.inputAmountUsdc,
+			target_price_usd: input.targetPriceUsd,
+			max_slippage_bps: input.maxSlippageBps,
+			reason_codes: policyEvaluation.reasonCodes,
+			fail_closed_reason: "failClosedReason" in gate ? gate.failClosedReason : undefined,
+		},
 	});
 
 	return {

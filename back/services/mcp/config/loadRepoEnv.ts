@@ -17,7 +17,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { debug } from "../../guardrail/debugLogger";
+import { debug } from "@back/guardrail/debugLogger";
 
 let loaded = false;
 

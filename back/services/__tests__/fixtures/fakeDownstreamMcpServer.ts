@@ -15,7 +15,7 @@ import type {
 	DownstreamMcpTool,
 	ProxiedMcpToolCall,
 } from "../../mcp/mcpProxyContracts";
-import { debug } from "../../guardrail/debugLogger";
+import { debug } from "@back/guardrail/debugLogger";
 import { pathToFileURL } from "node:url";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";

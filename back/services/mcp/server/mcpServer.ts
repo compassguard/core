@@ -9,19 +9,24 @@
 
 import { pathToFileURL } from "node:url";
 
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { getPostHogClient, getInstallationDistinctId } from "@back/posthog/posthogClient";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
 	CallToolRequestSchema,
 	ListToolsRequestSchema,
+	ResultSchema,
+	type ClientNotification,
 	type CallToolRequest,
 	type CallToolResult,
 	type ListToolsResult,
 	type Result,
 } from "@modelcontextprotocol/sdk/types.js";
 
-import { createDownstreamStdioMcpClient } from "../proxy/downstreamMcpStdioClient";
-import { debug } from "../../guardrail/debugLogger";
+import { debug } from "@back/guardrail/debugLogger";
+import { readHostedBackendEnvConfig } from "../../envConfig";
 import { loadRepoEnv } from "../config/loadRepoEnv";
 import type {
 	DownstreamMcpClient,
@@ -32,6 +37,8 @@ import { createProxyDispatcher } from "../proxy/mcpProxyDispatcher";
 import { isSafeNonToolMethod } from "../proxy/mcpProxyContracts";
 import type { ProxyMcpServerHandlerDependencies } from "./mcpProxyServerContracts";
 import { parseDownstreamMcpRuntimeConfig } from "../config/mcpRuntimeConfig";
+import { createMcpHostedClient } from "../proxy/mcpHostedClient";
+import { randomUUID } from "node:crypto";
 
 const COMPASS_MCP_SERVER_INFO = {
 	name: "compass-mcp-guard",
@@ -69,8 +76,23 @@ export function createProxyMcpServerHandlers(
 	};
 }
 
-export function createProxyMcpServer(downstream: DownstreamMcpClient): Server {
-	const dispatcher = createProxyDispatcher({ downstream });
+export function createProxyMcpServer(config: {
+	downstream?: DownstreamMcpClient;
+	hostedClient?: Parameters<typeof createProxyDispatcher>[0]["hostedClient"];
+	hybridGuardEnabled?: boolean;
+	executeTool?: Parameters<typeof createProxyDispatcher>[0]["executeTool"];
+	installationId?: string;
+	sessionId?: string;
+} = {}): Server {
+	const downstream = config.downstream;
+	const dispatcher = createProxyDispatcher({
+		downstream,
+		hostedClient: config.hostedClient,
+		hybridGuardEnabled: config.hybridGuardEnabled,
+		executeTool: config.executeTool,
+		installationId: config.installationId,
+		sessionId: config.sessionId,
+	});
 	const server = new Server(COMPASS_MCP_SERVER_INFO, {
 		capabilities: { tools: {} },
 		instructions:
@@ -88,7 +110,7 @@ export function createProxyMcpServer(downstream: DownstreamMcpClient): Server {
 		handlers.callTool(request),
 	);
 	server.fallbackRequestHandler = async (request): Promise<Result> => {
-		if (!isSafeNonToolMethod(request.method) || !downstream.forwardSafeRequest) {
+		if (!isSafeNonToolMethod(request.method) || !downstream?.forwardSafeRequest) {
 			throw new Error(`Compass MCP proxy rejected unsafe method: ${request.method}`);
 		}
 		if (isNotificationMethod(request.method)) {
@@ -106,7 +128,7 @@ export function createProxyMcpServer(downstream: DownstreamMcpClient): Server {
 		if (!isSafeNonToolMethod(notification.method)) {
 			return;
 		}
-		await downstream.forwardSafeNotification?.({
+		await downstream?.forwardSafeNotification?.({
 			method: notification.method,
 			params: notification.params as Record<string, unknown> | undefined,
 		});
@@ -166,7 +188,7 @@ function mapProxyCallToolResult(
 	return buildProxyMcpToolError(toolName, result.reason, {
 		decision: result.outcome,
 		suggestedAction: result.suggestedAction,
-		auditId: result.auditId,
+		auditRef: result.auditRef ?? result.auditId,
 	});
 }
 
@@ -176,7 +198,7 @@ function buildProxyMcpToolError(
 	metadata: {
 		decision?: ProxyCallToolResult["outcome"];
 		suggestedAction?: string;
-		auditId?: string;
+		auditRef?: string;
 	} = {},
 ): CallToolResult {
 	const structuredContent = {
@@ -187,7 +209,7 @@ function buildProxyMcpToolError(
 		suggestedAction:
 			metadata.suggestedAction ??
 			"Check the downstream MCP server configuration and restart.",
-		...(metadata.auditId ? { auditId: metadata.auditId } : {}),
+		...(metadata.auditRef ? { auditRef: metadata.auditRef } : {}),
 	};
 	return {
 		content: [{ type: "text", text: JSON.stringify(structuredContent) }],
@@ -198,13 +220,44 @@ function buildProxyMcpToolError(
 
 export async function startCompassMcpStdioServer(): Promise<void> {
 	const config = parseDownstreamMcpRuntimeConfig();
-	const downstream = createDownstreamStdioMcpClient(config);
+	const downstream = createRuntimeDownstreamClient(config);
+	const hostedConfig = readHostedBackendEnvConfig();
+	const hostedClient =
+		hostedConfig.apiUrl && hostedConfig.apiKey
+			? createMcpHostedClient({
+					url: hostedConfig.apiUrl,
+					apiKey: hostedConfig.apiKey,
+					timeoutMs: hostedConfig.timeoutMs,
+			  })
+			: undefined;
+	const sessionId = `session_${randomUUID()}`;
 	try {
 		await downstream.start?.();
-		const server = createProxyMcpServer(downstream);
+		const server = createProxyMcpServer({
+			downstream,
+			hostedClient,
+			hybridGuardEnabled: hostedConfig.hybridGuardEnabled,
+			executeTool: async (args) =>
+				(await downstream.callTool(args)) as CallToolResult,
+			installationId: hostedConfig.installationId,
+			sessionId,
+		});
 		const transport = new StdioServerTransport();
 		await server.connect(transport);
+
+		getPostHogClient().capture({
+			distinctId: hostedConfig.installationId ?? getInstallationDistinctId(),
+			event: "mcp_session_started",
+			properties: {
+				session_id: sessionId,
+				hybrid_guard_enabled: hostedConfig.hybridGuardEnabled,
+				hosted_backend_configured: Boolean(hostedConfig.apiUrl),
+			},
+		});
 	} catch (error) {
+		getPostHogClient().captureException(error, getInstallationDistinctId(), {
+			event_context: "mcp_server_start_failed",
+		});
 		await downstream.close?.().catch(() => undefined);
 		throw error;
 	}
@@ -227,6 +280,117 @@ function isDirectExecution(): boolean {
 
 function isResultObject(value: unknown): value is Result {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function createRuntimeDownstreamClient(
+	config: { command: string; args: readonly string[]; cwd?: string; env?: Readonly<Record<string, string>>; name: string },
+): DownstreamMcpClient {
+	let sdkClient: Client | undefined;
+	let transport: StdioClientTransport | undefined;
+	let startup: Promise<void> | undefined;
+	let available = false;
+
+	return {
+		get isAvailable(): boolean {
+			return available;
+		},
+
+		async start(): Promise<void> {
+			await ensureStarted();
+		},
+
+		async listTools(): Promise<ProxyListToolsResult["tools"]> {
+			const client = await ensureStarted();
+			const result = await client.listTools();
+			return result.tools.map((tool) => ({
+				name: tool.name,
+				description: tool.description,
+				inputSchema: tool.inputSchema,
+				descriptor: tool,
+			}));
+		},
+
+		async callTool(args) {
+			const client = await ensureStarted();
+			return client.callTool({
+				name: args.toolName,
+				arguments: args.arguments,
+			});
+		},
+
+		async forwardSafeRequest(args): Promise<unknown> {
+			if (!isSafeNonToolMethod(args.method) || args.method === "tools/call") {
+				throw new Error(`Refusing to forward unsafe MCP method: ${args.method}`);
+			}
+			if (isNotificationMethod(args.method)) {
+				throw new Error(
+					`Refusing to forward MCP notification as a request: ${args.method}`,
+				);
+			}
+			const client = await ensureStarted();
+			if (args.method === "ping") {
+				return client.ping();
+			}
+			return client.request(
+				{ method: args.method, params: args.params },
+				ResultSchema,
+			);
+		},
+
+		async forwardSafeNotification(args): Promise<void> {
+			if (!isSafeNonToolMethod(args.method) || !isNotificationMethod(args.method)) {
+				throw new Error(`Refusing to forward unsafe MCP notification: ${args.method}`);
+			}
+			const client = await ensureStarted();
+			await client.notification({
+				method: args.method,
+				...(args.params ? { params: args.params } : {}),
+			} as ClientNotification);
+		},
+
+		async close(): Promise<void> {
+			available = false;
+			await sdkClient?.close();
+			sdkClient = undefined;
+			transport = undefined;
+			startup = undefined;
+		},
+	};
+
+	async function ensureStarted(): Promise<Client> {
+		if (available && sdkClient) {
+			return sdkClient;
+		}
+		startup ??= startClient();
+		await startup;
+		if (!sdkClient || !available) {
+			throw new Error("Downstream MCP client failed to initialize.");
+		}
+		return sdkClient;
+	}
+
+	async function startClient(): Promise<void> {
+		const env = config.env ? { ...process.env, ...config.env } : undefined;
+		transport = new StdioClientTransport({
+			command: config.command,
+			args: [...config.args],
+			...(config.cwd ? { cwd: config.cwd } : {}),
+			...(env ? { env } : {}),
+			stderr: "pipe",
+		});
+		sdkClient = new Client({
+			name: "compass-mcp-guard-proxy",
+			version: "0.0.0",
+		});
+		try {
+			await sdkClient.connect(transport);
+			available = true;
+		} catch (error) {
+			available = false;
+			await transport.close().catch(() => undefined);
+			throw error;
+		}
+	}
 }
 
 export { resetProxyAuditEvents } from "../proxy/mcpProxyAudit";

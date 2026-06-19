@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, rmSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
-import { debug, getLogFile } from "../guardrail/debugLogger";
+import { debug, getLogFile } from "@back/guardrail/debugLogger";
 
 // ─── Test setup ──
 

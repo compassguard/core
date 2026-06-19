@@ -8,8 +8,9 @@
  * Uncertainty requires explicit approval and is never forwarded automatically.
  */
 
+import { debug } from "@back/guardrail/debugLogger";
+
 import type { ProxyDecision } from "./mcpProxyContracts";
-import { debug } from "../../guardrail/debugLogger";
 
 // ---------------------------------------------------------------------------
 // Risk classification for arbitrary downstream tools

@@ -7,7 +7,7 @@ import {
 	parseEnvContents,
 	resetLoadRepoEnvFlag,
 } from "../mcp/loadRepoEnv";
-import { getLogFile } from "../guardrail/debugLogger";
+import { getLogFile } from "@back/guardrail/debugLogger";
 
 function readDebugLog(): string {
 	const logFile = getLogFile();

@@ -4,39 +4,32 @@
  * Dispatches MCP requests to proxy behavior: initialize, safe methods,
  * tools/list, and intercepted tools/call. Downstream `tools/list` is the
  * source of truth for public tool descriptors. `tools/call` is intercepted
- * by the policy interceptor before forwarding. All other requests either
- * pass through the safe-methods allowlist or fail closed.
+ * by the policy interceptor and, when needed, evaluated by the hosted guard
+ * before local execution. All other requests either pass through the
+ * safe-methods allowlist or fail closed.
  *
  * No native Compass MCP tool names, schemas, or static registry are used.
  */
 
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-
-import { debug } from "../../guardrail/debugLogger";
-import { evaluateLlmMetadata, resolveLlmConfig } from "../../intelligence/llm-decision/llmDecisionAdapter";
-import { routeToolCall, resolveRouterConfig } from "../../intelligence/llm-router/llmRouterAdapter";
-import type {
-	LlmRouterConfig,
-	LlmRouterInput,
-} from "../../intelligence/llm-router/llmRouterContracts";
-import type { CompassDecision } from "../../guardrail/execution/executionGatewayContracts";
+import { getPostHogClient, getInstallationDistinctId } from "@back/posthog/posthogClient";
 import type {
 	ProxyCallToolResult,
 	ProxyDecision,
 	ProxyDispatcherConfig,
+	ProxiedMcpToolCall,
 	ProxyListToolsResult,
-	ProxyRouterClassification,
 } from "./mcpProxyContracts";
 import { isSafeNonToolMethod } from "./mcpProxyContracts";
-import { evaluateProxyToolCallPolicy } from "./mcpProxyPolicyInterceptor";
 import {
-	markProxyAuditFailure,
-	recordProxyAuditDenial,
-	recordProxyAuditForwarding,
-	recordProxyAuditIntent,
-	recordProxyAuditRouting,
-	redactSecretArguments,
-} from "./mcpProxyAudit";
+	classifyProxyToolCall,
+	evaluateProxyToolCallPolicy,
+} from "./mcpProxyPolicyInterceptor";
+import { buildEvaluateActionRequest } from "./mcpEvaluationRequest";
+import {
+	LOCAL_FINDING_SEVERITIES,
+	type EvaluateActionResponse,
+	type LocalFinding,
+} from "@shared/evaluationContracts";
 
 // ---------------------------------------------------------------------------
 // Proxy dispatcher
@@ -62,12 +55,14 @@ export function createProxyDispatcher(
 		params?: Record<string, unknown>;
 	}) => Promise<unknown>;
 } {
-	const { downstream, policyDecision: policyOverride, auditFailure } = config;
-
-	// If audit failure mode is requested (for testing), mark it now.
-	if (auditFailure) {
-		markProxyAuditFailure();
-	}
+	const {
+		downstream = createUnavailableDownstreamClient(),
+		hostedClient,
+		executeTool,
+		policyDecision: policyOverride,
+		installationId,
+		sessionId,
+	} = config;
 
 	return {
 		async listTools(): Promise<ProxyListToolsResult> {
@@ -98,274 +93,14 @@ export function createProxyDispatcher(
 			toolName: string;
 			arguments?: Record<string, unknown>;
 		}): Promise<ProxyCallToolResult> {
-			// 1. Fail-closed: downstream unavailable
-			if (!downstream.isAvailable) {
-				const decision: ProxyDecision = {
-					outcome: "deny",
-					reason: "Downstream MCP server is unavailable; denying call fail-closed.",
-					suggestedAction:
-						"Restart the downstream server or check its configuration.",
-				};
-				recordProxyAuditDenial({
-					toolName: args.toolName,
-					policyDecision: decision,
-					denialReason: decision.reason,
-				});
-				return {
-					outcome: "deny",
-					reason: decision.reason,
-					suggestedAction: decision.suggestedAction,
-					policyDecision: decision,
-				};
-			}
-
-			// 2. Evaluate policy
-			const evaluatedDecision = evaluateProxyToolCallPolicy(
-				args.toolName,
-				args.arguments,
-				policyOverride ? { policyDecision: policyOverride } : undefined,
-			);
-			debug("proxy", "callTool", "Policy evaluation result", {
-				tool: args.toolName,
-				outcome: evaluatedDecision.outcome,
+			return callToolWithHybridGuard({
+				args,
+				hostedClient,
+				executeTool,
+				policyOverride,
+				installationId,
+				sessionId,
 			});
-			let forwardingDecision = evaluatedDecision;
-
-			// 3. If policy requires approval but router is enabled, try LLM routing
-			if (evaluatedDecision.outcome === "require_approval") {
-				const routerConfig: LlmRouterConfig = resolveRouterConfig();
-
-				if (routerConfig.enabled) {
-					const routerInput: LlmRouterInput = {
-						toolName: args.toolName,
-						toolParams: args.arguments,
-					};
-
-					const routerResult = await routeToolCall(routerInput, routerConfig);
-					const routerClassification: ProxyRouterClassification =
-						routerResult.classification;
-					debug("proxy", "callTool", "Router classification", {
-						tool: args.toolName,
-						classification: routerClassification,
-						latencyMs: routerResult.latencyMs,
-					});
-					recordProxyAuditRouting({
-						toolName: args.toolName,
-						classification: routerClassification,
-						reasoning: routerResult.reasoning,
-						latencyMs: routerResult.latencyMs,
-					});
-
-					switch (routerClassification) {
-						case "skip":
-							forwardingDecision = {
-								...evaluatedDecision,
-								outcome: "allow",
-								reason: `LLM Router classified tool "${args.toolName}" as skip; forwarding allowed.`,
-								routerMetadata: {
-									consulted: true,
-									classification: "skip",
-									reasoning: routerResult.reasoning,
-									latencyMs: routerResult.latencyMs,
-								},
-							};
-							break;
-
-						case "transfer":
-						case "swap": {
-							const llmConfig = resolveLlmConfig();
-							const llmDecision = await evaluateLlmMetadata({
-								input: {
-									toolName: args.toolName,
-									actionKind: routerClassification,
-									network: "solana",
-									deterministicDecision: "ALLOW" as CompassDecision,
-									riskClass: routerClassification,
-									reasonCodes: [
-										`router_classified_as_${routerClassification}`,
-									],
-									sanitizedContext: { toolParams: args.arguments },
-									sanitized: true,
-								},
-								config: llmConfig,
-							});
-
-							if (llmDecision.decision === "ALLOW") {
-								forwardingDecision = {
-									...evaluatedDecision,
-									outcome: "allow",
-									reason: `LLM Decision allowed ${routerClassification} tool "${args.toolName}" after router classification.`,
-									routerMetadata: {
-										consulted: true,
-										classification: routerClassification,
-										reasoning: routerResult.reasoning,
-										latencyMs: routerResult.latencyMs,
-									},
-								};
-								break;
-							}
-
-							const outcome =
-								llmDecision.decision === "DENY" ? "deny" : "require_approval";
-							const finalDecision: ProxyDecision = {
-								outcome,
-								reason: `LLM Decision ${outcome}: ${llmDecision.llmRationale ?? routerResult.reasoning}`,
-								suggestedAction:
-									outcome === "deny" ? undefined : "Review and approve manually.",
-								routerMetadata: {
-									consulted: true,
-									classification: routerClassification,
-									reasoning: routerResult.reasoning,
-									latencyMs: routerResult.latencyMs,
-								},
-							};
-							recordProxyAuditDenial({
-								toolName: args.toolName,
-								policyDecision: finalDecision,
-								denialReason: finalDecision.reason,
-							});
-							return {
-								outcome: finalDecision.outcome,
-								reason: finalDecision.reason,
-								suggestedAction: finalDecision.suggestedAction,
-								policyDecision: finalDecision,
-							};
-						}
-
-						case "unknown": {
-							const unknownDecision: ProxyDecision = {
-								...evaluatedDecision,
-								routerMetadata: {
-									consulted: true,
-									classification: "unknown",
-									reasoning: routerResult.reasoning,
-									latencyMs: routerResult.latencyMs,
-								},
-							};
-							const unknownReason = `require_approval: LLM Router could not classify tool "${args.toolName}". ${evaluatedDecision.reason}`;
-							recordProxyAuditDenial({
-								toolName: args.toolName,
-								policyDecision: unknownDecision,
-								denialReason: unknownReason,
-							});
-							return {
-								outcome: "require_approval",
-								reason: unknownReason,
-								suggestedAction: evaluatedDecision.suggestedAction,
-								policyDecision: unknownDecision,
-							};
-						}
-					}
-				}
-			}
-
-			// 4. If policy does not allow, do NOT forward — return policy outcome
-			if (forwardingDecision.outcome !== "allow") {
-				debug("proxy", "callTool", "Request denied by policy", {
-					tool: args.toolName,
-					outcome: forwardingDecision.outcome,
-				});
-				const decisionPrefix =
-					forwardingDecision.outcome === "deny" ? "denied" : "require_approval";
-				const denialReason = `${decisionPrefix}: ${forwardingDecision.reason}`;
-				recordProxyAuditDenial({
-					toolName: args.toolName,
-					policyDecision: forwardingDecision,
-					denialReason,
-				});
-				return {
-					outcome: forwardingDecision.outcome,
-					reason: denialReason,
-					suggestedAction: forwardingDecision.suggestedAction,
-					policyDecision: forwardingDecision,
-				};
-			}
-
-			// 5. Policy allows — record audit intent before forwarding
-			let auditId: string;
-			try {
-				auditId = recordProxyAuditIntent({
-					toolName: args.toolName,
-					policyDecision: forwardingDecision,
-				});
-			} catch {
-				// Audit write failure: fail closed, deny before forwarding
-				const decision: ProxyDecision = {
-					outcome: "deny",
-					reason:
-						"Proxy audit intent recording failed; denying call fail-closed to prevent unaudited forwarding.",
-					suggestedAction:
-						"Check proxy audit system health and retry.",
-				};
-				recordProxyAuditDenial({
-					toolName: args.toolName,
-					policyDecision: forwardingDecision,
-					denialReason: decision.reason,
-				});
-				return {
-					outcome: "deny",
-					reason: decision.reason,
-					suggestedAction: decision.suggestedAction,
-					policyDecision: decision,
-				};
-			}
-
-			// 6. Forward allowed call to downstream
-			debug("proxy", "callTool", "Forwarding allowed call", {
-				tool: args.toolName,
-				outcome: forwardingDecision.outcome,
-			});
-			try {
-				const redactedArgs = redactSecretArguments(args.arguments);
-				void redactedArgs; // Available for future audit enrichment
-
-				const downstreamResult = await downstream.callTool({
-					toolName: args.toolName,
-					arguments: args.arguments,
-				});
-
-				// 7. Record forwarding outcome
-				recordProxyAuditForwarding({
-					toolName: args.toolName,
-					policyDecision: forwardingDecision,
-					forwardingOutcome: "success",
-					existingAuditId: auditId,
-				});
-
-				return {
-					outcome: "allow",
-					reason: `Tool "${args.toolName}" allowed and forwarded to downstream.`,
-					data: downstreamResult as CallToolResult,
-					policyDecision: forwardingDecision,
-					auditId,
-				};
-			} catch (error) {
-				const errorMessage =
-					error instanceof Error ? error.message : String(error);
-
-				// Downstream call failure: deny fail-closed
-				recordProxyAuditForwarding({
-					toolName: args.toolName,
-					policyDecision: forwardingDecision,
-					forwardingOutcome: "failure",
-					existingAuditId: auditId,
-				});
-
-				const decision: ProxyDecision = {
-					outcome: "deny",
-					reason: `Downstream tools/call failed: ${errorMessage}. Denying fail-closed.`,
-					suggestedAction:
-						"Check downstream server health and retry.",
-				};
-
-				return {
-					outcome: "deny",
-					reason: decision.reason,
-					suggestedAction: decision.suggestedAction,
-					policyDecision: decision,
-					auditId,
-				};
-			}
 		},
 
 		async forwardSafeRequest(args: {
@@ -385,6 +120,198 @@ export function createProxyDispatcher(
 				);
 			}
 			return downstream.forwardSafeRequest(args);
+		},
+	};
+}
+
+async function callToolWithHybridGuard(input: {
+	args: ProxiedMcpToolCall;
+	hostedClient: ProxyDispatcherConfig["hostedClient"];
+	executeTool: ProxyDispatcherConfig["executeTool"];
+	policyOverride: ProxyDispatcherConfig["policyDecision"];
+	installationId?: string;
+	sessionId?: string;
+}): Promise<ProxyCallToolResult> {
+	const { args, hostedClient, executeTool, policyOverride, installationId, sessionId } = input;
+	const localDecision = evaluateProxyToolCallPolicy(
+		args.toolName,
+		args.arguments,
+		policyOverride ? { policyDecision: policyOverride } : undefined,
+	);
+
+	if (localDecision.outcome === "deny") {
+		return mapDecisionResult(args.toolName, localDecision);
+	}
+
+	if (localDecision.outcome === "allow") {
+		return executeAllowedToolCall({
+			args,
+			executeTool,
+			decision: localDecision,
+		});
+	}
+
+	if (!hostedClient) {
+		return mapDecisionResult(args.toolName, {
+			outcome: "deny",
+			reason: "Hosted evaluation client is not configured; denying call fail-closed.",
+			suggestedAction:
+				"Set COMPASS_HOSTED_API_URL and COMPASS_HOSTED_API_KEY before enabling the hybrid guard.",
+		});
+	}
+
+	getPostHogClient().capture({
+		distinctId: installationId ?? getInstallationDistinctId(),
+		event: "hybrid_guard_evaluation_requested",
+		properties: {
+			tool_name: args.toolName,
+			local_outcome: localDecision.outcome,
+			session_id: sessionId,
+		},
+	});
+
+	const hostedResponse = await hostedClient.evaluateAction(
+		buildEvaluateActionRequest({
+			...args,
+			localFindings: buildLocalFindings(args.toolName, localDecision),
+			userId: installationId,
+			sessionId,
+		}),
+	);
+
+	getPostHogClient().capture({
+		distinctId: installationId ?? getInstallationDistinctId(),
+		event: "tool_call_evaluated",
+		properties: {
+			tool_name: args.toolName,
+			outcome: hostedResponse.decision,
+			risk_level: hostedResponse.riskLevel,
+			reasons: hostedResponse.reasons,
+			flow: "hybrid",
+			session_id: sessionId,
+		},
+	});
+
+	if (hostedResponse.decision !== "allow") {
+		const hostedDecision = mapHostedDecision(hostedResponse);
+		return {
+			...mapDecisionResult(args.toolName, hostedDecision),
+			auditRef: hostedResponse.auditRef,
+			policyDecision: hostedDecision,
+		};
+	}
+
+	return executeAllowedToolCall({
+		args,
+		executeTool,
+		decision: {
+			outcome: "allow",
+			hostedDecision: hostedResponse.decision,
+			reason: buildHostedReason(hostedResponse),
+			suggestedAction: hostedResponse.suggestedAction,
+		},
+		auditRef: hostedResponse.auditRef,
+	});
+}
+
+async function executeAllowedToolCall(input: {
+	args: ProxiedMcpToolCall;
+	executeTool: ProxyDispatcherConfig["executeTool"];
+	decision: ProxyDecision;
+	auditRef?: string;
+}): Promise<ProxyCallToolResult> {
+	const { args, executeTool, decision, auditRef } = input;
+
+	if (!executeTool) {
+		return mapDecisionResult(args.toolName, {
+			outcome: "deny",
+			reason: "No execution dependency is configured for allowed tool calls.",
+			suggestedAction:
+				"Inject a local execution dependency before enabling Compass hybrid guard.",
+		});
+	}
+
+	try {
+		const result = await executeTool(args);
+		return {
+			outcome: "allow",
+			reason: `Tool "${args.toolName}" allowed for execution.`,
+			data: result,
+			policyDecision: decision,
+			auditRef,
+		};
+	} catch (error) {
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		return {
+			outcome: "deny",
+			reason: `Tool execution failed: ${errorMessage}. Denying fail-closed.`,
+			suggestedAction: "Check the execution dependency and retry.",
+			policyDecision: {
+				outcome: "deny",
+				hostedDecision: decision.hostedDecision,
+				reason: `Tool execution failed: ${errorMessage}. Denying fail-closed.`,
+				suggestedAction: "Check the execution dependency and retry.",
+			},
+			auditRef,
+		};
+	}
+}
+
+function mapHostedDecision(response: EvaluateActionResponse): ProxyDecision {
+	return {
+		outcome: response.decision === "confirm" ? "require_approval" : "deny",
+		hostedDecision: response.decision,
+		reason: buildHostedReason(response),
+		suggestedAction: response.suggestedAction,
+	};
+}
+
+function mapDecisionResult(
+	toolName: string,
+	decision: ProxyDecision,
+): ProxyCallToolResult {
+	const decisionPrefix =
+		decision.outcome === "deny" ? "deny" : decision.outcome === "allow" ? "allow" : "require_approval";
+	const reason = `${decisionPrefix}: ${decision.reason}`;
+
+	return {
+		outcome: decision.outcome,
+		reason,
+		suggestedAction: decision.suggestedAction,
+		policyDecision: decision,
+	};
+}
+
+function buildLocalFindings(
+	toolName: string,
+	decision: ProxyDecision,
+): LocalFinding[] {
+	return [
+		{
+			code: classifyProxyToolCall(toolName).toUpperCase(),
+			severity:
+				decision.outcome === "deny"
+					? LOCAL_FINDING_SEVERITIES.BLOCK
+					: LOCAL_FINDING_SEVERITIES.WARN,
+			message: decision.reason,
+		},
+	];
+}
+
+function buildHostedReason(response: EvaluateActionResponse): string {
+	return response.reasons.length > 0
+		? response.reasons.join(", ")
+		: "Hosted evaluation returned no reasons.";
+}
+
+function createUnavailableDownstreamClient(): ProxyDispatcherConfig["downstream"] {
+	return {
+		isAvailable: false,
+		async listTools() {
+			throw new Error("Downstream MCP server is unavailable.");
+		},
+		async callTool() {
+			throw new Error("Downstream MCP server is unavailable.");
 		},
 	};
 }

@@ -11,6 +11,12 @@
  */
 
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type {
+	EvaluateActionAgentContext,
+	HostedDecision,
+	LocalFinding,
+} from "@shared/evaluationContracts";
+import type { HostedClient } from "./mcpHostedClientContracts";
 
 // ---------------------------------------------------------------------------
 // Downstream stdio server configuration
@@ -64,10 +70,17 @@ export type ProxiedMcpToolCall = {
 	arguments?: Record<string, unknown>;
 };
 
+export type HostedEvaluationRequestInput = ProxiedMcpToolCall & {
+	agentContext?: EvaluateActionAgentContext;
+	localFindings?: LocalFinding[];
+};
+
 /** Proxy decision before forwarding a tools/call request. */
 export type ProxyDecision = {
 	/** Whether the call is allowed, denied, or requires explicit approval. */
 	outcome: "allow" | "deny" | "require_approval";
+	/** Hosted allow/deny/confirm decision when the hosted backend was consulted. */
+	hostedDecision?: HostedDecision;
 	/** Human-readable reason for the decision. */
 	reason: string;
 	/** Suggested next action for the operator or client. */
@@ -119,6 +132,8 @@ export type ProxyCallToolResult = {
 	data?: CallToolResult;
 	/** Policy decision details (always present). */
 	policyDecision?: ProxyDecision;
+	/** Hosted audit reference for durable traceability. */
+	auditRef?: string;
 	/** Audit record ID for traceability. */
 	auditId?: string;
 };
@@ -130,11 +145,19 @@ export type ProxyCallToolResult = {
 /** Configuration for creating a proxy dispatcher instance. */
 export type ProxyDispatcherConfig = {
 	/** Downstream MCP server instance (fake for tests, real otherwise). */
-	downstream: DownstreamMcpClient;
+	downstream?: DownstreamMcpClient;
+	/** Hosted evaluation client used when hybrid guard is enabled. */
+	hostedClient?: HostedClient;
+	/** Local execution dependency for allowed tool calls. */
+	executeTool?: (args: ProxiedMcpToolCall) => Promise<CallToolResult>;
+	/** Feature flag that enables hosted guard evaluation. */
+	hybridGuardEnabled?: boolean;
 	/** Optional policy decision override for testing. */
 	policyDecision?: ProxyDecision;
-	/** Whether audit should fail (for testing fail-closed behavior). */
-	auditFailure?: boolean;
+	/** Stable installation ID from local MCP config (used as userId for audit). */
+	installationId?: string;
+	/** Unique session ID generated per MCP session (used for audit grouping). */
+	sessionId?: string;
 };
 
 /**

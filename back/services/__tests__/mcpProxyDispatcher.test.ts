@@ -7,6 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 import {
 	NATIVE_COMPASS_TOOL_NAMES,
@@ -15,8 +16,51 @@ import {
 } from "./fixtures/fakeDownstreamMcpServer";
 import { createProxyDispatcher } from "../mcp/mcpProxyDispatcher";
 import { PROXY_SAFE_METHODS } from "../mcp/mcpProxyContracts";
+import type { ProxiedMcpToolCall } from "../mcp/mcpProxyContracts";
 import { resetProxyAuditEvents } from "../mcp/mcpProxyAudit";
 import { classifyProxyToolCall } from "../mcp/mcpProxyPolicyInterceptor";
+import type { HostedClient } from "../mcp/proxy/mcpHostedClientContracts";
+import type { EvaluateActionResponse } from "@shared/evaluationContracts";
+
+function createMockHostedClient(
+	response: Partial<EvaluateActionResponse> = {},
+): HostedClient {
+	return {
+		evaluateAction: vi.fn().mockResolvedValue({
+			correlationId: "corr_default",
+			decision: "confirm",
+			riskLevel: "medium",
+			reasons: ["HOSTED_DEFAULT"],
+			suggestedAction: "Request explicit human approval before execution.",
+			auditRef: "aud_default",
+			...response,
+		}),
+	};
+}
+
+function createTestExecuteTool(
+	downstream: ReturnType<typeof createFakeDownstreamMcpServer>,
+): (args: ProxiedMcpToolCall) => Promise<CallToolResult> {
+	return async (args) => {
+		if (!downstream.isAvailable) {
+			throw new Error("Downstream MCP server is unavailable.");
+		}
+		return downstream.callTool(args) as Promise<CallToolResult>;
+	};
+}
+
+function createHybridDispatcher(
+	downstream: ReturnType<typeof createFakeDownstreamMcpServer>,
+	overrides: Partial<Parameters<typeof createProxyDispatcher>[0]> = {},
+) {
+	return createProxyDispatcher({
+		downstream,
+		hybridGuardEnabled: true,
+		hostedClient: overrides.hostedClient ?? createMockHostedClient(),
+		executeTool: overrides.executeTool ?? createTestExecuteTool(downstream),
+		...overrides,
+	});
+}
 
 // Reset audit state between tests to prevent test pollution
 describe("Wave 11 MCP proxy dispatcher — tools/list passthrough", () => {
@@ -159,7 +203,7 @@ describe("Wave 11 MCP proxy dispatcher — tools/call enforcement", () => {
 		const downstream = createFakeDownstreamMcpServer();
 		const callArgs = { path: "/tmp/important.txt" };
 
-		const dispatcher = createProxyDispatcher({ downstream });
+		const dispatcher = createHybridDispatcher(downstream);
 		const result = await dispatcher.callTool({
 			toolName: "read_file",
 			arguments: callArgs,
@@ -176,7 +220,7 @@ describe("Wave 11 MCP proxy dispatcher — tools/call enforcement", () => {
 
 	it("allows wallet UI/bootstrap tool calls and forwards them", async () => {
 		const downstream = createFakeDownstreamMcpServer();
-		const dispatcher = createProxyDispatcher({ downstream });
+		const dispatcher = createHybridDispatcher(downstream);
 
 		const result = await dispatcher.callTool({
 			toolName: "show_wallet_app",
@@ -191,7 +235,7 @@ describe("Wave 11 MCP proxy dispatcher — tools/call enforcement", () => {
 
 	it("allows tokenized read-only wallet balance calls and forwards them", async () => {
 		const downstream = createFakeDownstreamMcpServer();
-		const dispatcher = createProxyDispatcher({ downstream });
+		const dispatcher = createHybridDispatcher(downstream);
 
 		const result = await dispatcher.callTool({
 			toolName: "get_wallet_balance",
@@ -206,7 +250,7 @@ describe("Wave 11 MCP proxy dispatcher — tools/call enforcement", () => {
 
 	it("allows namespaced wallet UI/bootstrap tool calls and forwards them", async () => {
 		const downstream = createFakeDownstreamMcpServer();
-		const dispatcher = createProxyDispatcher({ downstream });
+		const dispatcher = createHybridDispatcher(downstream);
 
 		const result = await dispatcher.callTool({
 			toolName: "compass_show_wallet_app",
@@ -227,7 +271,7 @@ describe("Wave 11 MCP proxy dispatcher — tools/call enforcement", () => {
 			isError: true,
 		});
 
-		const dispatcher = createProxyDispatcher({ downstream });
+		const dispatcher = createHybridDispatcher(downstream);
 		const result = await dispatcher.callTool({
 			toolName: "read_file",
 			arguments: { path: "/missing.txt" },
@@ -245,7 +289,7 @@ describe("Wave 11 MCP proxy dispatcher — tools/call enforcement", () => {
 		
 		const downstream = createFakeDownstreamMcpServer();
 
-		const dispatcher = createProxyDispatcher({ downstream });
+		const dispatcher = createHybridDispatcher(downstream);
 
 		await dispatcher.callTool({
 			toolName: "read_file",
@@ -265,7 +309,7 @@ describe("Wave 11 MCP proxy dispatcher — tools/call enforcement", () => {
 
 	it("requires approval for unknown tool calls and does NOT forward", async () => {
 		const downstream = createFakeDownstreamMcpServer();
-		const dispatcher = createProxyDispatcher({ downstream });
+		const dispatcher = createHybridDispatcher(downstream);
 
 		const result = await dispatcher.callTool({
 			toolName: "rebalance_portfolio",
@@ -280,7 +324,7 @@ describe("Wave 11 MCP proxy dispatcher — tools/call enforcement", () => {
 
 	it("requires approval for ambiguous read-plus-mutation tool calls and does NOT forward", async () => {
 		const downstream = createFakeDownstreamMcpServer();
-		const dispatcher = createProxyDispatcher({ downstream });
+		const dispatcher = createHybridDispatcher(downstream);
 
 		const result = await dispatcher.callTool({
 			toolName: "get_or_create_wallet",
@@ -294,7 +338,7 @@ describe("Wave 11 MCP proxy dispatcher — tools/call enforcement", () => {
 
 	it("denies sensitive/signing tool calls and does NOT forward", async () => {
 		const downstream = createFakeDownstreamMcpServer();
-		const dispatcher = createProxyDispatcher({ downstream });
+		const dispatcher = createHybridDispatcher(downstream);
 
 		const result = await dispatcher.callTool({
 			toolName: "sign_and_send_transaction",
@@ -318,7 +362,7 @@ describe("Wave 11 MCP proxy dispatcher — tools/call enforcement", () => {
 		"denies common signing tool %s and does NOT forward",
 		async (toolName) => {
 			const downstream = createFakeDownstreamMcpServer();
-			const dispatcher = createProxyDispatcher({ downstream });
+			const dispatcher = createHybridDispatcher(downstream);
 
 			const result = await dispatcher.callTool({
 				toolName,
@@ -344,8 +388,7 @@ describe("Wave 11 MCP proxy dispatcher — tools/call enforcement", () => {
 
 		// The proxy dispatcher must evaluate policy before forwarding.
 		// When policy denies, the downstream should NOT receive the call.
-		const dispatcher = createProxyDispatcher({
-			downstream,
+		const dispatcher = createHybridDispatcher(downstream, {
 			policyDecision: {
 				outcome: "deny",
 				reason: "Tool is classified as dangerous and policy denies execution.",
@@ -363,7 +406,7 @@ describe("Wave 11 MCP proxy dispatcher — tools/call enforcement", () => {
 
 		// The proxy must return a denial
 		expect(result.outcome).toBe("deny");
-		expect(result.reason).toContain("denied");
+		expect(result.reason).toContain("deny");
 		expect(result.suggestedAction).toBeDefined();
 	});
 
@@ -371,8 +414,7 @@ describe("Wave 11 MCP proxy dispatcher — tools/call enforcement", () => {
 		
 		const downstream = createFakeDownstreamMcpServer();
 
-		const dispatcher = createProxyDispatcher({
-			downstream,
+		const dispatcher = createHybridDispatcher(downstream, {
 			policyDecision: {
 				outcome: "deny",
 				reason: "Policy denied this tool call.",
@@ -404,7 +446,7 @@ describe("Wave 11 MCP proxy dispatcher — tools/call enforcement", () => {
 			new Error("Downstream server failed to start."),
 		);
 
-		const dispatcher = createProxyDispatcher({ downstream });
+		const dispatcher = createHybridDispatcher(downstream);
 
 		const result = await dispatcher.callTool({
 			toolName: "read_file",
@@ -425,7 +467,7 @@ describe("Wave 11 MCP proxy dispatcher — tools/call enforcement", () => {
 			new Error("Downstream tools/list discovery failed."),
 		);
 
-		const dispatcher = createProxyDispatcher({ downstream });
+		const dispatcher = createHybridDispatcher(downstream);
 
 		// Even listing tools should fail safely
 		const listResult = await dispatcher.listTools();
@@ -443,7 +485,7 @@ describe("Wave 11 MCP proxy dispatcher — tools/call enforcement", () => {
 			new Error("Downstream tools/call internal error."),
 		);
 
-		const dispatcher = createProxyDispatcher({ downstream });
+		const dispatcher = createHybridDispatcher(downstream);
 
 		const result = await dispatcher.callTool({
 			toolName: "read_file",
@@ -459,8 +501,7 @@ describe("Wave 11 MCP proxy dispatcher — tools/call enforcement", () => {
 		
 		const downstream = createFakeDownstreamMcpServer();
 
-		const dispatcher = createProxyDispatcher({
-			downstream,
+		const dispatcher = createHybridDispatcher(downstream, {
 			policyDecision: {
 				outcome: "deny",
 				reason: "Policy evaluation failed — classifying as deny for safety.",
@@ -478,24 +519,17 @@ describe("Wave 11 MCP proxy dispatcher — tools/call enforcement", () => {
 		expect(downstream.recordedCalls).toHaveLength(0);
 	});
 
-	it("denies calls when audit logging fails before forwarding", async () => {
-		
+	it("no longer depends on local audit logging before forwarding", async () => {
 		const downstream = createFakeDownstreamMcpServer();
-
-		// Audit failure must cause fail-closed denial
-		const dispatcher = createProxyDispatcher({
-			downstream,
-			auditFailure: true,
-		});
+		const dispatcher = createHybridDispatcher(downstream);
 
 		const result = await dispatcher.callTool({
 			toolName: "read_file",
 			arguments: { path: "/tmp/readme.md" },
 		});
 
-		// Audit write failure must deny before forwarding
-		expect(result.outcome).toBe("deny");
-		expect(downstream.recordedCalls).toHaveLength(0);
+		expect(result.outcome).toBe("allow");
+		expect(downstream.recordedCalls).toHaveLength(1);
 	});
 
 	it("does NOT classify tools/call as a safe non-tool method", async () => {
@@ -527,7 +561,158 @@ describe("Wave 11 MCP proxy dispatcher — tools/call enforcement", () => {
 	});
 });
 
-describe("LLM Router integration", () => {
+describe("Wave 11 MCP proxy dispatcher — hybrid hosted guard", () => {
+	it("skips hosted evaluation for deterministic local denials", async () => {
+		const downstream = createFakeDownstreamMcpServer();
+		const hostedClient: HostedClient = {
+			evaluateAction: vi.fn(),
+		};
+		const executeTool = vi.fn();
+		const dispatcher = createProxyDispatcher({
+			downstream,
+			hostedClient,
+			executeTool,
+			hybridGuardEnabled: true,
+		});
+
+		const result = await dispatcher.callTool({
+			toolName: "sign_and_send_transaction",
+			arguments: { transaction: "base64" },
+		});
+
+		expect(result.outcome).toBe("deny");
+		expect(hostedClient.evaluateAction).not.toHaveBeenCalled();
+		expect(executeTool).not.toHaveBeenCalled();
+	});
+
+	it("blocks execution when hosted evaluation denies a routed mutation", async () => {
+		const downstream = createFakeDownstreamMcpServer();
+		const hostedClient: HostedClient = {
+			evaluateAction: vi.fn().mockResolvedValue({
+				correlationId: "corr_hosted_deny",
+				decision: "deny",
+				riskLevel: "high",
+				reasons: ["TRANSFER_UNKNOWN_RECIPIENT"],
+				suggestedAction: "Review the destination wallet before retrying.",
+				auditRef: "aud_hosted_deny",
+			}),
+		};
+		const executeTool = vi.fn();
+		const dispatcher = createProxyDispatcher({
+			downstream,
+			hostedClient,
+			executeTool,
+			hybridGuardEnabled: true,
+		});
+
+		const result = await dispatcher.callTool({
+			toolName: "transfer_sol",
+			arguments: { recipient: "wallet", amountSol: 1 },
+		});
+
+		expect(result.outcome).toBe("deny");
+		expect(result.auditRef).toBe("aud_hosted_deny");
+		expect(executeTool).not.toHaveBeenCalled();
+	});
+
+	it("returns approval when hosted evaluation requests confirmation", async () => {
+		const downstream = createFakeDownstreamMcpServer();
+		const hostedClient: HostedClient = {
+			evaluateAction: vi.fn().mockResolvedValue({
+				correlationId: "corr_hosted_confirm",
+				decision: "confirm",
+				riskLevel: "medium",
+				reasons: ["TRANSFER_UNKNOWN_RECIPIENT"],
+				suggestedAction: "Request explicit user confirmation before execution.",
+				auditRef: "aud_hosted_confirm",
+			}),
+		};
+		const executeTool = vi.fn();
+		const dispatcher = createProxyDispatcher({
+			downstream,
+			hostedClient,
+			executeTool,
+			hybridGuardEnabled: true,
+		});
+
+		const result = await dispatcher.callTool({
+			toolName: "transfer_sol",
+			arguments: { recipient: "wallet", amountSol: 1 },
+		});
+
+		expect(result.outcome).toBe("require_approval");
+		expect(result.auditRef).toBe("aud_hosted_confirm");
+		expect(executeTool).not.toHaveBeenCalled();
+	});
+
+	it("fails closed when hosted evaluation returns a timeout denial", async () => {
+		const downstream = createFakeDownstreamMcpServer();
+		const hostedClient: HostedClient = {
+			evaluateAction: vi.fn().mockResolvedValue({
+				correlationId: "corr_hosted_timeout",
+				decision: "deny",
+				riskLevel: "high",
+				reasons: ["HOSTED_TIMEOUT"],
+				suggestedAction: "Check hosted backend health before retrying.",
+				auditRef: "local_fail_closed_corr_hosted_timeout",
+			}),
+		};
+		const executeTool = vi.fn();
+		const dispatcher = createProxyDispatcher({
+			downstream,
+			hostedClient,
+			executeTool,
+			hybridGuardEnabled: true,
+		});
+
+		const result = await dispatcher.callTool({
+			toolName: "transfer_sol",
+			arguments: { recipient: "wallet", amountSol: 1 },
+		});
+
+		expect(result.outcome).toBe("deny");
+		expect(result.auditRef).toBe("local_fail_closed_corr_hosted_timeout");
+		expect(executeTool).not.toHaveBeenCalled();
+	});
+
+	it("executes routed mutations when hosted evaluation allows them", async () => {
+		const downstream = createFakeDownstreamMcpServer();
+		const hostedClient: HostedClient = {
+			evaluateAction: vi.fn().mockResolvedValue({
+				correlationId: "corr_hosted_allow",
+				decision: "allow",
+				riskLevel: "low",
+				reasons: ["ROUTER_SKIP_ALLOW"],
+				auditRef: "aud_hosted_allow",
+			}),
+		};
+		const executeTool = vi.fn().mockResolvedValue({
+			content: [{ type: "text", text: "ok" }],
+			structuredContent: { ok: true },
+			isError: false,
+		});
+		const dispatcher = createProxyDispatcher({
+			downstream,
+			hostedClient,
+			executeTool,
+			hybridGuardEnabled: true,
+		});
+
+		const result = await dispatcher.callTool({
+			toolName: "transfer_sol",
+			arguments: { recipient: "wallet", amountSol: 1 },
+		});
+
+		expect(result.outcome).toBe("allow");
+		expect(result.auditRef).toBe("aud_hosted_allow");
+		expect(executeTool).toHaveBeenCalledWith({
+			toolName: "transfer_sol",
+			arguments: { recipient: "wallet", amountSol: 1 },
+		});
+	});
+});
+
+describe("Hosted guard integration (migrated from legacy LLM Router)", () => {
 	const originalEnv = { ...process.env };
 
 	beforeEach(() => {
@@ -541,11 +726,10 @@ describe("LLM Router integration", () => {
 		process.env = { ...originalEnv };
 	});
 
-	it("keeps current behavior when router is disabled", async () => {
+	it("requires approval for ambiguous tools when hosted evaluation confirms", async () => {
 		process.env.COMPASS_LLM_ROUTER_ENABLED = "false";
-		const fetchSpy = vi.spyOn(globalThis, "fetch");
 		const downstream = createFakeDownstreamMcpServer();
-		const dispatcher = createProxyDispatcher({ downstream });
+		const dispatcher = createHybridDispatcher(downstream);
 
 		const result = await dispatcher.callTool({
 			toolName: "rebalance_portfolio",
@@ -554,14 +738,18 @@ describe("LLM Router integration", () => {
 
 		expect(result.outcome).toBe("require_approval");
 		expect(downstream.recordedCalls).toHaveLength(0);
-		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 
-	it("allows when router classifies the tool as skip", async () => {
-		mockRouterEnv();
-		mockChatCompletions({ classification: "skip", reasoning: "Not a guarded action." });
+	it("allows when hosted evaluation allows an ambiguous tool", async () => {
 		const downstream = createFakeDownstreamMcpServer();
-		const dispatcher = createProxyDispatcher({ downstream });
+		const dispatcher = createHybridDispatcher(downstream, {
+			hostedClient: createMockHostedClient({
+				decision: "allow",
+				riskLevel: "low",
+				reasons: ["HOSTED_ALLOW"],
+				suggestedAction: undefined,
+			}),
+		});
 
 		const result = await dispatcher.callTool({
 			toolName: "summarize_portfolio",
@@ -574,14 +762,16 @@ describe("LLM Router integration", () => {
 		]);
 	});
 
-	it("allows transfer classification when LLM Decision allows", async () => {
-		mockRouterEnv({ decisionEnabled: true });
-		mockChatCompletions(
-			{ classification: "transfer", reasoning: "Transfer intent." },
-			allowDecision(),
-		);
+	it("allows when hosted evaluation allows a transfer-like action", async () => {
 		const downstream = createFakeDownstreamMcpServer();
-		const dispatcher = createProxyDispatcher({ downstream });
+		const dispatcher = createHybridDispatcher(downstream, {
+			hostedClient: createMockHostedClient({
+				decision: "allow",
+				riskLevel: "low",
+				reasons: ["HOSTED_ALLOW"],
+				suggestedAction: undefined,
+			}),
+		});
 
 		const result = await dispatcher.callTool({
 			toolName: "portfolio_action",
@@ -592,14 +782,16 @@ describe("LLM Router integration", () => {
 		expect(downstream.recordedCalls).toHaveLength(1);
 	});
 
-	it("denies transfer classification when LLM Decision denies", async () => {
-		mockRouterEnv({ decisionEnabled: true });
-		mockChatCompletions(
-			{ classification: "transfer", reasoning: "Transfer intent." },
-			denyDecision(),
-		);
+	it("denies when hosted evaluation denies a transfer-like action", async () => {
 		const downstream = createFakeDownstreamMcpServer();
-		const dispatcher = createProxyDispatcher({ downstream });
+		const dispatcher = createHybridDispatcher(downstream, {
+			hostedClient: createMockHostedClient({
+				decision: "deny",
+				riskLevel: "high",
+				reasons: ["HOSTED_DENY"],
+				suggestedAction: "Review before retrying.",
+			}),
+		});
 
 		const result = await dispatcher.callTool({
 			toolName: "portfolio_action",
@@ -610,14 +802,16 @@ describe("LLM Router integration", () => {
 		expect(downstream.recordedCalls).toHaveLength(0);
 	});
 
-	it("allows swap classification when LLM Decision allows", async () => {
-		mockRouterEnv({ decisionEnabled: true });
-		mockChatCompletions(
-			{ classification: "swap", reasoning: "Swap intent." },
-			allowDecision(),
-		);
+	it("allows when hosted evaluation allows a swap-like action", async () => {
 		const downstream = createFakeDownstreamMcpServer();
-		const dispatcher = createProxyDispatcher({ downstream });
+		const dispatcher = createHybridDispatcher(downstream, {
+			hostedClient: createMockHostedClient({
+				decision: "allow",
+				riskLevel: "low",
+				reasons: ["HOSTED_ALLOW"],
+				suggestedAction: undefined,
+			}),
+		});
 
 		const result = await dispatcher.callTool({
 			toolName: "token_action",
@@ -628,11 +822,9 @@ describe("LLM Router integration", () => {
 		expect(downstream.recordedCalls).toHaveLength(1);
 	});
 
-	it("requires approval when router classification is unknown", async () => {
-		mockRouterEnv();
-		mockChatCompletions({ classification: "unknown", reasoning: "Ambiguous." });
+	it("requires approval when hosted evaluation confirms an ambiguous tool", async () => {
 		const downstream = createFakeDownstreamMcpServer();
-		const dispatcher = createProxyDispatcher({ downstream });
+		const dispatcher = createHybridDispatcher(downstream);
 
 		const result = await dispatcher.callTool({
 			toolName: "rebalance_portfolio",
@@ -643,42 +835,3 @@ describe("LLM Router integration", () => {
 		expect(downstream.recordedCalls).toHaveLength(0);
 	});
 });
-
-function mockRouterEnv(options: { decisionEnabled?: boolean } = {}): void {
-	process.env.COMPASS_LLM_ROUTER_ENABLED = "true";
-	process.env.COMPASS_LLM_DECISION_ENABLED = options.decisionEnabled ? "true" : "false";
-	process.env.COMPASS_LLM_PROVIDER = "opencode-go";
-	process.env.COMPASS_LLM_MODEL = "kimi-k2.5";
-	process.env.COMPASS_LLM_BASE_URL = "https://opencode.ai/zen/go/v1/chat/completions";
-}
-
-function mockChatCompletions(...outputs: Record<string, unknown>[]): void {
-	const pending = [...outputs];
-	vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
-		const output = pending.shift();
-		return {
-			ok: true,
-			json: vi.fn().mockResolvedValue({
-				choices: [{ message: { content: JSON.stringify(output) } }],
-			}),
-		} as unknown as Response;
-	});
-}
-
-function allowDecision(): Record<string, unknown> {
-	return {
-		decision: "ALLOW",
-		confidence: 0.9,
-		reasonCodes: ["LOW_RISK"],
-		rationale: "Allowed by LLM Decision.",
-	};
-}
-
-function denyDecision(): Record<string, unknown> {
-	return {
-		decision: "DENY",
-		confidence: 0.9,
-		reasonCodes: ["HIGH_RISK"],
-		rationale: "Denied by LLM Decision.",
-	};
-}

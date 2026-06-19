@@ -1,0 +1,320 @@
+{
+  "change": "hosted-restructure",
+  "title": "Restructure Hosted Backend as Top-Level Directory",
+  "phases": [
+    {
+      "id": 1,
+      "name": "Create directories and extract shared types",
+      "tasks": [
+        {
+          "id": 1,
+          "title": "Create shared/types/ directory",
+          "description": "mkdir -p shared/types. This is where all extracted contract files will live.",
+          "files": ["shared/types/"],
+          "depends_on": [],
+          "estimated_effort": "small"
+        },
+        {
+          "id": 2,
+          "title": "Create hosted/ top-level directory",
+          "description": "mkdir -p hosted. Top-level deployment boundary for Vercel-bundled code.",
+          "files": ["hosted/"],
+          "depends_on": [],
+          "estimated_effort": "small"
+        },
+        {
+          "id": 3,
+          "title": "Create back/guardrail/ and back/intelligence/ directories",
+          "description": "mkdir -p back/guardrail/execution back/guardrail/policy back/intelligence/llm-router. Destination for local runtime code flattened from back/services/.",
+          "files": ["back/guardrail/execution/", "back/guardrail/policy/", "back/intelligence/llm-router/"],
+          "depends_on": [],
+          "estimated_effort": "small"
+        },
+        {
+          "id": 4,
+          "title": "Move pure contract files to shared/types/",
+          "description": "git mv the 5 pure-contract files: executionGatewayContracts.ts, policyContracts.ts, llmDecisionContracts.ts, llmRouterContracts.ts, hostedAuthMiddlewareContracts.ts, hostedErrorMiddlewareContracts.ts. No splitting needed — these contain only types, interfaces, enums, constants.",
+          "files": [
+            "shared/types/executionGatewayContracts.ts",
+            "shared/types/policyContracts.ts",
+            "shared/types/llmDecisionContracts.ts",
+            "shared/types/llmRouterContracts.ts",
+            "shared/types/hostedAuthMiddlewareContracts.ts",
+            "shared/types/hostedErrorMiddlewareContracts.ts"
+          ],
+          "depends_on": [1],
+          "estimated_effort": "small"
+        },
+        {
+          "id": 5,
+          "title": "Split evaluationContracts.ts into types + validators",
+          "description": "Move type exports (HostedDecision, HostedRiskLevel, EvaluateActionRequest, etc.) and constants (HOSTED_DECISIONS, HOSTED_RISK_LEVELS, etc.) to shared/types/evaluationContracts.ts. Extract runtime validators (isHostedDecision, isHostedRiskLevel, validateEvaluateActionRequest, isRecord, isNonEmptyString, isLocalFindingSeverity) to hosted/evaluate/evaluationValidators.ts. Create hosted/evaluate/evaluationContracts.ts as a re-export barrel that imports types from @shared/ and validators from ./evaluationValidators.",
+          "files": [
+            "shared/types/evaluationContracts.ts",
+            "hosted/evaluate/evaluationValidators.ts",
+            "hosted/evaluate/evaluationContracts.ts"
+          ],
+          "depends_on": [1, 2],
+          "estimated_effort": "medium"
+        },
+        {
+          "id": 6,
+          "title": "Split auditContracts.ts into types + validators",
+          "description": "Move type exports and constants (DEFAULT_AUDIT_QUERY_LIMIT, MAX_AUDIT_QUERY_LIMIT) to hosted/audit/auditContracts.ts as re-exports from @shared/. Extract runtime validators (validateAuditWriteRequest, validateAuditQueryParams, normalizeAuditQueryLimit, isRecord, isNonEmptyString) to hosted/audit/auditValidators.ts. Note: auditContracts stays in hosted/ since it's only consumed by hosted code.",
+          "files": [
+            "hosted/audit/auditContracts.ts",
+            "hosted/audit/auditValidators.ts"
+          ],
+          "depends_on": [2],
+          "estimated_effort": "medium"
+        },
+        {
+          "id": 7,
+          "title": "Add @hosted/* path alias to tsconfig.json",
+          "description": "Add \"@hosted/*\": [\"hosted/*\"] to compilerOptions.paths in tsconfig.json. Existing @back/* and @shared/* aliases are already present.",
+          "files": ["tsconfig.json"],
+          "depends_on": [],
+          "estimated_effort": "small"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Move hosted code to top-level",
+      "tasks": [
+        {
+          "id": 8,
+          "title": "Move hosted root files",
+          "description": "git mv back/services/hosted/{app.ts,appContracts.ts,server.ts,serverContracts.ts,app.test.ts} to hosted/.",
+          "files": [
+            "hosted/app.ts",
+            "hosted/appContracts.ts",
+            "hosted/server.ts",
+            "hosted/serverContracts.ts",
+            "hosted/app.test.ts"
+          ],
+          "depends_on": [2],
+          "estimated_effort": "small"
+        },
+        {
+          "id": 9,
+          "title": "Move hosted feature directories",
+          "description": "git mv back/services/hosted/{audit,evaluate,health,llm,policies,policy} to hosted/. http/ moves too. Preserve internal directory structure.",
+          "files": [
+            "hosted/audit/",
+            "hosted/evaluate/",
+            "hosted/health/",
+            "hosted/http/",
+            "hosted/llm/",
+            "hosted/policies/",
+            "hosted/policy/"
+          ],
+          "depends_on": [2, 5, 6],
+          "estimated_effort": "medium"
+        },
+        {
+          "id": 10,
+          "title": "Move guardrail runtime files",
+          "description": "git mv: back/services/guardrail/execution/executionGateway.ts → back/guardrail/execution/, back/services/guardrail/debugLogger.ts → back/guardrail/, back/services/guardrail/policy/* → back/guardrail/policy/.",
+          "files": [
+            "back/guardrail/execution/executionGateway.ts",
+            "back/guardrail/debugLogger.ts",
+            "back/guardrail/policy/policyEvaluationResult.ts",
+            "back/guardrail/policy/policySchema.ts"
+          ],
+          "depends_on": [3],
+          "estimated_effort": "small"
+        },
+        {
+          "id": 11,
+          "title": "Move intelligence runtime",
+          "description": "git mv back/services/intelligence/llm-router/llmRouterPrompt.ts → back/intelligence/llm-router/.",
+          "files": ["back/intelligence/llm-router/llmRouterPrompt.ts"],
+          "depends_on": [3],
+          "estimated_effort": "small"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Update imports globally",
+      "tasks": [
+        {
+          "id": 12,
+          "title": "Update imports in hosted/ files",
+          "description": "Rewrite all relative imports in hosted/ files: ../../guardrail/execution/executionGatewayContracts → @shared/executionGatewayContracts, ../../guardrail/execution/executionGateway → @back/guardrail/execution/executionGateway, ../../guardrail/debugLogger → @back/guardrail/debugLogger, ../../guardrail/policy/* → @back/guardrail/policy/*. Files: policyContracts, loadPolicy, policyEngine, evaluationService, llmDecisionAdapter, llmDecisionSanitizer.",
+          "files": [
+            "hosted/policy/loadPolicy.ts",
+            "hosted/policy/policyEngine.ts",
+            "hosted/evaluate/evaluationService.ts",
+            "hosted/llm/llmDecisionAdapter.ts",
+            "hosted/llm/llmDecisionSanitizer.ts"
+          ],
+          "depends_on": [8, 9, 10],
+          "estimated_effort": "medium"
+        },
+        {
+          "id": 13,
+          "title": "Update imports in back/guardrail/ files",
+          "description": "Rewrite imports in back/guardrail/policy/policyEvaluationResult.ts and policySchema.ts: ../../hosted/policy/policyContracts → @shared/policyContracts, ../execution/executionGatewayContracts → @shared/executionGatewayContracts.",
+          "files": [
+            "back/guardrail/policy/policyEvaluationResult.ts",
+            "back/guardrail/policy/policySchema.ts"
+          ],
+          "depends_on": [10],
+          "estimated_effort": "small"
+        },
+        {
+          "id": 14,
+          "title": "Update imports in back/services/mcp/",
+          "description": "Rewrite imports in mcp/proxy/: mcpHostedClient.ts, mcpProxyDispatcher.ts, mcpProxyContracts.ts, mcpEvaluationRequest.ts, mcpHostedClientContracts.ts. Replace ../../hosted/evaluate/evaluationContracts → @shared/evaluationContracts, ../../hosted/llm/llmRouterContracts → @shared/llmRouterContracts. Note: mcpProxyDispatcher.ts imports runtime adapters from hosted — import from @hosted/llm/llmDecisionAdapter and @hosted/llm/llmRouterAdapter (known dependency direction issue, documented in tech spec).",
+          "files": [
+            "back/services/mcp/proxy/mcpHostedClient.ts",
+            "back/services/mcp/proxy/mcpProxyDispatcher.ts",
+            "back/services/mcp/proxy/mcpProxyContracts.ts",
+            "back/services/mcp/proxy/mcpEvaluationRequest.ts",
+            "back/services/mcp/proxy/mcpHostedClientContracts.ts"
+          ],
+          "depends_on": [9],
+          "estimated_effort": "medium"
+        },
+        {
+          "id": 15,
+          "title": "Update imports in back/services/domains/",
+          "description": "Rewrite imports in transfer/transferGateway.ts, transfer/transferGatewayContracts.ts, swap/swapGateway.ts, swap/swapGatewayContracts.ts, conditional-parking-lot/conditionalGateway.ts, conditionalGatewayContracts.ts. Replace ../../hosted/policy/* → @hosted/policy/*, ../../hosted/policy/policyContracts → @shared/policyContracts, ../../guardrail/execution/executionGatewayContracts → @shared/executionGatewayContracts.",
+          "files": [
+            "back/services/domains/transfer/transferGateway.ts",
+            "back/services/domains/transfer/transferGatewayContracts.ts",
+            "back/services/domains/swap/swapGateway.ts",
+            "back/services/domains/swap/swapGatewayContracts.ts",
+            "back/services/domains/conditional-parking-lot/conditionalGateway.ts",
+            "back/services/domains/conditional-parking-lot/conditionalGatewayContracts.ts"
+          ],
+          "depends_on": [9],
+          "estimated_effort": "medium"
+        },
+        {
+          "id": 16,
+          "title": "Update imports in test files",
+          "description": "Rewrite imports in back/services/__tests__/*.test.ts: hybrid-e2e.test.ts, hybridContracts.test.ts, transferGateway.test.ts, swapGateway.test.ts, conditionalGateway.test.ts, policyEngine.test.ts, llmDecisionAdapter.test.ts, llmDecisionSanitizer.test.ts, llmRouterAdapter.test.ts, mcpProxyLlmDecisionIntegration.test.ts, loadPolicy.test.ts, executionGateway.test.ts, evaluationService.test.ts. Replace ../hosted/* → @hosted/* or @shared/* as appropriate.",
+          "files": [
+            "back/services/__tests__/hybrid-e2e.test.ts",
+            "back/services/__tests__/hybridContracts.test.ts",
+            "back/services/__tests__/transferGateway.test.ts",
+            "back/services/__tests__/swapGateway.test.ts",
+            "back/services/__tests__/conditionalGateway.test.ts",
+            "back/services/__tests__/policyEngine.test.ts",
+            "back/services/__tests__/llmDecisionAdapter.test.ts",
+            "back/services/__tests__/llmDecisionSanitizer.test.ts",
+            "back/services/__tests__/llmRouterAdapter.test.ts",
+            "back/services/__tests__/mcpProxyLlmDecisionIntegration.test.ts",
+            "back/services/__tests__/loadPolicy.test.ts",
+            "back/services/__tests__/executionGateway.test.ts",
+            "back/services/__tests__/evaluationService.test.ts"
+          ],
+          "depends_on": [9],
+          "estimated_effort": "large"
+        },
+        {
+          "id": 17,
+          "title": "Update Vercel adapter import",
+          "description": "Update api/hosted/[[...route]].ts: change ../../back/services/hosted/app → @hosted/app.",
+          "files": ["api/hosted/[[...route]].ts"],
+          "depends_on": [8],
+          "estimated_effort": "small"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Update config and scripts",
+      "tasks": [
+        {
+          "id": 18,
+          "title": "Update package.json hosted:dev script",
+          "description": "Change hosted:dev from \"bun back/services/hosted/server.ts\" to \"bun hosted/server.ts\".",
+          "files": ["package.json"],
+          "depends_on": [8],
+          "estimated_effort": "small"
+        },
+        {
+          "id": 19,
+          "title": "Update vitest.back.config.ts",
+          "description": "Add resolve.alias block mapping @back, @shared, @hosted to filesystem paths. Expand include array to cover hosted/**/*.test.ts alongside back/**/*. Add hosted/ and shared/ to exclude if needed for node_modules.",
+          "files": ["vitest.back.config.ts"],
+          "depends_on": [8],
+          "estimated_effort": "small"
+        },
+        {
+          "id": 20,
+          "title": "Update eslint.config.js if needed",
+          "description": "Check if eslint.config.js references back/services/hosted or back/services/guardrail paths. Update if present. Current package.json lint script targets 'app back/services' — may need to add 'hosted' and 'back/guardrail'.",
+          "files": ["eslint.config.js", "package.json"],
+          "depends_on": [8, 9],
+          "estimated_effort": "small"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Clean up and verify",
+      "tasks": [
+        {
+          "id": 21,
+          "title": "Remove empty old directories",
+          "description": "rm -rf back/services/hosted, back/services/guardrail (if fully emptied), back/services/intelligence (if fully emptied). Verify with ls that they're gone.",
+          "files": [],
+          "depends_on": [9, 10, 11],
+          "estimated_effort": "small"
+        },
+        {
+          "id": 22,
+          "title": "Run TypeScript compilation check",
+          "description": "npx tsc --noEmit. Must pass with zero errors. Fix any type resolution failures.",
+          "files": [],
+          "depends_on": [12, 13, 14, 15, 16, 17],
+          "estimated_effort": "medium"
+        },
+        {
+          "id": 23,
+          "title": "Grep for stale import paths",
+          "description": "Verify no TS source references old paths: back/services/hosted, ../../guardrail/execution/executionGatewayContracts, ../../guardrail/debugLogger, ../../hosted/. Exclude docs/ directory.",
+          "files": [],
+          "depends_on": [22],
+          "estimated_effort": "small"
+        },
+        {
+          "id": 24,
+          "title": "Run full test suite",
+          "description": "npm run test:back. All tests must pass without assertion changes. Verify test discovery covers both back/ and hosted/ locations.",
+          "files": [],
+          "depends_on": [18, 19, 22],
+          "estimated_effort": "medium"
+        },
+        {
+          "id": 25,
+          "title": "Verify hosted dev server starts",
+          "description": "bun hosted/server.ts and curl localhost:3001/health. Confirm the server boots and responds.",
+          "files": [],
+          "depends_on": [18, 24],
+          "estimated_effort": "small"
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "total_tasks": 25,
+    "effort_breakdown": {
+      "small": 14,
+      "medium": 8,
+      "large": 3
+    },
+    "critical_path": [1, 4, 5, 9, 12, 16, 22, 24],
+    "parallelizable_groups": [
+      [1, 2, 3, 7],
+      [10, 11],
+      [14, 15, 16],
+      [18, 19, 20]
+    ]
+  }
+}

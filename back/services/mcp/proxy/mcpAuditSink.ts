@@ -1,4 +1,4 @@
-import type { AuditEvent } from "../../guardrail/execution/executionGatewayContracts";
+import type { AuditEvent } from "@shared/executionGatewayContracts";
 
 const mcpAuditEvents: AuditEvent[] = [];
 

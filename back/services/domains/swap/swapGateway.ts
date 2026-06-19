@@ -1,14 +1,18 @@
 import { createHash } from "node:crypto";
 
-import { debug } from "../../guardrail/debugLogger";
-import { classifyToolCall, createActionCandidate } from "../../guardrail/execution/executionGateway";
-import { COMPASS_DECISIONS } from "../../guardrail/execution/executionGatewayContracts";
-import { loadDefaultPolicy } from "../../guardrail/policy/loadPolicy";
-import { evaluateAction } from "../../guardrail/policy/policyEngine";
+import { debug } from "@back/guardrail/debugLogger";
+import { getPostHogClient, getInstallationDistinctId } from "@back/posthog/posthogClient";
+import {
+	classifyToolCall,
+	createActionCandidate,
+} from "@back/guardrail/execution/executionGateway";
+import { COMPASS_DECISIONS } from "@shared/executionGatewayContracts";
+import { loadDefaultPolicy } from "@hosted/policy/loadPolicy";
+import { evaluateAction } from "@hosted/policy/policyEngine";
 import type {
 	PolicyEvaluation,
 	PolicyEvaluationContext,
-} from "../../guardrail/policy/policyContracts";
+} from "@shared/policyContracts";
 import {
 	SWAP_FAIL_CLOSED_REASONS,
 	type EvaluateSwapGatewayInput,
@@ -68,6 +72,27 @@ export async function evaluateSwapGateway(
 		policyEvaluation,
 		classificationReasonCodes: classification.reasonCodes,
 		evaluatedAt,
+	});
+
+	getPostHogClient().capture({
+		distinctId: input.actorWallet ?? getInstallationDistinctId(),
+		event: "swap_evaluated",
+		properties: {
+			tool_name: toolName,
+			network: input.network,
+			decision: policyEvaluation.decision,
+			proposal_eligible: gate.proposalEligible,
+			requires_approval_card: gate.requiresApprovalCard,
+			input_token: input.inputToken,
+			output_token: input.outputToken,
+			input_amount: input.inputAmount,
+			amount_usd: policyContext.amount_usd,
+			slippage_bps: input.slippageBps,
+			protocol: input.protocol,
+			token_known: input.tokenKnown,
+			reason_codes: policyEvaluation.reasonCodes,
+			fail_closed_reason: "failClosedReason" in gate ? gate.failClosedReason : undefined,
+		},
 	});
 
 	return {

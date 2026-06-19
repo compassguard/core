@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { LlmRouterConfig, LlmRouterInput } from "../intelligence/llm-router/llmRouterContracts";
+import type { LlmRouterConfig, LlmRouterInput } from "@shared/llmRouterContracts";
 import {
 	resolveRouterConfig,
 	routeToolCall,
 	type LlmRouterProviderFn,
-} from "../intelligence/llm-router/llmRouterAdapter";
+} from "@hosted/llm/llmRouterAdapter";
 
 type TestRouterConfig = LlmRouterConfig & {
 	baseUrl?: string;

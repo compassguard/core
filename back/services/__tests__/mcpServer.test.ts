@@ -6,8 +6,6 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { describe, expect, it, vi } from "vitest";
 
 import type { DownstreamMcpTool } from "../mcp/mcpProxyContracts";
-import { createDownstreamStdioMcpClient } from "../mcp/downstreamMcpStdioClient";
-import { createProxyDispatcher } from "../mcp/mcpProxyDispatcher";
 import { parseDownstreamMcpRuntimeConfig } from "../mcp/mcpRuntimeConfig";
 import {
 	HIDDEN_INTERNAL_PRIMITIVE_NAMES,
@@ -215,6 +213,31 @@ describe("Wave 11 proxy-only MCP server entrypoint", () => {
 		});
 	});
 
+	it("tools/call denial envelopes surface hosted auditRef metadata", async () => {
+		const { createProxyMcpServerHandlers } = await loadMcpServer();
+		const handlers = createProxyMcpServerHandlers({
+			proxyCallTool: vi.fn().mockResolvedValueOnce({
+				outcome: "deny",
+				reason: "deny: Hosted evaluation timed out.",
+				auditRef: "aud_timeout_1",
+				suggestedAction: "Check hosted backend health.",
+			}),
+		});
+
+		const response = await handlers.callTool({
+			params: { name: "transfer_sol", arguments: { amountSol: 1 } },
+		});
+
+		expect(response).toMatchObject({
+			isError: true,
+			structuredContent: {
+				auditRef: "aud_timeout_1",
+				decision: "deny",
+				toolName: "transfer_sol",
+			},
+		});
+	});
+
 	it("denies fail-closed when the proxy call handler is absent", async () => {
 		const { createProxyMcpServerHandlers } = await loadMcpServer();
 		const handlers = createProxyMcpServerHandlers();
@@ -287,65 +310,14 @@ describe("Wave 11 proxy-only MCP server entrypoint", () => {
 		).toThrow(/not configured.*downstream stdio MCP server/i);
 	});
 
-	it("starts a real downstream stdio MCP server, lists tools, and forwards calls through policy", async () => {
-		const fixturePath = join(
-			process.cwd(),
-			"back/services/__tests__/fixtures/fakeDownstreamMcpServer.ts",
+	it("mcpServer entrypoint no longer imports the deprecated downstream client module", () => {
+		const source = readFileSync(
+			join(process.cwd(), "back/services/mcp/server/mcpServer.ts"),
+			"utf8",
 		);
-		const downstream = createDownstreamStdioMcpClient({
-			name: "fake-downstream",
-			command: "npx",
-			args: ["tsx", fixturePath],
-		});
 
-		try {
-			await downstream.start?.();
-			const dispatcher = createProxyDispatcher({ downstream });
-
-			const listResult = await dispatcher.listTools();
-			expect(listResult.tools.map((tool) => tool.name)).toEqual([
-				"read_file",
-				"list_directory",
-				"execute_command",
-			]);
-
-			const callResult = await dispatcher.callTool({
-				toolName: "read_file",
-				arguments: { path: "/tmp/example.txt" },
-			});
-			expect(callResult.outcome).toBe("allow");
-			expect(callResult.data).toMatchObject({
-				structuredContent: {
-					ok: true,
-					toolName: "read_file",
-					arguments: { path: "/tmp/example.txt" },
-				},
-			});
-		} finally {
-			await downstream.close?.();
-		}
-	}, 20_000);
-
-	it("does not forward MCP notifications through the request API", async () => {
-		const fixturePath = join(
-			process.cwd(),
-			"back/services/__tests__/fixtures/fakeDownstreamMcpServer.ts",
-		);
-		const downstream = createDownstreamStdioMcpClient({
-			name: "fake-downstream",
-			command: "npx",
-			args: ["tsx", fixturePath],
-		});
-
-		try {
-			await downstream.start?.();
-			await expect(
-				downstream.forwardSafeRequest?.({ method: "notifications/initialized" }),
-			).rejects.toThrow(/notification as a request/i);
-		} finally {
-			await downstream.close?.();
-		}
-	}, 20_000);
+		expect(source).not.toContain("downstreamMcpStdioClient");
+	});
 
 	it("works as a real stdio MCP server for SDK clients", async () => {
 		const fixturePath = join(

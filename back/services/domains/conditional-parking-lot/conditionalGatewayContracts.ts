@@ -2,12 +2,12 @@ import type {
 	ActionCandidate,
 	CompassDecision,
 	ToolClassification,
-} from "../../guardrail/execution/executionGatewayContracts";
+} from "@shared/executionGatewayContracts";
 import type {
 	CompassPolicy,
 	PolicyEvaluation,
 	PolicyEvaluationContext,
-} from "../../guardrail/policy/policyContracts";
+} from "@shared/policyContracts";
 
 export const CONDITIONAL_FAIL_CLOSED_REASONS = {
 	POLICY_DENIED: "policy_denied",

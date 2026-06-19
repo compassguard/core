@@ -6,7 +6,8 @@
  */
 
 import { Connection, ConnectionConfig } from '@solana/web3.js';
-import { debug } from '../../guardrail/debugLogger';
+
+import { debug } from '@back/guardrail/debugLogger';
 
 const RPC_URL = process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com';
 

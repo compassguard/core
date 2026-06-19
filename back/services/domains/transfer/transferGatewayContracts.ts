@@ -4,12 +4,12 @@ import type {
 	AuditEventInput,
 	CompassDecision,
 	ToolClassification,
-} from "../../guardrail/execution/executionGatewayContracts";
+} from "@shared/executionGatewayContracts";
 import type {
 	CompassPolicy,
 	PolicyEvaluation,
 	PolicyEvaluationContext,
-} from "../../guardrail/policy/policyContracts";
+} from "@shared/policyContracts";
 
 export const TRANSFER_AUDIT_LIFECYCLES = {
 	PROPOSAL_CREATED: "proposal_created",

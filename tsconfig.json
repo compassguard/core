@@ -16,7 +16,8 @@
     "baseUrl": ".",
     "paths": {
       "@back/*": ["back/*"],
-      "@shared/*": ["shared/*"]
+      "@shared/*": ["shared/types/*"],
+      "@hosted/*": ["hosted/*"]
     },
     "plugins": [{ "name": "next" }]
   },

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { buildAuditEvent } from "../guardrail/execution/executionGateway";
-import { COMPASS_DECISIONS } from "../guardrail/execution/executionGatewayContracts";
-import { loadDefaultPolicy } from "../guardrail/policy/loadPolicy";
-import { POLICY_REASON_CODES } from "../guardrail/policy/policyContracts";
+import { buildAuditEvent } from "@back/guardrail/execution/executionGateway";
+import { COMPASS_DECISIONS } from "@shared/executionGatewayContracts";
+import { loadDefaultPolicy } from "@hosted/policy/loadPolicy";
+import { POLICY_REASON_CODES } from "@shared/policyContracts";
 
 const policy = loadDefaultPolicy();
 
