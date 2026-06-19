@@ -22,7 +22,7 @@ describe("hybrid MCP stdio e2e", () => {
 			process.cwd(),
 			"back/services/__tests__/fixtures/fakeDownstreamMcpServer.ts",
 		);
-		const mcpServerPath = join(process.cwd(), "back/services/mcp/mcpServer.ts");
+		const mcpServerPath = join(process.cwd(), "back/services/mcp/server/mcpServer.ts");
 		const serverSnippet =
 			`import { startCompassMcpStdioServer } from ${JSON.stringify(mcpServerPath)};` +
 			"startCompassMcpStdioServer().catch((error) => {" +

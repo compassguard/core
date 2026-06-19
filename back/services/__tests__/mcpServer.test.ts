@@ -5,8 +5,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { describe, expect, it, vi } from "vitest";
 
-import type { DownstreamMcpTool } from "../mcp/mcpProxyContracts";
-import { parseDownstreamMcpRuntimeConfig } from "../mcp/mcpRuntimeConfig";
+import type { DownstreamMcpTool } from "../mcp/proxy/mcpProxyContracts";
+import { parseDownstreamMcpRuntimeConfig } from "../mcp/config/mcpRuntimeConfig";
 import {
 	HIDDEN_INTERNAL_PRIMITIVE_NAMES,
 	NATIVE_COMPASS_TOOL_NAMES,
@@ -14,7 +14,7 @@ import {
 
 async function loadMcpServer() {
 	try {
-		return await import("../mcp/mcpServer");
+		return await import("../mcp/server/mcpServer");
 	} catch (error) {
 		throw new Error(
 			`Wave 11 MCP proxy server entrypoint is missing or not loadable: ${String(error)}`,
@@ -271,7 +271,7 @@ describe("Wave 11 proxy-only MCP server entrypoint", () => {
 
 	it("mcpServer entrypoint does not import native MCP tool modules", () => {
 		const source = readFileSync(
-			join(process.cwd(), "back/services/mcp/mcpServer.ts"),
+			join(process.cwd(), "back/services/mcp/server/mcpServer.ts"),
 			"utf8",
 		);
 
@@ -324,7 +324,7 @@ describe("Wave 11 proxy-only MCP server entrypoint", () => {
 			process.cwd(),
 			"back/services/__tests__/fixtures/fakeDownstreamMcpServer.ts",
 		);
-		const mcpServerPath = join(process.cwd(), "back/services/mcp/mcpServer.ts");
+		const mcpServerPath = join(process.cwd(), "back/services/mcp/server/mcpServer.ts");
 		const serverSnippet =
 			`import { startCompassMcpStdioServer } from ${JSON.stringify(mcpServerPath)};` +
 			"startCompassMcpStdioServer().catch((error) => {" +

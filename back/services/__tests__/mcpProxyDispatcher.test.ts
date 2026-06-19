@@ -14,11 +14,11 @@ import {
 	HIDDEN_INTERNAL_PRIMITIVE_NAMES,
 	createFakeDownstreamMcpServer,
 } from "./fixtures/fakeDownstreamMcpServer";
-import { createProxyDispatcher } from "../mcp/mcpProxyDispatcher";
-import { PROXY_SAFE_METHODS } from "../mcp/mcpProxyContracts";
-import type { ProxiedMcpToolCall } from "../mcp/mcpProxyContracts";
-import { resetProxyAuditEvents } from "../mcp/mcpProxyAudit";
-import { classifyProxyToolCall } from "../mcp/mcpProxyPolicyInterceptor";
+import { createProxyDispatcher } from "../mcp/proxy/mcpProxyDispatcher";
+import { PROXY_SAFE_METHODS } from "../mcp/proxy/mcpProxyContracts";
+import type { ProxiedMcpToolCall } from "../mcp/proxy/mcpProxyContracts";
+import { resetProxyAuditEvents } from "../mcp/proxy/mcpProxyAudit";
+import { classifyProxyToolCall } from "../mcp/proxy/mcpProxyPolicyInterceptor";
 import type { HostedClient } from "../mcp/proxy/mcpHostedClientContracts";
 import type { EvaluateActionResponse } from "@shared/evaluationContracts";
 

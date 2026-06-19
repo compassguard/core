@@ -6,7 +6,7 @@ import {
 	loadRepoEnv,
 	parseEnvContents,
 	resetLoadRepoEnvFlag,
-} from "../mcp/loadRepoEnv";
+} from "../mcp/config/loadRepoEnv";
 import { getLogFile } from "@back/guardrail/debugLogger";
 
 function readDebugLog(): string {

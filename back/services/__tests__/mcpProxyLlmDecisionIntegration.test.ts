@@ -2,12 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
 import { createFakeDownstreamMcpServer } from "./fixtures/fakeDownstreamMcpServer";
-import { createProxyDispatcher } from "../mcp/mcpProxyDispatcher";
-import type { ProxiedMcpToolCall } from "../mcp/mcpProxyContracts";
+import { createProxyDispatcher } from "../mcp/proxy/mcpProxyDispatcher";
+import type { ProxiedMcpToolCall } from "../mcp/proxy/mcpProxyContracts";
 import {
 	listProxyAuditEvents,
 	resetProxyAuditEvents,
-} from "../mcp/mcpProxyAudit";
+} from "../mcp/proxy/mcpProxyAudit";
 import type { HostedClient } from "../mcp/proxy/mcpHostedClientContracts";
 import type { EvaluateActionResponse } from "@shared/evaluationContracts";
 
