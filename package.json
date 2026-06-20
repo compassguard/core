@@ -1,11 +1,18 @@
 {
   "name": "compass-mcp-guard",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
+  "bin": {
+    "compass-mcp-guard": "dist/mcpServer.js"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:mcp": "tsup",
     "start": "next start",
     "lint": "eslint app back hosted shared",
     "test": "vitest --config vitest.back.config.ts --run",
@@ -42,6 +49,7 @@
     "globals": "^15.9.0",
     "gray-matter": "^4.0.3",
     "sharp": "^0.34.5",
+    "tsup": "^8.5.1",
     "tsx": "^4.22.4",
     "typescript": "^5.5.3",
     "typescript-eslint": "^8.3.0",
