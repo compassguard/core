@@ -1,14 +1,35 @@
 {
-  "name": "compass-mcp-guard",
-  "private": true,
+  "name": "@ramadan04/compass-mcp-guard",
   "version": "0.1.0",
+  "description": "Execution firewall for AI agents on Solana. MCP proxy that validates, simulates, approves and audits every sensitive on-chain action before an AI agent can execute it.",
   "type": "module",
   "bin": {
     "compass-mcp-guard": "dist/mcpServer.js"
   },
+  "main": "dist/mcpServer.js",
   "files": [
     "dist"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ram4-dev/solana_hackathon.git"
+  },
+  "keywords": [
+    "mcp",
+    "solana",
+    "ai-agent",
+    "security",
+    "guardrail",
+    "execution-firewall",
+    "policy-engine",
+    "crypto",
+    "wallet"
+  ],
+  "author": "ramadan04",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",

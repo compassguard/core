@@ -74,6 +74,47 @@ npm run mcp:dev
 
 The MCP server communicates over stdio and requires a downstream MCP server configured. See `back/services/mcp/config/` for configuration.
 
+### Install Compass MCP With npx
+
+After the npm package is published, users can run Compass without cloning this repository.
+
+Add this MCP entry to your client config:
+
+```json
+{
+  "mcpServers": {
+    "compass": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@ramadan04/compass-mcp-guard",
+        "--downstream-name",
+        "solana-tools",
+        "--downstream-command",
+        "npx",
+        "--downstream-args-json",
+        "[\"@your-downstream/mcp-server\"]"
+      ],
+      "env": {
+        "COMPASS_HYBRID_GUARD_ENABLED": "true",
+        "COMPASS_HOSTED_API_URL": "https://your-vercel-preview.vercel.app/api/hosted",
+        "COMPASS_HOSTED_API_KEY": "your-hosted-api-key"
+      }
+    }
+  }
+}
+```
+
+Replace `@your-downstream/mcp-server` with the MCP server Compass should protect.
+
+For the current verified preview, use:
+
+```txt
+COMPASS_HOSTED_API_URL=https://solanahackathon-qf8nkder5-ramirocshubs-projects.vercel.app/api/hosted
+```
+
+Do not hardcode real API keys in committed config files. Use your MCP client's secret/env handling when available.
+
 ### Run Tests
 
 ```sh
