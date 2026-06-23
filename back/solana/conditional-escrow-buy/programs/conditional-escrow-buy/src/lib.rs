@@ -590,7 +590,10 @@ pub struct ExecuteOrder<'info> {
     )]
     pub vault_config: Account<'info, VaultConfig>,
 
-    #[account(mut)]
+    #[account(
+        mut,
+        constraint = recipient.key() == order.recipient @ ErrorCode::InvalidRecipient
+    )]
     pub recipient: SystemAccount<'info>,
 
     #[account(
