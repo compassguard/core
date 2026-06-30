@@ -2,14 +2,6 @@
 
 *Re-run of the custody-split research with the decision-context framing removed and an explicit anti-bias instruction (surface evidence that cuts against the apparent trend; treat "agents shouldn't hold keys" as advocacy). No execution-guard section.*
 
-> **Compass strategic read** *(added — not part of the research run).* This is the **de-biased** re-run; where it disagrees with the framed versions, trust this one.
->
-> **Net for us — it reinforces the provision-custody / veto strategy.** Holds-own-key is the dominant model today and is *structurally entrenched on Solana* (every tx needs a raw keypair fee-payer; PDAs can't pay fees), so the segment that can **only** be stopped by provisioning custody is large and Solana-heavy. The veto is not contraindicated — it's strengthened.
->
-> **What it challenges:**
-> - **(a) Over-weighting the "integrate at the existing signer" lane as *today's* majority.** That lane is real and growing, but smaller than the framed runs implied — its apparent dominance is inflated by **vendor-directory selection bias** (a catalog of purpose-built agent wallets is all-delegated, but that's a vendor list, not the agent population) and **vendor advocacy**.
-> - **(b) The assumption that the big holds-own-key segment will *want* what it structurally *needs*.** Retail trading/DeFi bots chose hot keys for **speed** and may resist a veto. This is an **adoption / ICP problem, not an architecture problem**: the architecture (veto) is right; sharpen *who we sell to* toward owners who want control over an agent — §01 drain victims, treasuries, agents spending **someone else's** money — not speed-maximizing self-traders.
-
 **Method:** 5-angle fan-out → 18 sources fetched → 82 claims extracted → 25 adversarially verified (3-vote). This run completed clean: **19 confirmed, 6 killed**, no rate-limit abstentions (vs. the framed run's 12 confirmed / 11 lost to a rate-limit). Evidence quality is materially higher here.
 
 ---
