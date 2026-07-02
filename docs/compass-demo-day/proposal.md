@@ -48,8 +48,8 @@ Goal: on devnet, the agent's funds sit behind a **Compass co-signature**, so the
 
 Goal: a stranger onboards into a **Compass-gated account** with a copy-paste block; the smart path works without local LLM config. *(You **provision** the account — you can't retrofit a stop onto a raw-key agent.)*
 
-- [ ] **Onboarding = create the co-sign account** (Squads multisig + issue the agent its insufficient key), funded with a devnet allowance. This is the install.
-- [ ] **Stable hosted endpoint** — production URL + a real key (replace the one-off Vercel preview-hash URL + shared hardcoded key).
+- [ ] **Onboarding = create the co-sign account** (Squads multisig + issue the agent its insufficient key), funded with a devnet allowance. This is the install. *(Demo: **manual/scripted** setup is fine — no polished one-command install needed; the old MCP-proxy `npx` install is not the thing anymore.)*
+- [ ] **Stable hosted endpoint** — production URL + a real key (replace the one-off Vercel preview-hash URL + shared hardcoded key). *(Demo: a **dev endpoint** runs the judge fine — a stable production URL + key is a plug-&-play concern, **post-demo**.)*
 - [ ] **Server-side inference wiring** — the judge runs in the hosted backend so the user configures **no LLM locally**; this plan owns the on/off default + the hosted call path.
 - [ ] **Approval channel — must-have.** Where `REQUIRE_APPROVAL` surfaces in Claude/Cursor. Doubles as the **false-positive label source** for the flywheel (an approved deny = an instant label). *(Scenario 2: transfer → approve → proceeds is dead without this.)*
 - [ ] **One verified copy-paste config block per client**, in the README.
@@ -68,7 +68,7 @@ Goal: the demo runs on real (devnet) transactions through the co-sign gate, reli
 
 Goal: the "problem is real" section — cheap instruments that **double as demo assets** and fill the validation plan's two open brackets (frequency, $ impact). *(Unchanged by the pivot — still valid.)*
 
-- [ ] **On-chain measurement harness** — count the failure-mode family (authority/approval changes, wrong-recipient, drained delegations) in agent-attributable Solana tx over N months. Output: the "problem proven, on-chain" slide + the *frequency* + *quantifiable impact* numbers.
+- [ ] **On-chain measurement harness** — count the failure-mode family (authority/approval changes, wrong-recipient, drained delegations) in agent-attributable Solana tx over N months. Output: the "problem proven, on-chain" slide + the *frequency* + *quantifiable impact* numbers. *(Demo: **trim to a small sample** or lean on the §01 incidents; the full multi-month harness is post-demo.)*
 - [ ] **§01 case curation** — verify the five incidents (Grok/Bankr ~$175K, JaredFromSubway $7.5M, Lobstar Wilde $450K, malicious LLM routers $500K, Cursor) against sources; keep the dated, dollar-quantified table demo-ready.
 - [ ] **GitHub demand harvest** — SAK issues #565 / #575 / #542 / #504 / #88 + independent spend-leash hacks (`onleash`, `@prflght/sak-plugin`, `up2itnow0822/agent-wallet-sdk`): counts, 👍, forks.
 - [ ] Interviews are the validation plan's job — **reference, don't duplicate.**
@@ -98,20 +98,27 @@ At the co-sign gate, every gated tx runs through:
 
 The line we do **not** cross: **Compass never holds a key that can move funds on its own.** v1 holds a **co-signing (veto) key** — one of the required signatures, can block, can't spend alone. **No** MPC / custodial relay / TEE-custody in v1 (they make us a custodian → money-transmitter / PCI-AML weight). Ship a **user recovery path** (2-of-3 or timelock) so we can't freeze either. *(v2 PDA removes even the veto key → attestation-only.)*
 
-## Build sequence (now ~2 weeks out)
+## Build sequence (now ~2 weeks out — nothing from the old Week 1 is built)
 
-*Week 1 (Jun 24–30) foundations assumed done. Today 2026-07-02 = Week 2.*
+*Today 2026-07-02. The original Week-1 foundations (stable hosted endpoint, devnet MCP downstream, on-chain harness) are **NOT done** — and the pivot changed what's needed, so we re-scope to the veto demo's **critical path**, not the old list.*
 
-**Week 2 (Jul 1–7) — the veto spine + usable:**
-- **WS0: stand up the co-sign account + Compass co-sign service** (the critical-path new work). Wire the gate into the decision path.
-- WS1: provision-custody onboarding + stable hosted endpoint + approval channel.
-- WS2: durable verdict store + outcome capture; end-to-end client verification through the co-sign gate.
-- WS3: on-chain harness + §01 curation + GitHub harvest.
-- *(judge workstream lands its intent-aware judge here, gating the co-signature.)*
+**Critical path — the demo doesn't exist without these:**
+1. **WS0 — co-sign spine:** a **Squads devnet account** (agent + Compass) + the **Compass co-sign service** + the **judge** deciding whether to co-sign. *The new #1.*
+2. **A real devnet tx through the gate** via **SAK-as-signer** (Compass is Solana Agent Kit's signer) — the reframed "downstream."
+3. **Judge on a dev endpoint** — not a production hosted endpoint.
+4. **§01 curation slide** — the cheap "problem is real" evidence.
+5. **A simple durable verdict store** showing decisions accumulating (a basic table is fine — the flywheel narrative).
+6. **Demo assembly + the bypass-fails beat.**
 
-**Week 3 (Jul 8–14) — assemble + rehearse:**
-- WS4: demo assembly (incl. the **bypass-fails** beat), rehearsal, recorded fallback.
-- Integration check with the judge workstream.
+**Cut or defer for the demo (do NOT spend the 2 weeks here):**
+- **Production hosted endpoint + plug-&-play install polish** — that was the old *MCP-proxy* install; the demo runs on a **dev endpoint** with **manual/scripted** provisioning.
+- **Full on-chain measurement harness** — **trim to a small sample** (or lean on the §01 incidents) for the slide; the multi-month harness is post-demo.
+- **v2 PDA** — post-demo endgame; don't touch it now.
+- **EVM adapter** — Solana-first.
+
+**Rough weeks:**
+- **Week 2 (now, Jul 1–7):** WS0 spine + SAK-through-gate + judge-on-dev-endpoint. *(judge workstream lands the intent-aware judge here, gating the co-signature.)*
+- **Week 3 (Jul 8–14):** simple verdict store + §01 slide + WS4 demo assembly (**bypass-fails** beat) + rehearsal + recorded fallback.
 
 ## Judge handoff contract
 
