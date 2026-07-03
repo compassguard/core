@@ -5,6 +5,10 @@ import {
 import { getPostHogClient, getInstallationDistinctId } from "@back/posthog/posthogClient";
 import { COMPASS_DECISIONS } from "@shared/executionGatewayContracts";
 import {
+	collapseToHostedDecision,
+	hostedRiskLevelFor,
+} from "@shared/evaluationContracts";
+import {
 	callLlmJudge,
 	clampLlmDecision,
 	resolveLlmConfig,
@@ -153,7 +157,7 @@ async function buildDecisionResponse(input: {
 			? "allow"
 			: llmDecision?.decision === "DENY"
 				? "deny"
-				: "confirm";
+				: "review";
 
 		return {
 			correlationId: request.correlationId,
@@ -163,7 +167,7 @@ async function buildDecisionResponse(input: {
 				"ROUTER_UNKNOWN",
 				...(llmDecision?.reasonCodes ?? []),
 			],
-			suggestedAction: decision === "confirm"
+			suggestedAction: decision === "review"
 				? "LLM judge could not classify with certainty; request user confirmation."
 				: undefined,
 			auditRef: "pending-audit",
@@ -216,8 +220,8 @@ async function buildDecisionResponse(input: {
 
 	return {
 		correlationId: request.correlationId,
-		decision: mapHostedDecision(clampedDecision.decision),
-		riskLevel: mapRiskLevel(clampedDecision.decision),
+		decision: collapseToHostedDecision(clampedDecision.decision),
+		riskLevel: hostedRiskLevelFor(clampedDecision.decision),
 		reasons,
 		suggestedAction: buildSuggestedAction(clampedDecision.decision),
 		auditRef: "pending-audit",
@@ -289,32 +293,6 @@ function buildAuditWriteRequest(
 			occurredAt: request.requestedAt,
 		},
 	};
-}
-
-function mapHostedDecision(
-	decision: PolicyEvaluation["decision"],
-): EvaluateActionResponse["decision"] {
-	switch (decision) {
-		case COMPASS_DECISIONS.ALLOW:
-			return "allow";
-		case COMPASS_DECISIONS.DENY:
-			return "deny";
-		default:
-			return "confirm";
-	}
-}
-
-function mapRiskLevel(
-	decision: PolicyEvaluation["decision"],
-): HostedRiskLevel {
-	switch (decision) {
-		case COMPASS_DECISIONS.ALLOW:
-			return HOSTED_RISK_LEVELS.LOW;
-		case COMPASS_DECISIONS.DENY:
-			return HOSTED_RISK_LEVELS.HIGH;
-		default:
-			return HOSTED_RISK_LEVELS.MEDIUM;
-	}
 }
 
 function buildSuggestedAction(

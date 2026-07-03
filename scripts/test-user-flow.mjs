@@ -114,7 +114,7 @@ async function main() {
   });
   const transferBody = JSON.stringify(transfer);
   assert(
-    transferBody.includes("confirm") || transferBody.includes("allow") ||
+    transferBody.includes("review") || transferBody.includes("allow") ||
     transferBody.includes("require_approval") || transferBody.includes("deny"),
     "sendToken → routed to hosted (decision made)",
     transferBody.slice(0, 300),
@@ -129,7 +129,7 @@ async function main() {
   });
   const swapBody = JSON.stringify(swap);
   assert(
-    swapBody.includes("confirm") || swapBody.includes("allow") ||
+    swapBody.includes("review") || swapBody.includes("allow") ||
     swapBody.includes("require_approval") || swapBody.includes("deny"),
     "swapToken → routed to hosted (decision made)",
     swapBody.slice(0, 300),
@@ -144,7 +144,7 @@ async function main() {
   });
   const orderBody = JSON.stringify(order);
   assert(
-    orderBody.includes("confirm") || orderBody.includes("allow") ||
+    orderBody.includes("review") || orderBody.includes("allow") ||
     orderBody.includes("require_approval") || orderBody.includes("deny"),
     "createOrder → routed to hosted (decision made)",
     orderBody.slice(0, 300),

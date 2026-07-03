@@ -1,7 +1,10 @@
+import { COMPASS_DECISIONS } from "./executionGatewayContracts";
+import type { CompassDecision } from "./executionGatewayContracts";
+
 export const HOSTED_DECISIONS = {
 	ALLOW: "allow",
 	DENY: "deny",
-	CONFIRM: "confirm",
+	REVIEW: "review",
 } as const;
 
 export type HostedDecision =
@@ -131,4 +134,30 @@ export function isHostedDecision(value: unknown): value is HostedDecision {
 
 export function isHostedRiskLevel(value: unknown): value is HostedRiskLevel {
 	return Object.values(HOSTED_RISK_LEVELS).includes(value as HostedRiskLevel);
+}
+
+export function collapseToHostedDecision(
+	decision: CompassDecision,
+): HostedDecision {
+	switch (decision) {
+		case COMPASS_DECISIONS.ALLOW:
+			return HOSTED_DECISIONS.ALLOW;
+		case COMPASS_DECISIONS.DENY:
+			return HOSTED_DECISIONS.DENY;
+		default:
+			return HOSTED_DECISIONS.REVIEW;
+	}
+}
+
+export function hostedRiskLevelFor(
+	decision: CompassDecision,
+): HostedRiskLevel {
+	switch (decision) {
+		case COMPASS_DECISIONS.ALLOW:
+			return HOSTED_RISK_LEVELS.LOW;
+		case COMPASS_DECISIONS.DENY:
+			return HOSTED_RISK_LEVELS.HIGH;
+		default:
+			return HOSTED_RISK_LEVELS.MEDIUM;
+	}
 }

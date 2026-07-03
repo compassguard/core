@@ -259,7 +259,7 @@ async function executeAllowedToolCall(input: {
 
 function mapHostedDecision(response: EvaluateActionResponse): ProxyDecision {
 	return {
-		outcome: response.decision === "confirm" ? "require_approval" : "deny",
+		outcome: response.decision === "review" ? "require_approval" : "deny",
 		hostedDecision: response.decision,
 		reason: buildHostedReason(response),
 		suggestedAction: response.suggestedAction,

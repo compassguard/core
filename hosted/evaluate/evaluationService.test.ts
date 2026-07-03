@@ -106,7 +106,7 @@ describe("createEvaluationService", () => {
 		const response = await service.evaluateAction(createRequest());
 
 		expect(response).toMatchObject({
-			decision: "confirm",
+			decision: "review",
 			riskLevel: "medium",
 			auditRef: "aud_test_1",
 		});
@@ -170,7 +170,7 @@ describe("createEvaluationService", () => {
 		expect(response.reasons).toContain("LLM_DENY");
 	});
 
-	it("applies policy and lets the LLM tighten an allowed transfer into confirm", async () => {
+	it("applies policy and lets the LLM tighten an allowed transfer into review", async () => {
 		const deps = createDependencies({
 			loadPolicy: vi.fn().mockReturnValue({ policy_id: "default-conservative" }),
 			evaluatePolicy: vi.fn().mockReturnValue({
@@ -191,7 +191,7 @@ describe("createEvaluationService", () => {
 		const response = await service.evaluateAction(createRequest());
 
 		expect(response).toMatchObject({
-			decision: "confirm",
+			decision: "review",
 			riskLevel: "medium",
 			auditRef: "aud_test_1",
 			suggestedAction: "Request explicit user confirmation before execution.",

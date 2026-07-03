@@ -28,7 +28,7 @@ function createMockHostedClient(
 	return {
 		evaluateAction: vi.fn().mockResolvedValue({
 			correlationId: "corr_default",
-			decision: "confirm",
+			decision: "review",
 			riskLevel: "medium",
 			reasons: ["HOSTED_DEFAULT"],
 			suggestedAction: "Request explicit human approval before execution.",
@@ -620,7 +620,7 @@ describe("Wave 11 MCP proxy dispatcher — hybrid hosted guard", () => {
 		const hostedClient: HostedClient = {
 			evaluateAction: vi.fn().mockResolvedValue({
 				correlationId: "corr_hosted_confirm",
-				decision: "confirm",
+				decision: "review",
 				riskLevel: "medium",
 				reasons: ["TRANSFER_UNKNOWN_RECIPIENT"],
 				suggestedAction: "Request explicit user confirmation before execution.",

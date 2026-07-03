@@ -23,7 +23,7 @@ import type {
 
 describe("hybrid hosted contracts", () => {
 	it("exposes canonical hosted decisions and risk levels", () => {
-		expect(Object.values(HOSTED_DECISIONS)).toEqual(["allow", "deny", "confirm"]);
+		expect(Object.values(HOSTED_DECISIONS)).toEqual(["allow", "deny", "review"]);
 		expect(Object.values(HOSTED_RISK_LEVELS)).toEqual([
 			"low",
 			"medium",
@@ -85,7 +85,7 @@ describe("hybrid hosted contracts", () => {
 		const decision: ProxyDecision = {
 			outcome: "require_approval",
 			reason: "Hosted confirmation required.",
-			hostedDecision: "confirm",
+			hostedDecision: "review",
 			suggestedAction: "Ask the user for confirmation.",
 		};
 		const result: ProxyCallToolResult = {
@@ -103,7 +103,7 @@ describe("hybrid hosted contracts", () => {
 		};
 
 		expect(result.auditRef).toBe("aud_123");
-		expect(result.policyDecision?.hostedDecision).toBe("confirm");
+		expect(result.policyDecision?.hostedDecision).toBe("review");
 		expect(policyResponse.rules).toEqual({
 			transfers: { maxUsdWithoutApproval: 10 },
 		});

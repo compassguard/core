@@ -17,7 +17,7 @@ function createDependencies(): HostedAppDependencies {
 		evaluations: {
 			evaluateAction: vi.fn().mockResolvedValue({
 				correlationId: "corr_route_1",
-				decision: "confirm",
+				decision: "review",
 				riskLevel: "medium",
 				reasons: ["TRANSFER_UNKNOWN_RECIPIENT"],
 				suggestedAction: "Request explicit user confirmation before execution.",
@@ -73,7 +73,7 @@ describe("createHostedApp", () => {
 
 		expect(response.status).toBe(200);
 		expect(await response.json()).toMatchObject({
-			decision: "confirm",
+			decision: "review",
 			auditRef: "aud_route_1",
 		});
 	});
@@ -115,7 +115,7 @@ describe("createHostedApp", () => {
 					correlationId: "corr_audit_1",
 					auditRef: "aud_audit_1",
 					toolName: "transfer_sol",
-					decision: "confirm",
+					decision: "review",
 					riskLevel: "medium",
 					reasons: ["TRANSFER_UNKNOWN_RECIPIENT"],
 					occurredAt: "2026-06-17T12:00:01.000Z",
@@ -142,7 +142,7 @@ describe("createHostedApp", () => {
 					correlationId: "corr_audit_1",
 					auditRef: "aud_audit_1",
 					toolName: "transfer_sol",
-					decision: "confirm",
+					decision: "review",
 					riskLevel: "medium",
 					reasons: ["TRANSFER_UNKNOWN_RECIPIENT"],
 					occurredAt: "2026-06-17T12:00:01.000Z",
