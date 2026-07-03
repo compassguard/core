@@ -1,157 +1,225 @@
 # Compass — Demo-Day Build Plan (mid-July)
 
-> **Status: DRAFT / proposal — shared for discussion, not yet the official plan.**
-> Updated: 2026-06-24. Grounded in a read of this repo @ `release/compass_migration`.
-> Scope note: this plan covers everything *around* the judge — the judge itself
-> (un-blinding, model, structured output, intent-vs-mandate logic) is owned by a
-> separate workstream and only meets this plan at the [handoff contract](#judge-handoff-contract).
+> **Status: re-scoped 2026-07-03 to a `/verify`-endpoint MVP.** Supersedes the "veto/co-sign spine as the demo centerpiece" framing (2026-07-02). That architecture is **unchanged as the long-term enforcement thesis** but is now sequenced **post-MVP**. Grounded in a read of this repo @ `release/compass_migration`.
 
-*~3 weeks out (today: 2026-06-24). What's needed to get to a demo, **excluding the judge**. This doc covers everything around it.*
+*Updated **2026-07-03** — the shippable MVP + Demo-Day centerpiece is the `/verify` decision endpoint. ~2 weeks to Demo Day (15–17 Jul).*
+
+> **MVP framing:** the shippable MVP + Demo-Day centerpiece is the **`/verify` decision endpoint** — a **fast, deterministic, stateless, advisory, zero-custody** HTTP API; **every call → the durable verdict store**. The ratified **veto/co-sign spine (Squads v1 → PDA v2)** becomes the **enforcement roadmap** — **same engine + a required key** — explicitly **post-MVP**.
+
+## Why this re-scope (ship the brain, add the teeth later)
+
+The enforcement thesis from the **veto pivot (2026-07-02)** is unchanged: only a **required signer** can actually *stop* a compromised agent — an advisory layer can see but can't block. But co-sign's **onboarding cost** (provisioning a Squads allowance account per user) is the **heaviest, riskiest** part of a 2-week plan.
+
+The **decision engine** — the deterministic tripwire (caps, allowlist, denylist, `authority_change`/`unlimited_delegate`) — is **already REAL** (312 tests). Wrapped behind a **stateless `POST /verify`**, it ships in days, needs **zero custody**, and **any dev (or x402 partner) can call it**. Every call is a **labeled decision → the flywheel/moat**, fed friction-free.
+
+So we **ship the brain (`/verify`) as the MVP + demo**, and keep **co-sign as the enforcement upgrade** (same engine + a required key). `/verify` is **advisory** (bypassable); **co-sign makes `deny` non-bypassable** — that's the roadmap slide, not the MVP.
+
+> **Honest line to hold:** `/verify` alone is **advisory**. For cooperative devs who want a fast safety check they'll honor, that's real, shippable value — and the data firehose is the moat. The **"stop a compromised agent / raw-key bypass"** guarantee needs **co-sign** — kept explicitly on the roadmap so the pitch doesn't overclaim.
+
+## One engine, many adapters (the shape that ties it together)
+
+The same **Decision Engine** (`tx/intent → verdict`) is a plain, transport-agnostic HTTP brain. **The MCP proxy is NOT the engine — it's one *adapter that calls* the engine.** Ports-and-adapters (the same shape used for "the chain layer is a swappable adapter"): build the brain once; how actions *reach* it and how verdicts are *enforced* are pluggable edges.
+
+```
+   Claude/Cursor agent               ┌───────────────────────────┐
+        │ tools/call                 │   COMPASS DECISION ENGINE  │
+        ▼                            │   (deterministic tripwire) │
+   [MCP sensor/proxy] ─── HTTP ────► │  POST /verify  → verdict   │
+     (adapter #1, agent devs)        │  (phase 2)     → outcome   │──► Verdict Store
+                                     │                            │
+   x402 partner / backend ─ HTTP ──► │       (same engine)        │
+     (adapter #2, raw HTTP)          └───────────────────────────┘
+                                                  ▲
+   (later) co-sign service ── same engine + a required key ──► enforcement
+```
+
+**What flips advisory → enforcing is not the endpoint — it's custody topology (whose signature the money requires):**
+
+| Surface | Depth | Holds a key? | Bypassable? | Onboarding | Status |
+|---|---|---|---|---|---|
+| **`POST /verify`** | fast deterministic | no | yes (advisory) | zero (`curl` / `mcp add`) | **MVP** |
+| **verify phase 2** (outcome) | post-exec read-back | no | — (post-hoc) | zero via sensor | **MVP** |
+| **Co-sign gate** | same engine + signature | **yes** | **no** (structural) | provision Squads account | **roadmap** |
+
+**Both MVP adapters, one engine — the distribution play:** ship the **MCP package** (npm — already REAL) for agent-framework devs *and* the **HTTP API + docs** for partners. Coverage differs by adapter:
+
+| | Pre-check (the decision) | Post-check (outcome verify, phase 2) |
+|---|---|---|
+| **MCP adapter** | ✅ automatic | ✅ **automatic** — the sensor is *in the execution path*, so it sees the tx |
+| **Raw HTTP** | ✅ (their call) | ⚠️ **not automatic** — the caller executes on their own infra; a `confirm {correlationId, txSignature}` call opts them in. Fully-automatic = a **chain-watcher, post-MVP** |
+
+The asymmetry is a **visibility boundary**, not a shortcut: to verify an outcome you must *observe* it. **Verification rides the trusted wrapper around the agent, not the agent** — the MCP sensor is a ready-made pre+post wrapper; a raw-HTTP integrator's own backend is their wrapper.
+
+## What the demo must show — the 3-act arc
+
+A produced/recorded promo (record a fallback regardless), on the Solana stack:
+
+- **Act 1 · Install.** `claude mcp add compass` wraps the agent's Solana MCP behind Compass → "policy gate active." *(The MCP sensor is the client that calls `/verify`.)*
+- **Act 2 · Enforcement inside a Claude chat.** One legitimate payment passes (**allow**); bad ones **blocked with human-readable reasons** — over-limit / unknown recipient (**deterministic**), off-mandate / authority-change (**deterministic**). After the legit payment executes, **Compass reads the chain back and confirms it did exactly what was intended** (the outcome-verify beat). *(The **prompt-injection catch** = the instruction-provenance leg, and the **raw-key-bypass block** = co-sign — both **roadmap**, shown scripted, labeled "next.")*
+- **Act 3 · The Guard Console.** Live counter (allowed / denied / total); **Recent Decisions** audit log rendered from the **verdict store**; **Policy Engine** with editable rules. *"Every action — logged, attributed, auditable. Policies you control."*
+
+> **REAL for the MVP:** Acts 1 & 3, the **deterministic blocks** in Act 2, and the **outcome-verify beat** (MCP path). **Co-sign** ("co-signed it" / raw-key bypass) and **prompt-injection** are the **enforcement/provenance roadmap** — in the promo, scripted, flagged as next.
 
 ## Scope
 
-**In scope:** plug & play install, demo readiness (real devnet downstream, approval path, client verification), durable verdict store, validation evidence that doubles as demo assets, demo assembly.
+**In (MVP):** the `/verify` endpoint + fast deterministic engine (WS0); durable **verdict store + flywheel** incl. **active outcome capture** (WS1); **dev distribution** via both adapters (WS2); the **policy console**; **validation-evidence** slide (WS3); the **3-act demo** (WS4).
 
-**Out of scope (separate workstream — "judge"):** un-blinding the judge to intent/mandate, model selection + structured outputs, letting it arbitrate intent-vs-amount, judge reliability/determinism. This plan only touches the **integration points** with the judge (the on/off flag, the hosted inference wiring, and the verdict schema the store persists) — see [Judge handoff contract](#judge-handoff-contract).
+**Roadmap (post-MVP — was the critical path):** the **co-sign spine (Squads v1) → PDA v2** = non-bypassable enforcement; **effect-simulation** (Blockaid/Blowfish) + **LLM judge** = the async **"deep verify"** tier (the [judge-unblinding workstream](../judge-unblinding/proposal.md)); **instruction-provenance** (the prompt-injection catch); the **chain-watcher** for raw-HTTP outcome reconciliation.
+
+**Out:** EVM adapter (Solana-first; chain layer is a swappable adapter); MPC / custodial relay / TEE-custody (liability — see [Liability ceiling](#liability-ceiling)).
 
 ## Starting line (current code state)
 
-Grounded in the repo, so this is **hardening + evidence, not building from scratch**:
+Grounded in the repo — **hardening + packaging, not building from scratch**:
 
-- **P1 MCP proxy — REAL**, shipped to npm (`@ramadan04/compass-mcp-guard`), `tools/list` passthrough + `tools/call` interception, fail-closed, 312 tests.
-- **Policy/classification engine — REAL** (caps, allowlists, `authority_change`/`unlimited_delegate` deny flags, tool risk classes).
-- **P3 co-signer / on-chain — REAL but ORPHANED** (devnet Anchor programs + verifier exist, not wired into the live path; proxy is pure passthrough). *Not needed for this demo — leave orphaned.*
-- **Audit store — in-memory `Map`** (wiped on restart, omits amount/recipient/rationale). Must become durable (WS2).
-- **Demo path — runs vs a MOCK downstream**, needs a live external LLM, flaky; the 3 canonical Claude/Cursor scenarios are still unchecked in `docs/MVP_CHECKLIST.md`.
-- **Judge — off by default**, blind to intent. (Separate workstream.)
+- **Policy/classification engine — REAL** (caps, allowlists, `authority_change`/`unlimited_delegate` deny flags), 312 tests = **the deterministic engine the `/verify` MVP wraps.** *(Caveat below — flags derive from self-reported args today; the MVP needs the decode half to be honest.)*
+- **P1 MCP proxy — REAL**, shipped to npm (`@ramadan04/compass-mcp-guard`), `tools/list` passthrough + `tools/call` interception, 312 tests. **Repositioned as the sensor / `/verify` adapter** — it fires `/verify` pre-call and the outcome check post-call, so agent devs get the full loop from one `mcp add`.
+- **Co-signer / on-chain — REAL, now the ROADMAP spine** (devnet Anchor programs: `agent-action-guard` — `UserPolicy`, `ActionApproval`, guarded transfer via CPI). **The MVP does not depend on it;** it's the non-bypassable upgrade. See [Appendix](#appendix--solana-integration-status).
+- **Audit store — in-memory `Map`** → becomes the **durable verdict store + flywheel** (WS1): decision **+ context + outcome**, keyed by `correlationId`.
 
-## What the demo must show
+> **⚠️ MVP honesty gap (from the [judge-unblinding workstream](../judge-unblinding/proposal.md)):** today `evaluationService.derivePolicyContext` builds `flags.authority_change` from the agent's **self-reported args**, not the real tx. So a compromised/injected agent that omits the flag passes the deterministic check. For the `/verify` MVP to be honest, it must derive flags from the **decoded tx (ground truth)** — the **decode half** of un-blinding — even though the **simulate + LLM half** is the post-MVP deep-verify tier. Caps and recipient/allowlist checks *can* run on decoded ground truth today; authority-change detection needs the decode step. See [decision tiers](#the-decision-tiers-mvp--tier-1).
 
-> A real agent in Claude/Cursor → a **real devnet Solana MCP** behind Compass → an action that **caps would pass but is outside the owner's mandate** gets stopped, with a plain-English reason — and it's backed by **real, on-chain §01 evidence** that this attack class is real.
+## Workstream 0 — the `/verify` endpoint + fast deterministic engine · MVP, critical path
 
-The *blocking decision itself* is the judge's job (separate workstream). **This plan delivers everything around it** so that the moment the judge lands, the demo is whole: the install, the real downstream, the approval surface, the durable verdict trail, and the problem-is-real evidence.
+Goal: the already-REAL engine, behind a stateless HTTP API any dev or x402 partner can call, fast enough to sit inline.
 
-## Workstream 1 — Plug & play
+- [ ] **`POST /verify`** — input `{tx | intent: {tool, amount, recipient, mandate/context}}` → output `{decision: allow|deny|review, reasons[], human_explanation, correlationId}`.
+- [ ] **Deterministic only** — caps, allowlist, denylist, `authority_change`/`unlimited_delegate`; **decode-based** (derive flags from the real instruction, not self-reported args), **no effect-simulation, no LLM** → target **<~100ms**.
+- [ ] **Record every call** to the verdict store keyed by `correlationId`, capturing the **intended effect** (so phase 2 has something to compare against).
+- [ ] **MCP sensor adapter** — the proxy auto-calls `/verify` pre-tool-call and drives phase 2 post-execution; raw HTTP stays open for x402 partners / direct integrators.
+- [ ] **Verify phase 2 (outcome verification)** — the post-execution check (see [design](#the-post-execution-verification-step-phase-2)). Automatic on the MCP path; an optional `confirm` call on raw HTTP.
 
-Goal: a stranger can install Compass in one client with a copy-paste block, and the smart path works without local LLM config.
+## Workstream 1 — Durable verdict store + flywheel (the moat)
 
-- [ ] **Stable hosted endpoint.** Replace the one-off Vercel *preview-hash* URL + shared hardcoded key with a production URL and a key a fresh installer can actually use. *(today: `solanahackathon-…vercel.app` + `compass-hc-…`)*
-- [ ] **Server-side inference wiring** (integration point with judge workstream). The judge runs in the hosted backend so the user configures **no LLM locally** — this plan owns the on/off flag default + the hosted call path; the judge workstream owns what runs inside it.
-- [ ] **Approval channel — real gap, must-have.** Decide where `REQUIRE_APPROVAL` surfaces in Claude/Cursor. Today a raw npx+client setup has no UI for it, so it likely soft-dead-ends. Pick one: local web/CLI approval prompt, or an "approve" tool the agent relays. **Demo scenario 2 (transfer → approve → proceeds) is dead without this.**
-- [ ] **One verified copy-paste config block per client**, documented in the README.
-- [ ] *(nice-to-have)* **Downstream presets** — `--protect solana-agent-kit` alias instead of hand-written `--downstream-command/--downstream-args-json` JSON.
-- [ ] *(nice-to-have)* **Fresh-install fallback** — today a failed hosted call = fail-closed DENY = "nothing works"; decide a sane default or a clear error.
+Goal: every decision (and its outcome) captured — the labeled dataset the observe path can't produce.
 
-## Workstream 2 — Demo readiness
+- [ ] **Durable store** — persist **decision + full context** (tool, amount, recipient, mandate/intent, reasons, human_explanation, timestamp, `correlationId`) **AND outcome**. SQLite / Postgres / Vercel KV — fastest to ship.
+- [ ] **Active outcome capture (phase 2)** — the outcome-verify result **auto-labels false-negatives** (mismatch) instead of waiting for a human dispute; overrides still label false-positives.
+- [ ] **This is what the console (Act 3) renders** — Recent Decisions + the live counter.
 
-Goal: the demo runs on real (devnet) transactions, reliably, in one client.
+## Workstream 2 — Distribution / dev onboarding (both adapters, plug & play)
 
-- [ ] **Wire a real devnet Solana MCP as the downstream** (replace `scripts/test-downstream-mcp.mjs` mock). Candidate: Solana Agent Kit MCP / Phantom MCP on devnet.
-- [ ] **Durable verdict store** (replace the in-memory `Map`). Persist **full context**: tool, **amount, recipient**, decision, risk, reasons, **mandate/intent**, rationale, timestamp. Two payoffs: (a) the demo can show the verdict dataset *accumulating* (the moat narrative), (b) it's the schema the judge writes into — define it here, see handoff contract. Storage: SQLite / Postgres / Vercel KV — whatever's fastest to ship.
-- [ ] **Verify end-to-end in ONE client** (Claude **or** Cursor) with the 3 canonical scenarios (balance→ALLOW, transfer→APPROVAL, swap→DENY). Fix whatever breaks. *(these are the unchecked items in `docs/MVP_CHECKLIST.md`)*
-- [ ] **De-flake the non-judge parts of the demo path** — stable downstream, deterministic scenario inputs. *(LLM-determinism is the judge workstream's concern.)*
-- [ ] **Delete the stale `docs/wave-8-demo-hardening/runbook.md`** — it imports code deleted in wave 11; do not use it.
+Goal: a stranger integrates in minutes — **no custody provisioning** (that dropped out with the co-sign deferral).
+
+- [ ] **MCP adapter** — one copy-paste `mcp add compass` snippet per client (Claude / Cursor); wraps their existing Solana MCP; full pre+post loop.
+- [ ] **HTTP adapter** — API key + endpoint URL + docs for `POST /verify` (x402 partners / custom backends); pre-check now, optional `confirm` for phase 2.
+- [ ] **Approval channel** for `review` / `REQUIRE_APPROVAL` — where it surfaces in the client; doubles as the **false-positive label source**.
+- [ ] **Stable dev endpoint** — a dev URL + real key is enough for the MVP (a production hosted URL is post-MVP polish).
+- [ ] **Get it in front of ≥1–2 devs** → feedback + real transaction data.
 
 ## Workstream 3 — Validation evidence
 
-Goal: the demo's "problem is real" section, built from cheap instruments that **double as demo assets** and fill the validation plan's two open brackets (frequency, $ impact).
+*(Unchanged by the re-scope — still the "problem is real" section; the demo assets double as validation evidence.)*
 
-- [ ] **On-chain measurement harness** — count the failure-mode family (authority/approval changes, wrong-recipient, drained delegations) in agent-attributable Solana tx over N months. Output: the "problem proven, on-chain" slide **and** the validation plan's *frequency* + *quantifiable impact* numbers.
 - [ ] **§01 case curation** — verify the five incidents (Grok/Bankr ~$175K, JaredFromSubway $7.5M, Lobstar Wilde $450K, malicious LLM routers $500K, Cursor) against sources; keep the dated, dollar-quantified table demo-ready.
-- [ ] **GitHub demand harvest** — SAK issues #565 / #575 / #542 / #504 / #88 + independent spend-leash hacks (`onleash`, `@prflght/sak-plugin`, `up2itnow0822/agent-wallet-sdk`): counts, 👍, forks. Output: a revealed-demand slide.
-- [ ] Interviews are the validation plan's job — **reference, don't duplicate** here.
+- [ ] **On-chain measurement harness** — count the failure-mode family (authority/approval changes, wrong-recipient, drained delegations) in agent-attributable Solana tx. *(Demo: **trim to a small sample** or lean on §01; the multi-month harness is post-demo.)*
+- [ ] **GitHub demand harvest** — SAK issues #565 / #575 / #542 / #504 / #88 + independent spend-leash hacks (`onleash`, `@prflght/sak-plugin`, `up2itnow0822/agent-wallet-sdk`): counts, 👍, forks.
+- [ ] Interviews are the validation plan's job — **reference, don't duplicate.**
 
-> **Validation-gating:** per the problem-validation plan, the demo's headline scenario should follow what the on-chain harness + §01 show is the **real, frequent** failure mode — don't hard-code the ~$0 authority-change if the data says the live pain is wrong-recipient or something else. The three outcomes (Real-now / Real-not-yet / Not-real) still apply; the mid-July demo presents whichever is honest.
+> **Validation-gating + ICP:** aim the demo/pitch at **owners worried about an agent** — treasuries, §01 drain victims, agents spending *someone else's* money — not speed-maximizing self-traders. Let the on-chain harness + §01 pick the **headline failure mode**; don't hard-code the ~$0 authority-change if the data says wrong-recipient is the live pain.
 
-## Workstream 4 — Demo assembly & narrative
+## Workstream 4 — Demo assembly & narrative (the 3-act promo)
 
-Goal: one rehearsed arc, with a fallback if the stage flakes.
-
-- [ ] **The arc:** problem-proven (WS3) → live intercept on real devnet MCP (WS1+2) → verdict dataset accumulating (WS2 durable store) → the ask.
-- [ ] **Decide live vs recorded** (depends on how reliable the live path is by week 3).
-- [ ] **Record a fallback** walkthrough regardless, in case live devnet/LLM flakes on stage.
+- [ ] **The arc:** problem-proven (WS3) → **Act 1 install** → **Act 2 enforcement in a Claude chat** (deterministic blocks + the outcome-verify beat; co-sign + injection scripted as "next") → **Act 3 Guard Console + Policy Engine** (verdict store accumulating) → the ask.
+- [ ] **Produced/recorded promo** in the style of the 3-act reference; **record a fallback** regardless.
 - [ ] Rehearse end to end.
 
-## Build sequence (3 weeks)
+## The post-execution verification step (phase 2)
 
-Workstreams are largely independent — parallelize. The judge workstream lands in parallel and slots in via the handoff contract. (dev3pack Bridge timeline: Founder School to 9 Jul, **Demo Day & Selection 15–17 Jul**.)
+Closes the loop: confirm the tx that **executed** matches the intent that was **approved** — catching what the pre-flight decision missed (side effects, post-approval divergence). Framed as **phase 2 of the `/verify` flow, tied by `correlationId`** — *not* a separate opt-in developer endpoint (a check the agent must remember to call would re-create an "it didn't notice" gap).
 
-**Week 1 (Jun 24–30) — foundations, all parallel:**
-- WS1: stand up the stable hosted endpoint + key.
-- WS2: wire the real devnet Solana MCP as downstream.
-- WS3: on-chain harness + §01 curation.
+**Flow (deterministic, advisory):**
+1. After executing, the **trusted wrapper** — the MCP sensor automatically, or a raw-HTTP partner's own backend — calls phase 2 with `{correlationId, txSignature}`.
+2. Look up the recorded **intended effect** (from the `/verify` call) by `correlationId`.
+3. Fetch the **confirmed tx** (`getTransaction`) → derive the **actual effect**: real recipient(s), amount(s), balance deltas, **any extra instructions/CPIs** (a hidden `SetAuthority`, an added transfer, an `approve`).
+4. **Deterministic compare** intended vs actual → `{outcome: match | mismatch, discrepancies[], correlationId}`.
+5. **Write the outcome to the verdict store** → turns the outcome field from *passive* (wait for a human dispute) to *active*.
 
-**Week 2 (Jul 1–7) — make it usable + provable:**
-- WS1: approval channel.
-- WS2: durable verdict store + end-to-end client verification.
-- WS3: GitHub harvest.
-- *(judge workstream expected to land its on-by-default, intent-aware judge here)*
+**Why it's a step, not an endpoint:** the check must ride the **trusted control plane** (sensor / partner backend), never the possibly-injected agent. The MCP sensor makes it automatic and unskippable; a raw partner opts in via a `confirm` call; a **chain-watcher** (post-MVP) makes it automatic for raw callers too.
 
-**Week 3 (Jul 8–14) — assemble + rehearse:**
-- WS4: demo assembly, rehearsal, recorded fallback.
-- Integration check with the judge workstream.
+**Two tiers:**
+- **MVP (detect):** read-back + label. **Demo beat:** "sent exactly 25 to the intended recipient — verified," plus one **caught mismatch** ("executed, but an extra approval slipped in — flagged").
+- **Enforcement-tier (post-MVP, with co-sign):** mismatch → **withhold the agent's NEXT co-signature / revoke the allowance.** Detect becomes **contain** — needs the co-sign spine.
 
-## Judge handoff contract
+> **Note:** the Verdict Store is the **ledger, not the checker** — it *records* the outcome; this step *produces* it. And post-hoc verification **detects, it cannot undo** a finalized tx: its value is the labeled false-negative for the flywheel, blocking the *next* step once co-sign exists, and alerting — not prevention.
 
-The clean interface so the two workstreams compose without stepping on each other.
-The judge workstream — un-blinding the judge to the real tx (decode + simulate, intent-vs-mandate) — is
-spec'd in [`docs/judge-unblinding/`](../judge-unblinding/proposal.md)
-([technical detail](../judge-unblinding/technical-spec.md)). **It is demo-day-critical**: the headline
-mandate-stop below is impossible without it, so the two workstreams share the mid-July deadline, not just the
-interface.
+## What each layer catches (so the pitch stays honest)
 
-**This plan provides TO the judge workstream:**
-- The **durable verdict-store schema** (WS2) the judge writes into: `{tool, amount, recipient, mandate/intent, decision, risk, reasons[], human_explanation, timestamp, correlationId}`.
-- The **hosted call path** + the **on-by-default flag** wiring (WS1) — the judge just needs to run inside it.
-- The **demo scenario** the judge must reliably handle on stage (headline = whatever WS3 validates as the real failure mode; default candidate: the ~$0 authority/approval escalation, mapped to Grok/Bankr).
+Defense-in-depth, each layer a different class — don't let one layer over-claim another's job:
 
-**This plan needs FROM the judge workstream:**
-- The judge **on by default, server-side** (so plug & play delivers it with no local LLM config).
-- A verdict in the **store schema shape** above (so WS2's durable store and the "dataset accumulating" demo work).
-- Reliable enough for a **live demo** (the stage-flakiness fix is the judge workstream's, but the demo arc in WS4 depends on it).
+| Layer | Catches | Status |
+|---|---|---|
+| **Deterministic `/verify`** | policy violations — over-cap, unknown recipient, `authority_change`/`unlimited_delegate` (from **decoded** ground truth) | **MVP** |
+| **Outcome verify (phase 2)** | **execution ≠ approval** — unexpected side effects, an extra instruction, a recipient/amount that diverged after approval | **MVP** |
+| **Instruction-provenance** | injection *at the source* — a bad-but-policy-compliant intent whose recipient traces to untrusted input | roadmap |
+| **TOCTOU guard** | a **payload swap between approval and signing** (executed bytes ≠ approved bytes) | roadmap (co-sign tier) |
 
-## Exit criteria (demo-ready)
+> The outcome check catches side effects and post-approval divergence — **not** an injection that corrupts the intent *before* `/verify` sees it (then "intended" and "actual" both equal the poison → reads as match). Catching that is the **provenance leg**. Say "catches side effects / post-approval divergence," not "catches prompt injection," until provenance lands.
 
-- [ ] `npx` install + one client config block verified working in Claude **or** Cursor.
-- [ ] Real devnet Solana MCP wrapped; real (devnet) tx flow through Compass.
-- [ ] `REQUIRE_APPROVAL` has a working human-approval path on stage.
-- [ ] Durable verdict store persisting full context; demo shows it accumulating.
-- [ ] §01 incidents verified with sources; on-chain failure-mode count produced (also fills the validation plan's two open brackets).
-- [ ] Demo rehearsed; recorded fallback captured.
-- [ ] *(judge: on-by-default, intent-aware, reliable — owned by the separate workstream; integration verified against the handoff contract.)*
+## The decision tiers (MVP = tier 1)
 
-## Appendix — Solana integration status (code audit, 2026-06-24)
+1. **Fast deterministic — the `/verify` MVP:** caps / allowlist / denylist / authority-change, **decode-based (ground truth, not self-reported args)**, `<~100ms`.
+2. **Deep verify — roadmap, async:** **effect-simulation** (Blockaid/Blowfish — commodity, buy it) + **LLM judge** on the ambiguous ~1–2% (intent-vs-mandate). Latency-tolerant because it's off the synchronous path. Owned by the [judge-unblinding workstream](../judge-unblinding/proposal.md).
+3. **TOCTOU / outcome:** at co-sign, **bind the exact simulated tx** (locks bytes → payload-swap invalid); post-exec, the **phase-2 outcome** read-back.
 
-The evidence behind the "P3 co-signer / on-chain — REAL but ORPHANED" line in [Starting line](#starting-line-current-code-state), broken out by the three on-chain concerns. Grounded in `release/compass_migration`. **Takeaway: the shipped MVP is an off-chain MCP guard; the on-chain layer is real, devnet-deployed Rust that is decoupled from the live decision path.** *Leave it orphaned for the demo — none of the gaps below are on the critical path.*
+### Judge / deep-verify handoff contract {#judge-handoff-contract}
 
-The `release/compass_migration` branch is a deliberate re-architecture (`docs/wave-3.5-legacy-isolation/`) from an old chat-app into the MCP-guard + hosted backend. The code that *submitted* on-chain transactions lived in a `legacy/` tree that **no longer exists on this branch** — which is why the on-chain programs are orphaned rather than wired.
+The [judge-unblinding workstream](../judge-unblinding/proposal.md) owns tier 2 (LLM judge + effect-sim), now **post-MVP**. Two halves, re-timed by this re-scope:
 
-The two Anchor programs themselves are non-trivial and devnet-deployed (IDs in `docs/onchain-deployments.md`):
+- **Decode half → needed by the MVP.** Deriving policy `flags` from the **decoded/ground-truth tx** (not self-reported args) is what makes the deterministic `/verify` honest. Land the decode step now; it is not LLM-dependent.
+- **Simulate + LLM half → post-MVP deep-verify tier.** The `REQUIRE_SIMULATION` + LLM-on-real-action path (the demo's old "mandate-stop" moment) moves to the roadmap; it is no longer mid-July-critical.
+
+Shared contract stays the **verdict-store schema** `{tool, amount, recipient, mandate/intent, decision, risk, reasons[], human_explanation, timestamp, correlationId}` — the MVP's deterministic `/verify` writes it now; the judge writes the same shape when the deep tier lands.
+
+## Enforcement roadmap (post-MVP) — the co-sign spine
+
+The non-bypassable upgrade: **same engine + a required key.** The MVP is its brain, so this is wiring, not a rebuild.
+
+- **v1 — co-sign (Squads):** funds in a **dedicated allowance account** (agent + Compass, 2-of-2 or 2-of-3 with a user recovery key; **gate, not wallet**); agent holds an **insufficient key**; Compass **co-signs or withholds** based on the same engine's verdict. Non-custodial: a **veto key, never a spend key.** This is where `deny` becomes non-bypassable and the **raw-key-bypass-fails** beat becomes real.
+- **v2 — program-gated PDA:** the `ActionApproval` PDA endgame — Compass holds **no fund-moving key**, only an attestation; on-chain caps survive a Compass compromise.
+- **Also lands here:** the **deep-verify tier** (judge), **instruction-provenance** (the prompt-injection catch), the **enforcement-tier outcome check** (mismatch → withhold the next co-signature), and the **chain-watcher** for raw-HTTP outcome reconciliation.
+
+## Liability ceiling {#liability-ceiling}
+
+The line we do **not** cross: **Compass never holds a key that can move funds on its own.** The `/verify` MVP holds **no key at all** (advisory). The roadmap co-sign holds a **veto key** (one required signature — can block, can't spend alone). **No** MPC / custodial relay / TEE-custody (→ money-transmitter / PCI-AML weight). Ship a **user recovery path** (2-of-3 or timelock) so we can't freeze either. *(v2 PDA removes even the veto key → attestation-only.)*
+
+## Build sequence (~2 weeks out)
+
+**Week 2 (now, Jul 1–7):** WS0 `/verify` + fast deterministic engine (incl. the decode step) + WS1 durable verdict store + MCP-sensor adapter + phase-2 outcome verify.
+**Week 3 (Jul 8–14):** the **policy console** (Act 3) + §01 slide (WS3) + WS4 3-act demo assembly + rehearsal + recorded fallback + **get it in front of ≥1–2 devs.**
+**Roadmap (post-demo):** co-sign spine (Squads v1 → PDA v2), the deep-verify tier, the provenance leg, the chain-watcher.
+
+## Exit criteria (MVP demo-ready)
+
+- [ ] **`POST /verify` live** — fast deterministic verdicts on the 3 scenarios (**balance → allow**, **transfer → review/approve**, **off-mandate/over-cap/authority-change → deny**) with human-readable reasons, flags derived from decoded ground truth.
+- [ ] **Both adapters work** — `mcp add compass` (full pre+post loop) *and* a raw `POST /verify` call (pre-check).
+- [ ] **Phase-2 outcome verify** confirms a legit tx matched intent, and **catches one seeded mismatch** (MCP path).
+- [ ] **Durable verdict store** persisting decision + context + outcome; the **console renders** it accumulating.
+- [ ] **`review`/`REQUIRE_APPROVAL`** has a working human-approval path (false-positive label source).
+- [ ] **≥1–2 devs** calling it (data).
+- [ ] §01 incidents verified with sources; small on-chain failure-mode sample produced.
+- [ ] 3-act demo rehearsed; recorded fallback captured.
+- [ ] *(roadmap, NOT MVP exit: co-sign non-bypassable stop; raw-key-bypass-fails beat; instruction-provenance injection catch; LLM deep-verify tier.)*
+
+## Appendix — Solana integration status {#appendix--solana-integration-status}
+
+*(The on-chain co-signer/approval layer is the **roadmap spine**, not MVP — the audit below reads as "here's what's already built to wire when co-sign lands.")*
+
+The two Anchor programs are devnet-deployed (IDs in `docs/onchain-deployments.md`):
 - `back/solana/agent-action-guard/` — `UserPolicy`, `ActionApproval`, `WalletSafetyAttestation`, `AttestorConfig`; guarded SOL transfer via CPI; Pyth oracle-gated conditional execution; checked arithmetic + unit tests.
 - `back/solana/conditional-escrow-buy/` — full USDC→SOL escrow with oracle price gating, treasury/vault PDAs, cancel/reclaim.
 
-### 1. Request for approvals on chain — ⚠️ built on-chain, NOT wired into the live flow
-- On-chain primitive is real: `ActionApproval` PDA (seed `["action_approval", user, action_hash]`), created by `create_action_approval`, with `revoke_action_approval` / `mark_executed` / oracle-conditional `mark_executed_if_price_below` (`agent-action-guard/.../src/lib.rs`).
-- TS read/verify layer is real and good — `hosted/onchain/onchainApproval.ts` (~530 lines) derives the PDA, deserializes account bytes, checks executed/revoked/expired/recipient/amount/user (`verifyActionApproval`, `verifyTransferGuardReadiness`).
-- **But it's never called in production:** `hosted/app.ts` wires only evaluate/audit/policies; the only callers of the verify functions are `back/services/__tests__/onchainApproval.test.ts`. No TS code *creates* an approval on-chain (that writer was in the deleted `legacy/`). And `AGENT_ACTION_GUARD_PROGRAM_ID` is **empty in `.env.example`**, so the read path returns `null` by default.
+**1. Approvals on chain — ✅ built; wire it (the v2 PDA seam).** `ActionApproval` PDA (seed `["action_approval", user, action_hash]`), created by `create_action_approval`, with `revoke_action_approval` / `mark_executed` / oracle-conditional `mark_executed_if_price_below`. TS read/verify layer real — `hosted/onchain/onchainApproval.ts` (~530 lines) derives the PDA, checks executed/revoked/expired/recipient/amount/user. **Gap:** no TS *creates* an approval on-chain (writer was in the deleted `legacy/`); `AGENT_ACTION_GUARD_PROGRAM_ID` empty in `.env.example`. **Roadmap work:** re-introduce the creator + call `verifyTransferGuardReadiness` from the gate before signing.
 
-### 2. Audit of decisions on chain — ❌ not on-chain at all
-- Audit is fully off-chain and **in-memory**: `hosted/audit/auditStore.ts` = `createInMemoryAuditStore()` (a `Map`, wiped on restart). Written via `POST /v1/audit/events`, read via `GET /v1/audits`.
-- The evaluation service writes one entry per decision and **fails closed** if the write fails (`AUDIT_DEGRADED_DENIAL`) — so audit is treated as critical, but it's process memory, not a chain record. Neither Anchor program has an audit/event-log account.
-- This is exactly the **WS2 "durable verdict store"** gap — the in-memory `Map` also omits amount/recipient/rationale.
+**2. Audit of decisions — ❌ off-chain, in-memory → the WS1 durable verdict store + flywheel.** `hosted/audit/auditStore.ts` = `createInMemoryAuditStore()` (a `Map`, wiped on restart); omits amount/recipient/rationale, no outcome field. WS1 makes it durable **and** adds outcome capture (phase 2).
 
-### 3. Policies of each user — ⚠️ per-user on-chain in the contract; single global policy in the running product
-- On-chain there *is* a per-user policy: `UserPolicy` PDA (seed `["user_policy", user_pubkey]`) with `initialize_policy` / `update_policy` and caps (`max_transfer_lamports`, `max_swap_usd`, `max_slippage_bps`, `allow_private_actions`, `enabled`); the on-chain instructions enforce it.
-- The **live engine uses one hardcoded global policy** — `DEFAULT_POLICY` (`hosted/policy/defaultPolicy.ts`, `policy_id: "default-conservative"`). `loadDefaultPolicy()` is cached and identical for all users; every gateway (transfer/swap/conditional) + `evaluationService` feeds it into `policyEngine.evaluateAction`. Nothing reads the on-chain `UserPolicy`; `userId` on the request is used only for audit/telemetry, not policy selection.
+**3. Per-user policies — ⚠️ per-user on-chain in the contract; single global policy live.** On-chain `UserPolicy` PDA with caps (`max_transfer_lamports`, `max_swap_usd`, `max_slippage_bps`, …) exists + is enforced by the program; the live engine uses one hardcoded `DEFAULT_POLICY`. **Roadmap work:** load each user's on-chain `UserPolicy` (the "caps survive a Compass compromise" property). *(For the `/verify` MVP, the global default is fine — the policy console edits it.)*
 
 ### Status summary
 
-| Concern | On-chain program | Live pipeline uses it? |
-|---|---|---|
-| Approvals (`ActionApproval`) | ✅ written, devnet-deployed | ❌ verify-only, in tests; no creator; gated off by empty env |
-| Audit of decisions | ❌ no on-chain account | ❌ in-memory off-chain only (→ WS2) |
-| Per-user policies (`UserPolicy`) | ✅ written | ❌ engine uses one global default |
-
-`conditional-escrow-buy` is likewise orphaned: `back/services/domains/conditional-parking-lot/conditionalGateway.ts` has **zero** on-chain references — it too runs pure off-chain policy.
-
-**To make any of these real end-to-end** (post-demo, not needed for mid-July): (a) re-introduce TS that *creates* `ActionApproval`/attestation txns and call `verifyTransferGuardReadiness` from the gateway before signing; (b) the WS2 durable (ideally hash-anchored) audit store; (c) load each user's on-chain `UserPolicy` into `evaluateAction` instead of the global default.
+| Concern | On-chain program | MVP (`/verify`) | Roadmap (co-sign / PDA) |
+|---|---|---|---|
+| Decision engine | n/a | ✅ `/verify` wraps the deterministic engine | same engine gates the co-signature |
+| Approvals (`ActionApproval`) | ✅ written, devnet | not used | co-sign gate (Squads) → wire the PDA + creator |
+| Audit of decisions | ❌ no account | durable verdict store + flywheel (WS1) | (optionally hash-anchored) |
+| Per-user policies (`UserPolicy`) | ✅ written | global default OK (policy console edits it) | load on-chain per-user policy |
