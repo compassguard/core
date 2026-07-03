@@ -1,0 +1,6 @@
+node_modules
+back/solana/*/target
+back/solana/*/node_modules
+logs
+*.log
+.vercel

@@ -1,0 +1,68 @@
+{
+  "id": "wave-8-demo-hardening",
+  "title": "Wave 8 — Demo hardening",
+  "status": "completed",
+  "branch": "feature/wave-8-demo-hardening",
+  "baseBranch": "feature/wave-7-mcp-compatibility",
+  "targetIntegrationBranch": "release/compass_migration",
+  "goal": "Make the Compass MCP Guard MVP reviewable and demoable with a local runbook, redacted audit examples, clear failure guidance, and explicit network readiness boundaries.",
+  "scopeDecision": "Wave 8 is documentation and verification hardening only. It does not add production custody, mainnet signing, durable audit storage, frontend approval UI, or upstream MCP passthrough.",
+  "tasks": [
+    {
+      "id": "T1_RUNBOOK",
+      "title": "Create executable local demo runbook",
+      "status": "completed",
+      "filesPlanned": ["docs/wave-8-demo-hardening/runbook.md"],
+      "acceptanceCriteria": [
+        "Runbook can be followed from repo root.",
+        "Runbook demonstrates ALLOW, REQUIRE_HUMAN_APPROVAL, and DENY outcomes.",
+        "Runbook does not require reading or exposing secrets."
+      ]
+    },
+    {
+      "id": "T2_AUDIT_EXAMPLES",
+      "title": "Add redacted audit examples",
+      "status": "completed",
+      "filesPlanned": ["docs/wave-8-demo-hardening/runbook.md"],
+      "acceptanceCriteria": [
+        "Examples include candidate ID, decision, risk class, result, reason codes, and metadata status fields.",
+        "Examples do not include private keys, raw transaction bytes, full prompts, or secret material."
+      ]
+    },
+    {
+      "id": "T3_NETWORK_READINESS",
+      "title": "Document devnet/mainnet readiness",
+      "status": "completed",
+      "filesPlanned": ["docs/wave-8-demo-hardening/runbook.md"],
+      "acceptanceCriteria": [
+        "Docs state local signer demos are controlled non-mainnet demos only.",
+        "Docs state mainnet local signer execution is blocked for MVP.",
+        "Docs do not claim production custody readiness."
+      ]
+    },
+    {
+      "id": "T4_VALIDATE",
+      "title": "Validate Wave 8 docs and active code",
+      "status": "completed",
+      "validationCommands": [
+        "Run docs/wave-8-demo-hardening/runbook.md command",
+        "npm run test:back",
+        "npm run lint",
+        "npx tsc --noEmit --pretty false"
+      ],
+      "acceptanceCriteria": [
+        "Captured runbook output matches expected decisions.",
+        "Backend tests pass.",
+        "Lint has no new errors.",
+        "Typecheck passes."
+      ],
+      "evidence": [
+        "Wave 8 runbook command passed and produced ALLOW, REQUIRE_HUMAN_APPROVAL, DENY, and sentinelLeaked=false.",
+        "Captured evidence recorded in docs/wave-8-demo-hardening/runbook.md.",
+        "npm run test:back passed: 14 files, 153 tests.",
+        "npm run lint passed with one pre-existing app/layout.tsx Fast Refresh warning and 0 errors.",
+        "npx tsc --noEmit --pretty false passed."
+      ]
+    }
+  ]
+}

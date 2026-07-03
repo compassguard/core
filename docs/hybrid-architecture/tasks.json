@@ -1,0 +1,391 @@
+{
+  "change": "hybrid-architecture",
+  "delivery_strategy": "single-pr",
+  "review_budget": {
+    "estimated_changed_lines": "800–1200",
+    "budget_risk": "High",
+    "chained_prs_recommended": false,
+    "split": "single PR",
+    "chain_strategy": "size-exception",
+    "decision_needed_before_apply": true,
+    "note": "Project policy: split into sequential dev phases with user checkpoints. Do NOT create multiple PRs."
+  },
+  "phases": [
+    {
+      "id": 1,
+      "name": "Infrastructure",
+      "tasks": [
+        {
+          "id": 1,
+          "title": "Add hono dependency",
+          "description": "Install hono in package.json. Add hosted:dev script pointing to back/services/hosted/server.ts.",
+          "files": ["package.json"],
+          "depends_on": [],
+          "status": "completed",
+          "estimated_effort": "small"
+        },
+        {
+          "id": 2,
+          "title": "Create hosted app entrypoint",
+          "description": "Create back/services/hosted/app.ts with createHostedApp() factory. Register health, evaluation, audit, and policy routes. Auth middleware on /v1/*.",
+          "files": ["back/services/hosted/app.ts"],
+          "depends_on": [1],
+          "status": "completed",
+          "estimated_effort": "small"
+        },
+        {
+          "id": 3,
+          "title": "Create hosted server bootstrap",
+          "description": "Create back/services/hosted/server.ts with Bun serve. Wire createHostedApp() with default dependencies. Read port from env.",
+          "files": ["back/services/hosted/server.ts"],
+          "depends_on": [2],
+          "status": "completed",
+          "estimated_effort": "small"
+        },
+        {
+          "id": 4,
+          "title": "Create auth middleware",
+          "description": "Create back/services/hosted/http/hostedAuthMiddleware.ts. Validate Authorization: Bearer header against COMPASS_HOSTED_API_KEY env. Reject 401 on mismatch. Skip auth for /health.",
+          "files": ["back/services/hosted/http/hostedAuthMiddleware.ts"],
+          "depends_on": [2],
+          "status": "completed",
+          "estimated_effort": "small"
+        },
+        {
+          "id": 5,
+          "title": "Create error middleware",
+          "description": "Create back/services/hosted/http/hostedErrorMiddleware.ts. Catch unhandled errors, return structured { error: { code, message } } JSON. Log without leaking secrets.",
+          "files": ["back/services/hosted/http/hostedErrorMiddleware.ts"],
+          "depends_on": [2],
+          "status": "completed",
+          "estimated_effort": "small"
+        },
+        {
+          "id": 6,
+          "title": "Create health route",
+          "description": "Create back/services/hosted/health/healthRoutes.ts. GET /health returns { ok, service, dependencies }. Check audit store, policy, and LLM connectivity. No auth required.",
+          "files": ["back/services/hosted/health/healthRoutes.ts"],
+          "depends_on": [2],
+          "status": "completed",
+          "estimated_effort": "small"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Contracts and Types",
+      "tasks": [
+        {
+          "id": 7,
+          "title": "Create evaluation contracts",
+          "description": "Create back/services/hosted/evaluate/evaluationContracts.ts. Define EvaluateActionRequest, EvaluateActionResponse, HostedDecision, HostedRiskLevel, AuditEntry, PolicySnapshot. These are the canonical HTTP API types shared by local client and hosted routes.",
+          "files": ["back/services/hosted/evaluate/evaluationContracts.ts"],
+          "depends_on": [],
+          "status": "completed",
+          "estimated_effort": "small"
+        },
+        {
+          "id": 8,
+          "title": "Create audit contracts",
+          "description": "Create back/services/hosted/audit/auditContracts.ts. Define AuditWriteRequest, AuditWriteResponse, AuditQueryParams, AuditListResponse. Include idempotencyKey field.",
+          "files": ["back/services/hosted/audit/auditContracts.ts"],
+          "depends_on": [],
+          "status": "completed",
+          "estimated_effort": "small"
+        },
+        {
+          "id": 9,
+          "title": "Create policy contracts",
+          "description": "Create back/services/hosted/policies/policyContracts.ts. Define PolicySnapshotResponse. Re-export or reference policyContracts.ts from guardrail if needed.",
+          "files": ["back/services/hosted/policies/policyContracts.ts"],
+          "depends_on": [],
+          "status": "completed",
+          "estimated_effort": "small"
+        },
+        {
+          "id": 10,
+          "title": "Create local hosted client contracts",
+          "description": "Create back/services/mcp/proxy/mcpHostedClientContracts.ts. Define HostedClientConfig (url, apiKey, timeoutMs), HostedClientError types, and validation helpers for malformed responses.",
+          "files": ["back/services/mcp/proxy/mcpHostedClientContracts.ts"],
+          "depends_on": [7],
+          "status": "completed",
+          "estimated_effort": "small"
+        },
+        {
+          "id": 11,
+          "title": "Update proxy contracts",
+          "description": "Modify back/services/mcp/proxy/mcpProxyContracts.ts. Add hostedDecision field to ProxyDecision. Add auditRef to ProxyCallToolResult. Keep existing downstream types temporarily for migration.",
+          "files": ["back/services/mcp/proxy/mcpProxyContracts.ts"],
+          "depends_on": [7],
+          "status": "completed",
+          "estimated_effort": "small"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Hosted Routes and Services",
+      "tasks": [
+        {
+          "id": 12,
+          "title": "Move policy files to hosted",
+          "description": "Copy policyEngine.ts, policyContracts.ts, defaultPolicy.ts, loadPolicy.ts from back/services/guardrail/policy/ to back/services/hosted/policy/. Update imports in hosted code. Do NOT delete originals yet.",
+          "files": [
+            "back/services/hosted/policy/policyEngine.ts",
+            "back/services/hosted/policy/policyContracts.ts",
+            "back/services/hosted/policy/defaultPolicy.ts",
+            "back/services/hosted/policy/loadPolicy.ts"
+          ],
+          "depends_on": [9],
+          "status": "completed",
+          "estimated_effort": "small"
+        },
+        {
+          "id": 13,
+          "title": "Move LLM files to hosted",
+          "description": "Copy llmRouterAdapter.ts, llmRouterContracts.ts, llmDecisionAdapter.ts, llmDecisionContracts.ts, llmDecisionSanitizer.ts to back/services/hosted/llm/. Update imports. Do NOT delete originals yet.",
+          "files": [
+            "back/services/hosted/llm/llmRouterAdapter.ts",
+            "back/services/hosted/llm/llmRouterContracts.ts",
+            "back/services/hosted/llm/llmDecisionAdapter.ts",
+            "back/services/hosted/llm/llmDecisionContracts.ts",
+            "back/services/hosted/llm/llmDecisionSanitizer.ts"
+          ],
+          "depends_on": [9],
+          "status": "completed",
+          "estimated_effort": "small"
+        },
+        {
+          "id": 14,
+          "title": "Create evaluation service",
+          "description": "Create back/services/hosted/evaluate/evaluationService.ts. Implement evaluateAction(): run LLM router (skip→allow, unknown→deny, transfer/swap→LLM decision judge), apply policy engine, persist audit, return EvaluateActionResponse. All existing logic from mcpProxyDispatcher lines 135–258 moves here.",
+          "files": ["back/services/hosted/evaluate/evaluationService.ts"],
+          "depends_on": [7, 12, 13],
+          "status": "completed",
+          "estimated_effort": "large"
+        },
+        {
+          "id": 15,
+          "title": "Create evaluation route",
+          "description": "Create back/services/hosted/evaluate/evaluationRoutes.ts. POST /v1/evaluate validates request schema, calls evaluationService, returns EvaluateActionResponse. 400 on invalid schema, 500 on unexpected errors.",
+          "files": ["back/services/hosted/evaluate/evaluationRoutes.ts"],
+          "depends_on": [14],
+          "status": "completed",
+          "estimated_effort": "small"
+        },
+        {
+          "id": 16,
+          "title": "Create audit store",
+          "description": "Create back/services/hosted/audit/auditStore.ts. In-memory Map keyed by correlationId. Write idempotent (same correlationId + idempotencyKey = no-op). Query by userId or sessionId. Return auditRef on write.",
+          "files": ["back/services/hosted/audit/auditStore.ts"],
+          "depends_on": [8],
+          "status": "completed",
+          "estimated_effort": "small"
+        },
+        {
+          "id": 17,
+          "title": "Create audit routes",
+          "description": "Create back/services/hosted/audit/auditRoutes.ts. POST /v1/audit/events for writes (idempotent). GET /v1/audits for queries with ?userId or ?sessionId and ?limit.",
+          "files": ["back/services/hosted/audit/auditRoutes.ts"],
+          "depends_on": [16],
+          "status": "completed",
+          "estimated_effort": "small"
+        },
+        {
+          "id": 18,
+          "title": "Create policy service and routes",
+          "description": "Create back/services/hosted/policies/policyService.ts and back/services/hosted/policies/policyRoutes.ts. GET /v1/policies returns active policy snapshot from loadPolicy().",
+          "files": [
+            "back/services/hosted/policies/policyService.ts",
+            "back/services/hosted/policies/policyRoutes.ts"
+          ],
+          "depends_on": [12],
+          "status": "completed",
+          "estimated_effort": "small"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Local Proxy Refactor",
+      "tasks": [
+        {
+          "id": 19,
+          "title": "Create local hosted client",
+          "description": "Create back/services/mcp/proxy/mcpHostedClient.ts. Implement evaluateAction() using fetch + AbortController. Auth header from config. Timeout via AbortController. Strict response validation: missing decision, malformed riskLevel, or missing auditRef → fail-closed deny. Return typed EvaluateActionResponse.",
+          "files": ["back/services/mcp/proxy/mcpHostedClient.ts"],
+          "depends_on": [10, 7],
+          "estimated_effort": "medium",
+          "status": "completed"
+        },
+        {
+          "id": 20,
+          "title": "Create evaluation request builder",
+          "description": "Create back/services/mcp/proxy/mcpEvaluationRequest.ts. Implement buildEvaluateActionRequest(): generate correlationId, idempotencyKey, normalize toolName/arguments/agentContext/localFindings into EvaluateActionRequest.",
+          "files": ["back/services/mcp/proxy/mcpEvaluationRequest.ts"],
+          "depends_on": [7],
+          "estimated_effort": "small",
+          "status": "completed"
+        },
+        {
+          "id": 21,
+          "title": "Refactor dispatcher for hosted evaluation",
+          "description": "Modify back/services/mcp/proxy/mcpProxyDispatcher.ts. Replace LLM router/decision/policy/audit orchestration (lines 135–311) with: (1) local policy interceptor check, (2) hostedClient.evaluateAction() call, (3) enforce hosted decision, (4) send audit outcome. Remove downstream dependency for tool calls. Keep downstream for listTools temporarily. Add feature flag COMPASS_HYBRID_GUARD_ENABLED.",
+          "files": ["back/services/mcp/proxy/mcpProxyDispatcher.ts"],
+          "depends_on": [11, 19, 20],
+          "estimated_effort": "large",
+          "status": "completed"
+        },
+        {
+          "id": 22,
+          "title": "Update mcpServer to inject hosted client",
+          "description": "Modify back/services/mcp/server/mcpServer.ts. Stop requiring DownstreamMcpClient for construction. Inject hosted client and execution dependencies. Pass hostedClient to dispatcher config.",
+          "files": ["back/services/mcp/server/mcpServer.ts"],
+          "depends_on": [21],
+          "estimated_effort": "medium",
+          "status": "completed"
+        },
+        {
+          "id": 23,
+          "title": "Add env config for hosted backend",
+          "description": "Modify back/services/envConfig.ts (or mcpRuntimeConfig.ts). Add COMPASS_HOSTED_API_URL, COMPASS_HOSTED_API_KEY, COMPASS_HOSTED_TIMEOUT_MS (default 750), COMPASS_HYBRID_GUARD_ENABLED (default false).",
+          "files": ["back/services/envConfig.ts"],
+          "depends_on": [],
+          "estimated_effort": "small",
+          "status": "completed"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Testing",
+      "tasks": [
+        {
+          "id": 24,
+          "title": "Unit test hosted client",
+          "description": "Write tests for mcpHostedClient.ts: success response, timeout/abort, 401 rejection, malformed JSON, missing auditRef fail-closed, network error fail-closed.",
+          "files": ["back/services/mcp/proxy/mcpHostedClient.test.ts"],
+          "depends_on": [19],
+          "estimated_effort": "medium",
+          "status": "completed"
+        },
+        {
+          "id": 25,
+          "title": "Unit test evaluation service",
+          "description": "Write tests for evaluationService.ts: router skip→allow, router unknown→deny, transfer/swap→LLM decision judge, policy engine deny, audit persistence, malformed input handling.",
+          "files": ["back/services/hosted/evaluate/evaluationService.test.ts"],
+          "depends_on": [14],
+          "estimated_effort": "medium",
+          "status": "completed"
+        },
+        {
+          "id": 26,
+          "title": "Unit test auth middleware",
+          "description": "Write tests for hostedAuthMiddleware.ts: valid token passes, missing token 401, invalid token 401, /health skips auth.",
+          "files": ["back/services/hosted/http/hostedAuthMiddleware.test.ts"],
+          "depends_on": [4],
+          "estimated_effort": "small",
+          "status": "completed"
+        },
+        {
+          "id": 27,
+          "title": "Integration test dispatcher refactor",
+          "description": "Write/update tests for mcpProxyDispatcher.ts: local deterministic deny skips HTTP, hosted deny blocks execution, hosted confirm returns approval request, hosted timeout fail-closed for high-risk, hosted allow executes. Test COMPASS_HYBRID_GUARD_ENABLED flag behavior.",
+          "files": ["back/services/mcp/proxy/mcpProxyDispatcher.test.ts"],
+          "depends_on": [21],
+          "estimated_effort": "large",
+          "status": "completed"
+        },
+        {
+          "id": 28,
+          "title": "Integration test hosted routes",
+          "description": "Write tests for hosted Hono app: GET /health returns status, POST /v1/evaluate with valid request returns decision, POST /v1/evaluate without auth returns 401, GET /v1/audits returns entries, GET /v1/policies returns snapshot.",
+          "files": ["back/services/hosted/app.test.ts"],
+          "depends_on": [2, 15, 17, 18],
+          "estimated_effort": "medium",
+          "status": "completed"
+        },
+        {
+          "id": 29,
+          "title": "E2E MCP stdio test",
+          "description": "Write MCP stdio integration test: exercise allowed read-only call (local allow, hosted allow), local deterministic deny (no HTTP call), and hosted timeout fail-closed case. Verify audit records created for allowed calls.",
+          "files": ["back/services/__tests__/hybrid-e2e.test.ts"],
+          "depends_on": [22, 27, 28],
+          "estimated_effort": "large",
+          "status": "completed"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "Migration and Cleanup",
+      "tasks": [
+        {
+          "id": 30,
+          "title": "Retire downstream stdio client",
+          "description": "Delete back/services/mcp/proxy/downstreamMcpStdioClient.ts and back/services/mcp/proxy/mcpConfigWrapping.ts. Remove imports from all files. Update any tests that reference these.",
+          "files": [
+            "back/services/mcp/proxy/downstreamMcpStdioClient.ts",
+            "back/services/mcp/proxy/mcpConfigWrapping.ts"
+          ],
+          "depends_on": [22, 29],
+          "estimated_effort": "medium",
+          "status": "completed"
+        },
+        {
+          "id": 31,
+          "title": "Retire local authoritative audit",
+          "description": "Delete or demote back/services/mcp/proxy/mcpProxyAudit.ts to test-only diagnostics. Remove audit event recording from dispatcher. Keep listProxyAuditEvents for test assertions if needed.",
+          "files": ["back/services/mcp/proxy/mcpProxyAudit.ts"],
+          "depends_on": [21, 29],
+          "estimated_effort": "medium",
+          "status": "completed"
+        },
+        {
+          "id": 32,
+          "title": "Clean up original moved files",
+          "description": "Delete original files from back/services/guardrail/policy/ and back/services/intelligence/ that were copied to hosted. Update any remaining local imports to point to hosted copies or remove unused imports.",
+          "files": [
+            "back/services/guardrail/policy/policyEngine.ts",
+            "back/services/guardrail/policy/policyContracts.ts",
+            "back/services/guardrail/policy/defaultPolicy.ts",
+            "back/services/guardrail/policy/loadPolicy.ts",
+            "back/services/intelligence/llm-router/llmRouterAdapter.ts",
+            "back/services/intelligence/llm-router/llmRouterContracts.ts",
+            "back/services/intelligence/llm-decision/llmDecisionAdapter.ts",
+            "back/services/intelligence/llm-decision/llmDecisionContracts.ts",
+            "back/services/intelligence/llm-decision/llmDecisionSanitizer.ts"
+          ],
+          "depends_on": [29, 30],
+          "estimated_effort": "medium",
+          "status": "completed"
+        },
+        {
+          "id": 33,
+          "title": "Flip hybrid mode default",
+          "description": "Change COMPASS_HYBRID_GUARD_ENABLED default from false to true in envConfig. Verify all tests pass with hybrid mode enabled. This is the final migration step.",
+          "files": ["back/services/envConfig.ts"],
+          "depends_on": [30, 31, 32],
+          "estimated_effort": "small",
+          "status": "completed"
+        },
+        {
+          "id": 34,
+          "title": "Add vercel.json for hosted deployment",
+          "description": "Create vercel.json at project root if needed. Configure hosted API entrypoint routing for Vercel deployment.",
+          "files": ["vercel.json"],
+          "depends_on": [3],
+          "estimated_effort": "small",
+          "status": "completed"
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "total_tasks": 34,
+    "phases": 6,
+    "estimated_changed_lines": "800–1200",
+    "budget_risk": "High",
+    "note": "Project policy requires sequential dev phases with user checkpoints between phases. No chained PRs — single PR with size exception."
+  }
+}

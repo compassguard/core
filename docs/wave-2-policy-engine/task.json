@@ -1,0 +1,364 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-06-05T20:15:00Z",
+  "goal": "Implementar el policy engine v0 de Compass MCP Guard sobre los contratos de Wave 1: política YAML conservadora, schema TS, loader, y evaluador puro evaluateAction con reglas para read-only, transfers, swaps, signing y blocked patterns, con TDD estricto y sin cablear el engine al flujo existente.",
+  "status": "checkpoint_2_passed_pending_commit",
+  "context": {
+    "summary": "Wave 1 dejó los contratos del execution gateway (COMPASS_DECISIONS, TOOL_RISK_CLASSES, classifyToolCall, createActionCandidate, buildAuditEvent) ya mergeados en release/compass_migration. Wave 2 construye el policy engine encima, manteniéndolo unwired. Wave 3 (transfer behind gateway) será la primera integración real con chat.ts y tools.",
+    "relatedDocs": [
+      "docs/wave-2-policy-engine/functional-spec.md",
+      "docs/wave-2-policy-engine/technical-spec.md",
+      "docs/PRODUCT_CONSTITUTION.md",
+      "docs/compass-monad-on-solana/mvp-migration-plan.md",
+      "back/services/executionGatewayContracts.ts",
+      "back/services/executionGateway.ts"
+    ]
+  },
+  "acceptanceCriteria": [
+    "defaultPolicy.yaml refleja PRODUCT_CONSTITUTION §16 con policy_id 'default-conservative' y version '0.1.0'.",
+    "loadDefaultPolicy() parsea el YAML y devuelve un CompassPolicy validado por schema.",
+    "Schema rechaza políticas con campos requeridos faltantes con error explícito.",
+    "evaluateAction() es función pura sin IO.",
+    "evaluateAction() preserva DENY de classification de Wave 1 (no afloja).",
+    "Read-only tools devuelven ALLOW con reason READ_ONLY_BY_POLICY.",
+    "Transfers respetan max_usd_without_approval, blocked_recipients y unknown_recipient.",
+    "Swaps respetan max_slippage_bps, allowed_protocols, unknown_token y max_usd_without_approval.",
+    "sign_and_send_transaction sin compass_built devuelve DENY con DIRECT_SIGN_AND_SEND_BLOCKED.",
+    "Blocked flags (unlimited_delegate, authority_change, suspicious_recipient) devuelven DENY.",
+    "Acciones sensibles sin contexto suficiente fallan cerradas con REQUIRE_ADDITIONAL_CONTEXT.",
+    "Todas las decisiones devuelven reasonCodes y evaluatedRules no vacíos cuando aplica.",
+    "Engine permanece unwired: ningún archivo fuera de back/services/policy/** y back/services/__tests__/policy*.test.ts cambia.",
+    "npm run test:back y npm run lint pasan limpios sobre feature/wave-2-policy-engine."
+  ],
+  "constraints": [
+    "No cablear el engine a back/services/chat.ts ni a tools concretas (eso es Wave 3).",
+    "No modificar Wave 1: executionGateway.ts y executionGatewayContracts.ts son read-only para esta wave.",
+    "Política única YAML versionada en repo; sin DB ni on-chain en MVP.",
+    "Decisiones determinísticas y explicables: reason codes obligatorios.",
+    "Fail-closed para acciones mutantes con contexto insuficiente.",
+    "TDD estricto: RED → GREEN → REFACTOR por cada outcome.",
+    "Un solo PR para Wave 2, pero con dos rondas de verificación (post-loader y post-engine).",
+    "Todas las tareas comienzan pending con evidence vacío.",
+    "No exponer secretos en logs o errores del loader."
+  ],
+  "decisions": [
+    "Almacenamiento policy: YAML local versionado (PRODUCT_CONSTITUTION §16 como fuente).",
+    "Default policy: conservadora desde §16 con policy_id 'default-conservative'.",
+    "Engine puro sin IO: facilita testing y futura integración.",
+    "Reason codes enumerados en technical-spec, estables y auditables.",
+    "Bridges contemplados en schema pero sin reglas finas en MVP (default-only).",
+    "YAML parser: js-yaml + @types/js-yaml (revisar si transitivo).",
+    "Engine unwired en esta wave: integración con chat.ts queda para Wave 3."
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Validar dependencias YAML",
+      "description": "Confirmar si js-yaml ya está en node_modules transitivamente o requiere agregarse a package.json. Documentar versión y agregar @types/js-yaml si hace falta.",
+      "owner": "implementer",
+      "status": "completed",
+      "dependencies": [],
+      "filesToCreate": [],
+      "filesToModify": [
+        "package.json",
+        "package-lock.json"
+      ],
+      "acceptanceCriteria": [
+        "js-yaml resoluble desde back/services/policy/loadPolicy.ts.",
+        "@types/js-yaml disponible para TypeScript.",
+        "Versión pinneada en package.json si se agrega como dep directa.",
+        "Sin downgrades inesperados de otras deps."
+      ],
+      "verification": [
+        "npm list js-yaml @types/js-yaml",
+        "npx tsc --noEmit en un import sample."
+      ],
+      "evidence": [
+        "Added js-yaml@4.1.1 as a direct runtime dependency and @types/js-yaml@4.0.9 as a direct dev dependency because the loader imports js-yaml directly.",
+        "npm install required --registry=https://registry.npmjs.org because the configured Fury registry returned 403 for public js-yaml packages.",
+        "`npm list js-yaml @types/js-yaml --depth=0` reports js-yaml@4.1.1 and @types/js-yaml@4.0.9."
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "Definir schema de policy y tipos canónicos",
+      "description": "Crear back/services/policy/policyContracts.ts con tipos/constantes contractuales y back/services/policy/policySchema.ts con validateCompassPolicy() como validación-only, retornando errores explícitos.",
+      "owner": "implementer",
+      "status": "completed",
+      "dependencies": [
+        "T1"
+      ],
+      "filesToCreate": [
+        "back/services/policy/policyContracts.ts",
+        "back/services/policy/policySchema.ts"
+      ],
+      "filesToModify": [],
+      "acceptanceCriteria": [
+        "Todos los tipos y constantes contractuales exportados como named exports desde policyContracts.ts.",
+        "policySchema.ts solo contiene validateCompassPolicy() y helpers privados de validación.",
+        "validateCompassPolicy(obj) retorna {ok:true, policy} o {ok:false, errors[]}.",
+        "Errores incluyen path del campo faltante o inválido.",
+        "PolicyOutcome enumerado y validado contra valores conocidos.",
+        "policyContracts.ts importa tipos Wave 1 desde ../executionGatewayContracts sin modificarlos."
+      ],
+      "verification": [
+        "Test RED: validateCompassPolicy({}) → ok:false con error sobre policy_id.",
+        "Test RED: PolicyOutcome inválido → error con path."
+      ],
+      "evidence": [
+        "Refactored policy contracts/types/constants into back/services/policy/policyContracts.ts per AGENTS.md Convencion de tipos.",
+        "policySchema.ts now only contains validateCompassPolicy() and private validation helpers; behavior imports shared contracts from policyContracts.ts.",
+        "validateCompassPolicy() returns { ok: true, policy } or { ok: false, errors } with explicit field paths such as transfers.max_usd_without_approval.",
+        "Tests cover empty policy object and invalid PolicyOutcome values without echoing raw invalid values."
+      ]
+    },
+    {
+      "id": "T3",
+      "title": "Crear defaultPolicy.yaml conservador",
+      "description": "Escribir back/services/policy/defaultPolicy.yaml con los valores exactos de PRODUCT_CONSTITUTION §16, incluyendo policy_id, version y comentario de referencia.",
+      "owner": "implementer",
+      "status": "completed",
+      "dependencies": [
+        "T2"
+      ],
+      "filesToCreate": [
+        "back/services/policy/defaultPolicy.yaml"
+      ],
+      "filesToModify": [],
+      "acceptanceCriteria": [
+        "policy_id: default-conservative.",
+        "version: 0.1.0.",
+        "Comentario cabecera apunta a docs/PRODUCT_CONSTITUTION.md §16.",
+        "Estructura matchea CompassPolicy del schema.",
+        "Sin secretos ni paths absolutos."
+      ],
+      "verification": [
+        "Parse con js-yaml sin errores.",
+        "validateCompassPolicy() devuelve ok:true."
+      ],
+      "evidence": [
+        "Created back/services/policy/defaultPolicy.yaml with policy_id default-conservative and version 0.1.0.",
+        "Values match docs/PRODUCT_CONSTITUTION.md §16: $10 transfer limit, $25 swap limit, 300 bps slippage, allowlisted Jupiter/Raydium/Orca, signing defaults, and blocked pattern defaults.",
+        "Header comment references PRODUCT_CONSTITUTION §16 and contains no secrets."
+      ]
+    },
+    {
+      "id": "T4",
+      "title": "Implementar loader y tests de parsing",
+      "description": "Crear back/services/policy/loadPolicy.ts con loadDefaultPolicy() (cache + parse + validate) y back/services/__tests__/loadPolicy.test.ts con tests RED→GREEN.",
+      "owner": "implementer",
+      "status": "completed",
+      "dependencies": [
+        "T3"
+      ],
+      "filesToCreate": [
+        "back/services/policy/loadPolicy.ts",
+        "back/services/__tests__/loadPolicy.test.ts"
+      ],
+      "filesToModify": [],
+      "acceptanceCriteria": [
+        "loadDefaultPolicy() retorna CompassPolicy validado.",
+        "Cache memoizado: dos calls retornan misma referencia.",
+        "loadPolicyFromString(yaml) expuesto para tests con fixtures.",
+        "Error de parsing YAML → mensaje con línea/columna si disponible.",
+        "Error de validación → lista de campos inválidos."
+      ],
+      "verification": [
+        "npm run test:back -- back/services/__tests__/loadPolicy.test.ts → tests verdes.",
+        "Smoke: loadDefaultPolicy().policy_id === 'default-conservative'."
+      ],
+      "evidence": [
+        "Created back/services/policy/loadPolicy.ts with loadDefaultPolicy() memoization and loadPolicyFromString() for tests/fixtures.",
+        "Created back/services/__tests__/loadPolicy.test.ts first; RED failed because ../policy/loadPolicy did not exist.",
+        "GREEN passes: npm run test:back -- back/services/__tests__/loadPolicy.test.ts => 7/7 tests.",
+        "Invalid YAML errors are sanitized to line/column without echoing YAML content; schema errors list invalid paths."
+      ]
+    },
+    {
+      "id": "CHECKPOINT_1",
+      "title": "Verificación ronda 1 (loader + schema)",
+      "description": "Pausa de validación tras T4: confirmar con el usuario que schema, YAML default y loader están alineados antes de implementar el engine. Run tests + lint completo.",
+      "owner": "verifier",
+      "status": "completed",
+      "dependencies": [
+        "T4"
+      ],
+      "filesToCreate": [],
+      "filesToModify": [],
+      "acceptanceCriteria": [
+        "npm run test:back pasa completo en feature/wave-2-policy-engine.",
+        "npm run lint pasa sin errores nuevos.",
+        "Diff inspeccionado por el usuario.",
+        "Usuario aprueba continuar con T5+."
+      ],
+      "verification": [
+        "Reporte mid-checkpoint al usuario con LOC actuales y archivos creados.",
+        "Espera aprobación explícita antes de ronda 2."
+      ],
+      "evidence": [
+        "`npm run test:back -- back/services/__tests__/loadPolicy.test.ts` passes: 1 file, 7 tests after policyContracts.ts refactor.",
+        "`npm run test:back` passes after policyContracts.ts refactor before engine implementation.",
+        "User approved continuing to checkpoint 2 and requested applying the separated types/contracts convention first.",
+        "policyEngine.ts was still unwired and absent at the time of checkpoint 1 approval."
+      ]
+    },
+    {
+      "id": "T5",
+      "title": "Implementar policyEngine.ts (esqueleto)",
+      "description": "Crear back/services/policy/policyEngine.ts con evaluateAction(input) que aplica el algoritmo de evaluación del technical-spec en orden de prioridad. Iniciar con shell mínimo y completar reglas iterativamente vía TDD.",
+      "owner": "implementer",
+      "status": "completed",
+      "dependencies": [
+        "CHECKPOINT_1"
+      ],
+      "filesToCreate": [
+        "back/services/policy/policyEngine.ts"
+      ],
+      "filesToModify": [],
+      "acceptanceCriteria": [
+        "evaluateAction(input) firma matchea EvaluateActionInput → PolicyEvaluation.",
+        "Función pura sin IO.",
+        "Reglas evaluadas en el orden: classification.DENY → read-only → blocked flags → signing → transfer → swap → fallback default.",
+        "reasonCodes y evaluatedRules nunca undefined.",
+        "policyId siempre presente."
+      ],
+      "verification": [
+        "Tests RED de outcome falleceran al principio.",
+        "Cada regla agregada hace pasar un test específico."
+      ],
+      "evidence": [
+        "Created back/services/policy/policyEngine.ts with pure evaluateAction(input) and no IO.",
+        "Engine applies explicit signing rules, preserves Wave 1 DENY, applies blocked flags, read-only, BLOCKED_UNKNOWN fail-closed, transfer rules, swap rules, then policy.default fallback.",
+        "Created back/services/policy/policyEvaluationResult.ts to keep result/outcome helpers out of policyEngine.ts after blocker fixes increased engine size."
+      ]
+    },
+    {
+      "id": "T6",
+      "title": "Tests TDD de outcomes del engine",
+      "description": "Crear back/services/__tests__/policyEngine.test.ts cubriendo los ≥16 escenarios del technical-spec (read-only, transfers, swaps, signing, blocked, fail-closed, preservación de Wave 1 DENY).",
+      "owner": "implementer",
+      "status": "completed",
+      "dependencies": [
+        "T5"
+      ],
+      "filesToCreate": [
+        "back/services/__tests__/policyEngine.test.ts"
+      ],
+      "filesToModify": [],
+      "acceptanceCriteria": [
+        "Cubre los 16+ casos de la matriz functional-spec.",
+        "Cada test usa createActionCandidate + classifyToolCall reales de Wave 1.",
+        "Asserts incluyen decision, reasonCodes contiene el code esperado, evaluatedRules contiene la regla.",
+        "Test que asegura preservación de DENY de Wave 1 (signing directo).",
+        "Tests de fail-closed con contexto incompleto."
+      ],
+      "verification": [
+        "npm run test:back -- back/services/__tests__/policyEngine.test.ts → todos verdes."
+      ],
+      "evidence": [
+        "Created back/services/__tests__/policyEngine.test.ts before policyEngine.ts; RED failed because ../policy/policyEngine did not exist.",
+        "Initial GREEN passed 22 outcome tests.",
+        "Fresh review found blockers; added regression tests that failed RED for unknown action-kind upgrade, missing recipient evidence, and invalid numeric context.",
+        "Final GREEN passes 35 policyEngine tests covering allow, approval, deny, fail-closed, Wave 1 integration, unknown tool preservation, and invalid NaN/Infinity/negative numbers."
+      ]
+    },
+    {
+      "id": "T7",
+      "title": "Refactor + reason codes consolidados",
+      "description": "Extraer helpers (evaluateTransferRules, evaluateSwapRules, evaluateBlockedFlags, evaluateSigning) si la lógica supera 200 líneas en un archivo. Garantizar que reason codes están centralizados.",
+      "owner": "implementer",
+      "status": "completed",
+      "dependencies": [
+        "T6"
+      ],
+      "filesToCreate": [],
+      "filesToModify": [
+        "back/services/policy/policyEngine.ts"
+      ],
+      "acceptanceCriteria": [
+        "policyEngine.ts ≤ 260 líneas o helpers split en módulos privados.",
+        "Reason codes constantes en const POLICY_REASON_CODES si conviene.",
+        "Tests siguen verdes tras refactor.",
+        "Sin cambios de comportamiento."
+      ],
+      "verification": [
+        "npm run test:back pasa.",
+        "Diff legible para reviewer."
+      ],
+      "evidence": [
+        "Moved policy outcomes, reason codes, shared policy types, and validation result types into back/services/policy/policyContracts.ts per AGENTS.md type separation convention.",
+        "policySchema.ts is now validation-only behavior.",
+        "Moved result helpers into policyEvaluationResult.ts; policyEngine.ts remains focused on rules.",
+        "Updated technical-spec reason code table to include all exported reason codes and documented stricter fail-closed order."
+      ]
+    },
+    {
+      "id": "CHECKPOINT_2",
+      "title": "Verificación ronda 2 (engine completo)",
+      "description": "Verificación final post-engine: tests + lint + diff review + fresh review antes de mergear a release/compass_migration.",
+      "owner": "verifier",
+      "status": "completed",
+      "dependencies": [
+        "T7"
+      ],
+      "filesToCreate": [],
+      "filesToModify": [],
+      "acceptanceCriteria": [
+        "npm run test:back pasa completo en feature/wave-2-policy-engine.",
+        "npm run lint sin errores nuevos.",
+        "npx tsc --noEmit pasa.",
+        "Fresh reviewer audita diff sin blockers.",
+        "Engine sigue unwired: ningún archivo fuera del scope wave-2 modificado."
+      ],
+      "verification": [
+        "Reporte final al usuario con LOC totales, tests count, cobertura de casos.",
+        "Espera aprobación para commit + merge."
+      ],
+      "evidence": [
+        "`npm run test:back -- back/services/__tests__/loadPolicy.test.ts back/services/__tests__/policyEngine.test.ts` passes: 2 files, 42 tests.",
+        "`npm run test:back` passes: 19 files, 160 tests.",
+        "`npm run lint` exits 0 with 7 pre-existing react-refresh warnings in app/front UI files and 0 errors.",
+        "`npx tsc --noEmit --pretty false` passes.",
+        "First fresh review returned 3 blockers: unknown non-mutating actionKind upgrade, missing recipient evidence, invalid numeric context. Added RED regression tests, fixed engine, and reran GREEN.",
+        "Second fresh review passed with no blockers and confirmed engine remains unwired; only tests import policyEngine.",
+        "T8 commit/merge remains pending user approval."
+      ]
+    },
+    {
+      "id": "T8",
+      "title": "Commit y merge a release/compass_migration",
+      "description": "Commit acotado a archivos Wave 2; merge --no-ff a release/compass_migration con mensaje explícito.",
+      "owner": "implementer",
+      "status": "pending",
+      "dependencies": [
+        "CHECKPOINT_2"
+      ],
+      "filesToCreate": [],
+      "filesToModify": [],
+      "acceptanceCriteria": [
+        "Solo archivos de wave-2-policy-engine en el commit (incluye docs/wave-2-policy-engine/**).",
+        "Mensaje commit detalla schema/loader/engine/tests/reason-codes.",
+        "Merge --no-ff a release/compass_migration con mensaje wave 2.",
+        "Tests pasan en release/compass_migration tras merge."
+      ],
+      "verification": [
+        "git log release/compass_migration -3.",
+        "npm run test:back en release/compass_migration."
+      ],
+      "evidence": []
+    }
+  ],
+  "expectedFiles": [
+    "docs/wave-2-policy-engine/functional-spec.md",
+    "docs/wave-2-policy-engine/technical-spec.md",
+    "docs/wave-2-policy-engine/task.json",
+    "back/services/policy/defaultPolicy.yaml",
+    "back/services/policy/policySchema.ts",
+    "back/services/policy/loadPolicy.ts",
+    "back/services/policy/policyEngine.ts",
+    "back/services/__tests__/loadPolicy.test.ts",
+    "back/services/__tests__/policyEngine.test.ts",
+    "back/services/policy/policyContracts.ts",
+    "back/services/policy/policyEvaluationResult.ts"
+  ]
+}

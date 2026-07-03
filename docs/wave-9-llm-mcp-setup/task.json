@@ -1,0 +1,243 @@
+{
+  "id": "wave-9-llm-mcp-setup",
+  "title": "Wave 9 - LLM decision, MCP setup, and devnet hardening",
+  "status": "apply_complete",
+  "branch": "feature/wave-9-llm-mcp-setup",
+  "baseBranch": "release/compass_migration",
+  "goal": "Add a bounded, default-off LLM judge for guardrail decision support, an idempotent OpenCode MCP setup script, and devnet-focused hardening: signer env alias, public-key validation, approvalProof bypass, default actorWallet, recipientKnown default, and devnet transfer transaction payload builder.",
+  "scoutSources": [
+    "Compass active MCP/policy/gateway code",
+    "../security_agent_middleware README, specs, interceptor app, local_judge runtime, setup scripts"
+  ],
+  "tasks": [
+    {
+      "id": "T1_LLM_CONTRACTS",
+      "title": "Add LLM decision contracts and sanitizer",
+      "status": "done",
+      "filesPlanned": [
+        "back/services/llmDecisionContracts.ts",
+        "back/services/llmDecisionSanitizer.ts",
+        "back/services/__tests__/llmDecisionSanitizer.test.ts"
+      ],
+      "evidence": [
+        "Contracts in llmDecisionContracts.ts: LlmJudgeConfig, LlmJudgeInput, LlmGuardOutput, LlmClampedDecision, LLM_DECISION_STRICTNESS table, LLM_SENSITIVE_KEY_PATTERNS.",
+        "Sanitizer in llmDecisionSanitizer.ts: sanitizeLlmJudgeInput redacts sensitive keys, truncates oversized values, handles nested objects, redacts Uint8Array/Buffer/ArrayBuffer.",
+        "11 tests pass covering key redaction, nested redaction, truncation, binary values, default context."
+      ],
+      "acceptanceCriteria": [
+        "Contracts live separately from behavior.",
+        "Sanitizer removes prompts, raw tx bytes, keys, secrets, and oversized values.",
+        "Tests cover sensitive field redaction."
+      ]
+    },
+    {
+      "id": "T2_LLM_ADAPTER",
+      "title": "Add default-off LLM judge adapter",
+      "status": "done",
+      "filesPlanned": [
+        "back/services/llmDecisionAdapter.ts",
+        "back/services/__tests__/llmDecisionAdapter.test.ts"
+      ],
+      "evidence": [
+        "resolveLlmConfig reads COMPASS_LLM_* env vars with false default.",
+        "isLlmConfigured requires enabled + provider + model + apiKey.",
+        "validateLlmGuardOutput validates LlmGuardOutput schema strictly.",
+        "clampLlmDecision enforces decision strictness: DENY cannot become ALLOW, ALLOW can tighten to DENY or REQUIRE_HUMAN_APPROVAL.",
+        "callLlmJudge returns undefined when disabled, unconfigured, unsupported, timeout, or invalid output.",
+        "OpenCode Go provider path uses fetch against COMPASS_LLM_BASE_URL with chat completions payload and model kimi-k2.5 when provider=opencode-go and no providerFn is injected.",
+        "OpenAI remains supported as a secondary provider path.",
+        "37 tests pass covering all adapter behaviors.",
+        "No new runtime dependencies added."
+      ],
+      "acceptanceCriteria": [
+        "No provider call occurs unless explicitly enabled and configured.",
+        "Invalid JSON, schema mismatch, and timeout preserve deterministic decision.",
+        "LLM output cannot loosen deterministic decisions."
+      ]
+    },
+    {
+      "id": "T3_ROUTER_INTEGRATION",
+      "title": "Attach LLM decision metadata after deterministic gateway evaluation",
+      "status": "done",
+      "filesPlanned": [
+        "back/services/mcp/mcpToolCallRouter.ts",
+        "back/services/__tests__/mcpToolCallRouter.test.ts"
+      ],
+      "evidence": [
+        "enrichWithLlmMetadata called after transferGateway, swapGateway, and conditionalGateway evaluations.",
+        "When COMPASS_LLM_DECISION_ENABLED is unset/false, enrichWithLlmMetadata returns undefined and no LLM call is attempted.",
+        "Deterministic DENY is preserved even when LLM is enabled - clampLlmDecision enforces this.",
+        "LLM metadata (llmConsulted, llmDecision, llmClamped) audited in audit events when LLM is consulted.",
+        "4 router tests cover LLM-disabled fallback, enabled-but-unconfigured fallback, current behavior with no config, and LLM audit metadata with mocked OpenAI fetch.",
+        "All 28 router tests pass."
+      ],
+      "acceptanceCriteria": [
+        "Deterministic DENY remains DENY.",
+        "LLM metadata is audited when used.",
+        "Missing LLM config keeps current behavior."
+      ]
+    },
+    {
+      "id": "T4_OPENCODE_INSTALLER",
+      "title": "Add OpenCode MCP install script",
+      "status": "done",
+      "filesPlanned": [
+        "scripts/install-opencode-mcp.mjs",
+        "package.json",
+        "docs/wave-9-llm-mcp-setup/opencode-setup.md"
+      ],
+      "evidence": [
+        "scripts/install-opencode-mcp.mjs supports --dry-run, idempotent writes, preserves $schema and instructions, creates timestamped backup, never writes secrets.",
+        "package.json has mcp:install:opencode script.",
+        "npm run mcp:install:opencode -- --dry-run prints planned config without writing.",
+        "Full run preserves existing config, creates backup, writes correct mcp.compass shape.",
+        "Idempotent second run detects correct existing config and reports it.",
+        "docs/wave-9-llm-mcp-setup/opencode-setup.md explains restart requirement, dry-run, env vars, and troubleshooting."
+      ],
+      "acceptanceCriteria": [
+        "Script supports --dry-run and idempotent writes.",
+        "Script preserves existing .opencode/opencode.json fields.",
+        "Script creates backup before writing and never writes secrets."
+      ]
+    },
+    {
+      "id": "T6_ENV_LOADER_AND_API_KEY",
+      "title": "Add MCP env loader and COMPASS_LLM_API_KEY support",
+      "status": "done",
+      "filesPlanned": [
+        "back/services/mcp/loadRepoEnv.ts",
+        "back/services/__tests__/loadRepoEnv.test.ts",
+        "back/services/mcp/mcpServer.ts",
+        ".env.example"
+      ],
+      "evidence": [
+        "loadRepoEnv.ts: tiny local .env loader - no dotenv dependency. Loads repo-root .env at MCP stdio startup, never overrides existing process.env, masks secrets in logs, idempotent.",
+        "mcpServer.ts: calls loadRepoEnv() before startCompassMcpStdioServer so COMPASS_LLM_* vars are available.",
+        "COMPASS_LLM_* vars documented in .env.example (root only; back/.env.example consolidated into root).",
+        "opencode-setup.md updated: documents automatic .env loading at MCP startup and the COMPASS_LLM_API_KEY variable.",
+        "18 tests pass for loadRepoEnv (parse + load + secret masking + idempotency + COMPASS_LLM_* vars)."
+      ],
+      "acceptanceCriteria": [
+        "MCP runtime loads repo .env when started via npm run mcp:dev without dotenv.",
+        "Existing process.env values are never overridden.",
+        "Secret values are not logged.",
+        "COMPASS_LLM_API_KEY is documented in .env.example.",
+        "COMPASS_LLM_BASE_URL defaults to https://opencode.ai/zen/go/v1/chat/completions."
+      ]
+    },
+    {
+      "id": "T7_SIGNER_ENV_ALIAS_AND_PUBLIC_KEY_VALIDATION",
+      "title": "Add signer env alias COMPASS_LOCAL_SIGNER_SECRET_KEY and public-key validation",
+      "status": "done",
+      "filesPlanned": [
+        "back/services/signerAdapter.ts",
+        "back/services/signerAdapterContracts.ts",
+        "back/services/__tests__/signerAdapter.test.ts",
+        ".env.example"
+      ],
+      "evidence": [
+        "resolveSecretKeyFromEnv now accepts COMPASS_LOCAL_SIGNER_SECRET_KEY as an alias for COMPASS_LOCAL_SIGNER_SECRET_KEY_B58 (both are base58-encoded secret keys).",
+        "matchesConfiguredPublicKey validates COMPASS_LOCAL_SIGNER_PUBLIC_KEY against the derived keypair address when set; returns LOCAL_SIGNER_PUBLIC_KEY_MISMATCH if they differ.",
+        "signerAdapterContracts.ts extended with LOCAL_SIGNER_PUBLIC_KEY_MISMATCH error reason.",
+        "3 new signer tests: base58 alias accepted, matching public key passes, mismatched public key fails with LOCAL_SIGNER_PUBLIC_KEY_MISMATCH.",
+        "COMPASS_LOCAL_SIGNER_SECRET_KEY and COMPASS_LOCAL_SIGNER_PUBLIC_KEY added to .env.example."
+      ],
+      "acceptanceCriteria": [
+        "Signer accepts COMPASS_LOCAL_SIGNER_SECRET_KEY env var as base58 alias.",
+        "When COMPASS_LOCAL_SIGNER_PUBLIC_KEY is set, it must match the derived key; mismatch returns LOCAL_SIGNER_PUBLIC_KEY_MISMATCH.",
+        "When COMPASS_LOCAL_SIGNER_PUBLIC_KEY is absent, the check is skipped (backwards-compatible)."
+      ]
+    },
+    {
+      "id": "T8_DEVNET_APPROVAL_PROOF_BYPASS",
+      "title": "Add devnet-only approvalProof bypass and audit tracking",
+      "status": "done",
+      "filesPlanned": [
+        "back/services/mcp/mcpToolCallRouter.ts",
+        "back/services/mcp/mcpToolContracts.ts",
+        "back/services/mcp/mcpToolRegistry.ts",
+        "back/services/pendingTransactionStore.ts",
+        "back/services/__tests__/pendingTransactionStore.test.ts",
+        "back/services/__tests__/mcpToolCallRouter.test.ts",
+        "back/services/__tests__/mcpToolRegistry.test.ts"
+      ],
+      "evidence": [
+        "ExecuteApprovedActionInput.approvalProof changed from required to optional (type OnchainActionApprovalProof | undefined).",
+        "execute_approved_action input schema: approvalProof removed from required array; only candidateId and transactionPayload required. Description notes 'Optional only for local devnet demo execution.'",
+        "parseExecuteApprovedActionInput: on devnet, missing approvalProof does not return MISSING_APPROVAL_PROOF; on testnet/mainnet, it still does.",
+        "validateApprovalProofBinding: returns ok when approvalProof is absent and network is devnet.",
+        "pendingTransactionStore records Compass-built payloads and consumes them before allowing devnet proof bypass.",
+        "handleExecuteApprovedActionTool: devnetApprovalBypassed boolean tracks whether approvalProof was omitted on devnet; included in all audit events.",
+        "Router tests cover devnet missing approvalProof with pending payload, arbitrary payload denial, mismatched payload denial, and testnet proof requirement."
+      ],
+      "acceptanceCriteria": [
+        "Devnet allows execute_approved_action without approvalProof only for Compass-built pending payloads.",
+        "Testnet and mainnet still require approvalProof.",
+        "All audit events include devnetApprovalBypassed boolean.",
+        "approvalProof binding validation skips on devnet when absent, but pending payload validation still prevents arbitrary signing."
+      ]
+    },
+    {
+      "id": "T9_DEFAULT_ACTOR_WALLET_AND_RECIPIENT_KNOWN",
+      "title": "Default actorWallet from local signer and recipientKnown to false",
+      "status": "done",
+      "filesPlanned": [
+        "back/services/mcp/mcpToolCallRouter.ts",
+        "back/services/mcp/mcpToolRegistry.ts",
+        "back/services/__tests__/mcpToolCallRouter.test.ts"
+      ],
+      "evidence": [
+        "applyDefaultActorWallet helper: when actorWallet is omitted, resolves the local signer address and fills it in; falls back to the original input if signer is unavailable.",
+        "transfer, swap, and conditional handlers all apply default actorWallet before gateway evaluation.",
+        "GUARDED_TRANSFER_SOL schema: actorWallet now optional with description 'Optional source wallet. In local-signer demo mode Compass uses the configured signer wallet when omitted.'",
+        "recipientKnown defaults to false when omitted (changed from undefined to boolean false).",
+        "GUARDED_TRANSFER_SOL description updated: 'Do not ask the user for source wallet in local-signer demo mode; Compass uses the configured signer wallet.'",
+        "Router test: verifies omitted actorWallet resolves to signer's public key and omitted recipientKnown defaults to false."
+      ],
+      "acceptanceCriteria": [
+        "Omitted actorWallet resolves to local signer address.",
+        "Omitted recipientKnown defaults to false (unknown recipient).",
+        "Gateway receives the resolved wallet in all cases."
+      ]
+    },
+    {
+      "id": "T10_DEVNET_TRANSFER_PAYLOAD_BUILDER",
+      "title": "Add devnet transfer transaction payload builder",
+      "status": "done",
+      "filesPlanned": [
+        "back/services/transferTransactionPayload.ts",
+        "back/services/transferTransactionPayloadTypes.ts",
+        "back/services/__tests__/transferTransactionPayload.test.ts",
+        "back/services/mcp/mcpToolCallRouter.ts"
+      ],
+      "evidence": [
+        "buildSolTransferTransactionPayload: builds unsigned VersionedTransaction for SOL transfer on devnet; rejects non-devnet networks with TRANSFER_PAYLOAD_UNSUPPORTED_NETWORK.",
+        "Types in transferTransactionPayloadTypes.ts: BuildSolTransferTransactionPayloadInput and BuildSolTransferTransactionPayloadResult with typed error reasons.",
+        "buildTransferResultData now returns executionPayload with unsigned transaction when decision is ALLOW or REQUIRE_HUMAN_APPROVAL and actorWallet is resolved.",
+        "When payload build fails or actorWallet unavailable, result includes executionPayloadStatus: 'unavailable' with reason.",
+        "2 tests: devnet payload with blockhash mock (verifies base64 encoding, action hash, account keys), mainnet rejection with TRANSFER_PAYLOAD_UNSUPPORTED_NETWORK."
+      ],
+      "acceptanceCriteria": [
+        "Devnet SOL transfers produce unsigned VersionedTransaction payloads.",
+        "Non-devnet networks return TRANSFER_PAYLOAD_UNSUPPORTED_NETWORK.",
+        "Transfer result data includes executionPayload when available."
+      ]
+    },
+    {
+      "id": "T5_VERIFY",
+      "title": "Validate Wave 9",
+      "status": "done",
+      "evidence": [
+        "npm run test:back: 245/245 tests pass.",
+        "npm run lint: 0 errors (1 pre-existing warning in app/layout.tsx).",
+        "npx tsc --noEmit: clean compile.",
+        "npm run mcp:install:opencode -- --dry-run: prints planned config without writing."
+      ],
+      "acceptanceCriteria": [
+        "Focused and full tests pass.",
+        "Dry-run installer prints planned config without writing.",
+        "Docs explain OpenCode restart requirement."
+      ]
+    }
+  ]
+}

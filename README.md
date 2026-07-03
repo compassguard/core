@@ -1,319 +1,252 @@
-# Wallet Copilot — Separación front / back en Next.js
+# Compass
 
-Este proyecto está organizado como una **Next.js fullstack app** deployable en Vercel, pero mantiene una separación física clara entre frontend y backend.
+Compass is the **execution firewall for AI agents on Solana**.
 
-La idea es tener el código separado para trabajar ordenadamente, pero que a nivel de deploy funcione como **una sola aplicación Next**.
+It sits between AI agents, MCP tools, wallets, and on-chain protocols. Before any sensitive crypto action is signed or executed, Compass validates intent, classifies the tool call, applies policy, simulates or decodes the transaction when needed, asks for human approval when required, and records the decision in an audit trail.
 
-## Documentación rápida
+Compass is **not** another AI wallet. Wallets control signing. Compass controls whether an agent action should reach signing at all.
 
-| Necesitás | Leé |
-|---|---|
-| APIs internas y contratos | `docs/api-reference.md` |
-| Scripts, tests, aliases y workflow | `docs/development-workflow.md` |
-| Dynamic wallet auth | `docs/dynamic-wallet-auth/` |
-| Direcciones devnet/on-chain | `docs/onchain-deployments.md` |
-| Índice de specs por feature | `docs/README.md` |
-| Frontend | `front/README.md` |
-| Backend | `back/README.md` |
-| Código compartido | `shared/README.md` |
+## Repository Shape
 
----
-
-## Estructura general
-
-```txt
-.
-├── app/
-│   ├── page.tsx
-│   ├── layout.tsx
-│   ├── not-found.tsx
-│   └── api/
-│       ├── jupiter/quote/route.ts
-│       ├── birdeye/token-security/route.ts
-│       ├── risk-score/route.ts
-│       └── helius/transactions/route.ts
-│
-├── front/
-│   ├── README.md
-│   ├── docs/
-│   └── src/
-│       ├── App.tsx
-│       ├── components/
-│       ├── hooks/
-│       ├── lib/
-│       ├── providers/
-│       ├── stores/
-│       ├── styles/
-│       └── types/
-│
+```
+compass/
+├── app/                  # Next.js landing page entrypoints
+├── api/hosted/           # Vercel serverless entrypoint for hosted backend
 ├── back/
-│   ├── README.md
+│   ├── guardrail/        # Execution gateway, policy, redaction, debug logger
 │   ├── services/
-│   ├── solana/
-│   └── sdd/
-│
-├── shared/
-│   └── README.md
-│
-├── docs/
-│   ├── README.md
-│   └── <feature-name>/
-│       ├── functional-spec.md
-│       ├── technical-spec.md
-│       └── task.json
-│
-├── app/
+│   │   ├── mcp/          # MCP proxy server (server/, proxy/, config/)
+│   │   ├── domains/      # Transfer, swap, conditional gateways
+│   │   └── support/      # Signer adapter
+│   └── solana/           # Anchor programs (deployed on-chain)
+├── hosted/               # Hosted backend (Hono app, evaluation, audit, LLM, policy)
+├── shared/types/         # Shared contracts between back and hosted
+├── scripts/              # Utilities (ticket orchestrator, test helpers)
+├── docs/                 # Product specs, proposals, task plans
+├── tickets/              # SDD ticket files
+├── vercel.json           # Vercel rewrites for hosted backend
 ├── package.json
-├── next.config.mjs
 ├── tsconfig.json
-└── README.md
+└── vitest.back.config.ts
 ```
 
----
+## Quick Start
 
-## Qué es `front/`
+### Prerequisites
 
-`front/` contiene todo el código de interfaz y lógica client-side.
+- Node.js 18+
+- [Bun](https://bun.sh) (for the hosted backend runtime)
+- Git
 
-Ahí viven:
+### Setup
 
-- componentes React,
-- pantallas,
-- hooks,
-- estilos,
-- lógica de UI,
-- providers client-side,
-- lógica que puede ejecutarse en el navegador.
+```sh
+git clone <repo-url>
+cd compass
+npm install
+cp .env.example .env.local
+```
 
-Ejemplo:
+Edit `.env.local` and fill at minimum:
+
+- `SOLANA_RPC_URL` — defaults to devnet
+- `AGENT_ACTION_GUARD_PROGRAM_ID` — the deployed Anchor program ID
+- `COMPASS_HOSTED_API_KEY` — any string for local auth
+
+### Run the Hosted Backend Locally
+
+```sh
+npm run hosted:dev
+```
+
+Verify it's alive:
+
+```sh
+curl localhost:3001/health
+# {"status":"ok","timestamp":"..."}
+```
+
+### Run the MCP Server Locally
+
+```sh
+npm run mcp:dev
+```
+
+The MCP server communicates over stdio and requires a downstream MCP server configured. See `back/services/mcp/config/` for configuration.
+
+### Install Compass MCP With npx
+
+After the npm package is published, users can run Compass without cloning this repository.
+
+Add this MCP entry to your client config:
+
+```json
+{
+  "mcpServers": {
+    "compass": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@ramadan04/compass-mcp-guard",
+        "--downstream-name",
+        "solana-tools",
+        "--downstream-command",
+        "npx",
+        "--downstream-args-json",
+        "[\"@your-downstream/mcp-server\"]"
+      ],
+      "env": {
+        "COMPASS_HYBRID_GUARD_ENABLED": "true",
+        "COMPASS_HOSTED_API_URL": "https://your-vercel-preview.vercel.app/api/hosted",
+        "COMPASS_HOSTED_API_KEY": "your-hosted-api-key"
+      }
+    }
+  }
+}
+```
+
+Replace `@your-downstream/mcp-server` with the MCP server Compass should protect.
+
+For the current verified preview, use:
 
 ```txt
-front/src/App.tsx
-front/src/components/
-front/src/hooks/
-front/src/lib/
-front/src/providers/
-front/src/stores/
-front/src/styles/
-front/src/types/
+COMPASS_HOSTED_API_URL=https://solanahackathon-qf8nkder5-ramirocshubs-projects.vercel.app/api/hosted
 ```
 
-El frontend **no debe contener secrets ni API keys privadas**.
+Do not hardcode real API keys in committed config files. Use your MCP client's secret/env handling when available.
 
-Si una integración necesita una API key, el frontend debe llamar a una ruta interna `/api/...`, y esa ruta debe resolver la llamada desde el backend.
+### Run Tests
 
----
-
-## Qué es `back/`
-
-`back/` contiene la lógica server-side reutilizable.
-
-Esta carpeta no levanta un servidor separado. No hay un `server.js` corriendo aparte.
-
-En cambio, `back/services/*` contiene funciones que son usadas por las rutas API de Next en `app/api/*`.
-
-Ejemplo:
-
-```txt
-app/api/birdeye/token-security/route.ts
+```sh
+npm run test:back
 ```
 
-usa:
+Full E2E user flow:
 
-```txt
-back/services/birdeye.ts
+```sh
+node scripts/test-user-flow.mjs
 ```
 
-De esta forma mantenemos separación física:
+## Environment Variables
 
-```txt
-front/ -> UI
-back/  -> lógica backend
-```
+Copy `.env.example` to `.env.local` and set values for your environment.
 
-pero el deploy sigue siendo una sola aplicación Next en Vercel.
+### Solana
 
----
+| Variable | Description |
+|----------|-------------|
+| `SOLANA_RPC_URL` | Solana RPC endpoint (default: `https://api.devnet.solana.com`) |
+| `AGENT_ACTION_GUARD_PROGRAM_ID` | On-chain Anchor program ID for action guard |
+| `WALLET_SAFETY_ATTESTOR_SECRET_KEY_FILE` | Path to wallet safety attestor keypair file |
+| `WALLET_SAFETY_ATTESTOR_SECRET_KEY` | Wallet safety attestor secret key (base58) |
+| `COMPASS_LOCAL_SIGNER_ENABLED` | Enable local signer for devnet demo |
+| `COMPASS_LOCAL_SIGNER_SECRET_KEY` | Local signer secret key (base58) |
+| `COMPASS_LOCAL_SIGNER_PUBLIC_KEY` | Local signer public key (optional validation) |
 
-## Qué es `app/`
+### Hosted Backend
 
-`app/` es la carpeta estándar de Next.js App Router.
+| Variable | Description |
+|----------|-------------|
+| `COMPASS_HOSTED_PORT` | Port for the hosted backend (default: `3001`) |
+| `COMPASS_HOSTED_API_KEY` | API key for local hosted backend auth |
 
-Tiene dos responsabilidades:
+### Hybrid Guard
 
-1. Exponer la app frontend.
-2. Exponer las rutas backend mediante Route Handlers.
+| Variable | Description |
+|----------|-------------|
+| `COMPASS_HYBRID_GUARD_ENABLED` | Enable hybrid guard (local MCP + hosted backend, default: `true`) |
+| `COMPASS_HOSTED_API_URL` | URL of the hosted backend (default: `http://localhost:3001`) |
+| `COMPASS_HOSTED_TIMEOUT_MS` | Timeout for hosted backend calls (default: `5000`) |
 
-### Frontend entrypoint
+### LLM Judge
 
-```txt
-app/page.tsx
-```
+| Variable | Description |
+|----------|-------------|
+| `COMPASS_LLM_DECISION_ENABLED` | Enable optional advisory LLM judge (default: `false`) |
+| `COMPASS_LLM_PROVIDER` | LLM provider (default: `opencode-go`) |
+| `COMPASS_LLM_MODEL` | Model name (default: `kimi-k2.5`) |
+| `COMPASS_LLM_BASE_URL` | Chat completions endpoint URL |
+| `COMPASS_LLM_API_KEY` | API key for the LLM provider (required for OpenAI) |
+| `COMPASS_LLM_TIMEOUT_MS` | Timeout for LLM calls (default: `3000`) |
 
-importa el frontend real desde:
+### LLM Router
 
-```txt
-front/src/App.tsx
-```
+| Variable | Description |
+|----------|-------------|
+| `COMPASS_LLM_ROUTER_ENABLED` | Enable tool call classification router (default: `false`) |
+| `COMPASS_LLM_ROUTER_TIMEOUT_MS` | Timeout for router calls (default: `10000`) |
 
-Es decir, Next renderiza la página desde `app/page.tsx`, pero el código visual está en `front/`.
+### Analytics
 
-### Backend entrypoints
+| Variable | Description |
+|----------|-------------|
+| `POSTHOG_API_KEY` | PostHog project API key for server-side events |
+| `POSTHOG_HOST` | PostHog host (default: `https://us.i.posthog.com`) |
+| `COMPASS_INSTALLATION_ID` | Installation identifier for analytics correlation |
 
-Las APIs públicas internas viven en:
+### Debug
 
-```txt
-app/api/*/route.ts
-```
+| Variable | Description |
+|----------|-------------|
+| `COMPASS_DEBUG` | Comma-separated debug modules: `proxy`, `policy`, `gateway`, `execution`, `interceptor`, `llm`, `signer`, `connection`, `audit` |
 
-La referencia canónica está en `docs/api-reference.md`. Resumen actual:
+### Price / Fallback
 
-| Área | Rutas |
-|---|---|
-| Chat/agent | `/api/chat` |
-| Conditional orders | `/api/conditional-orders`, `/api/conditional-orders/[orderPda]` |
-| Wallet | `/api/wallet/balances`, `/api/wallet/transactions`, `/api/wallet/allocation` |
-| Quotes/prices | `/api/quotes/usdc-sol`, `/api/jupiter/quote`, `/api/prices` |
-| Risk/providers | `/api/birdeye/token-security`, `/api/risk-score`, `/api/helius/transactions` |
-| Network | `/api/network/status` |
-
-Estas rutas son las que Vercel convierte en funciones server-side.
-
----
-
-## Flujo de una llamada frontend → backend
-
-Ejemplo con Birdeye:
-
-```txt
-front/src/lib/risk/providers/BirdeyeTokenSecurityProvider.ts
-```
-
-llama a:
-
-```txt
-/api/birdeye/token-security?mint=<mint>
-```
-
-Next recibe esa request en:
-
-```txt
-app/api/birdeye/token-security/route.ts
-```
-
-Ese route handler llama a:
-
-```txt
-back/services/birdeye.ts
-```
-
-Y recién ahí se usa la API key privada desde variables de entorno del servidor.
-
-Resumen:
-
-```txt
-Browser
-  -> /api/birdeye/token-security
-    -> app/api/birdeye/token-security/route.ts
-      -> back/services/birdeye.ts
-        -> Birdeye API externa
-```
-
----
-
-## Por qué está separado así
-
-Esta estructura permite:
-
-- mantener el frontend y backend separados en el código,
-- evitar un deploy doble,
-- usar Vercel como una sola app Next,
-- proteger API keys en server-side env vars,
-- evitar CORS entre frontend y backend,
-- seguir el estándar de Next.js para rutas backend.
-
----
-
-## Variables de entorno
-
-Las variables privadas del backend deben configurarse en Vercel o en `.env.local` en la raíz. La matriz completa vive en `back/README.md`.
-
-Grupos principales:
-
-| Grupo | Variables típicas | Uso |
-|---|---|---|
-| Agent/LLM | `OPENAI_API_KEY`, `OPENAI_CHAT_MODEL`, `OPENAI_RESPONSES_ENDPOINT` | Chat agentic y opiniones textuales vía Responses API. |
-| Providers | `BIRDEYE_*`, `HELIUS_*`, `RISK_SCORE_*`, `JUPITER_API_URL` | Datos externos y scoring server-side. |
-| Chat store | `CHAT_SESSION_REDIS_REST_*`, `UPSTASH_REDIS_REST_*`, `KV_REST_API_*` | Persistencia de sesiones en Vercel. |
-| Solana/devnet | Ver `docs/onchain-deployments.md` y `.env.example` | Program IDs, mints, feeds y keeper opcional. |
-
-El frontend solo puede usar variables públicas con prefijo:
-
-```txt
-NEXT_PUBLIC_*
-```
-
-No poner secrets en `front/`.
-
----
-
-## Contract deployment addresses
-
-Las direcciones devnet están documentadas en `docs/onchain-deployments.md`.
-
-Resumen:
-
-- AgentActionGuard program: `4K9mRmHmbFGgDN8Luhx5hPRHwuEZ5kQm2VNpMUr1gaBV`
-- ConditionalEscrowBuy program: `FDwvY7eqeCNn27haATZJbqfnACJTr9YveG6yy9RcUt7u`
-- No hay deployment mainnet configurado para esta demo.
-
----
+| Variable | Description |
+|----------|-------------|
+| `FALLBACK_SOL_USD_PRICE` | Fallback SOL price when on-chain quote is unavailable (default: `140`) |
 
 ## Scripts
 
-La guía completa está en `docs/development-workflow.md`.
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Run the Next.js app (landing page) |
+| `npm run build` | Production build for Next.js |
+| `npm run start` | Start the production Next.js server |
+| `npm run lint` | Lint `app`, `back`, `hosted`, and `shared` |
+| `npm run test:back` | Run backend test suite (vitest) |
+| `npm run test:watch` | Run backend tests in watch mode |
+| `npm run hosted:dev` | Start the hosted Hono backend via Bun |
+| `npm run mcp:dev` | Start the Compass MCP server (stdio) |
+| `npm run mcp:install:opencode` | Install Compass as an OpenCode MCP tool |
+| `npm run test:e2e` | Run E2E pipeline tests |
+| `npm run test:e2e:verbose` | Run E2E pipeline tests with verbose output |
+| `npm run ticket:process` | Process a pending SDD ticket |
+| `npm run ticket:approve` | Approve a pending SDD ticket |
+| `npm run ticket:status` | Show SDD ticket status |
 
-| Comando | Qué hace |
-|---|---|
-| `npm install --registry=https://registry.npmjs.org` | Instala dependencias. |
-| `npm run dev` | Levanta la app Next completa. |
-| `npm run build` | Build de producción. |
-| `npm test` | Tests frontend (`front/src`). |
-| `npm run test:back` | Tests backend/API (`back/services`, `app/api`). |
-| `npm run lint` | Lint de `app`, `front/src`, `back/services`. |
-| `npm run bootstrap:conditional` | Bootstrap devnet de conditional escrow. |
+## Testing
 
-`dev:front`, `dev:back` y `build:front` son aliases de conveniencia: no representan deploys separados.
+- **Unit / integration tests**: `npm run test:back` — runs vitest against `back/` and `hosted/`.
+- **E2E user flow**: `node scripts/test-user-flow.mjs` — simulates a complete user interaction.
+- **E2E pipeline**: `npm run test:e2e` — runs the full pipeline test suite.
+- **Stdio note**: Tests that spawn MCP stdio processes can be flaky when run in parallel. If you see intermittent failures, try running tests sequentially or rerun the failed suite.
 
----
+## Deployment
 
-## Deploy en Vercel
+| Component | Target | How |
+|-----------|--------|-----|
+| Hosted backend | Vercel | `api/hosted/[[...route]].ts` serverless entrypoint + `vercel.json` rewrites. Deploy via Vercel CLI or git push. |
+| MCP server | Local (stdio) | User runs `npm run mcp:dev`. Connects to downstream MCP servers via stdio. |
+| Landing page | Vercel (same project) | Next.js app at root. The landing is a separate concern from the hosted API. |
+| Anchor programs | Solana | `anchor deploy` from `back/solana/`. Deployed program ID set via `AGENT_ACTION_GUARD_PROGRAM_ID`. |
 
-Deployar la raíz del repo como una app Next.js.
+## Security Rules
 
-Configuración esperada:
+- Critical operations must pass backend guardrails before signing/execution.
+- `sign_and_send_transaction` style flows must be denied unless Compass built and approved the transaction.
+- Missing evidence, unsafe policy state, or unverifiable high-risk actions must fail closed.
+- The Compass backend must not hold or expose user private keys.
 
-```txt
-Framework: Next.js
-Root Directory: ./
-Build Command: npm run build
-```
+## Branch Policy
 
-No hay que deployar `front/` y `back/` por separado.
+| Branch | Purpose |
+|--------|---------|
+| `main` | Stable. No migration work merges here without explicit approval. |
+| `release/compass_migration` | Integration branch for the MCP Guard migration. |
+| `feature/wave-<n>-<description>` | Per-feature branches. Branch from and merge back into `release/compass_migration`. |
 
-Vercel detecta:
+## Source Of Truth
 
-- `app/page.tsx` como frontend,
-- `app/api/*/route.ts` como backend.
-
----
-
-## Regla de oro
-
-```txt
-front/ = código que puede correr en el navegador
-back/  = lógica server-side reutilizable
-app/   = entrypoints oficiales de Next para páginas y APIs
-```
-
-Si algo necesita una API key privada, va en `back/services/*` y se expone mediante `app/api/*/route.ts`.
+- [`docs/PRODUCT_CONSTITUTION.md`](docs/PRODUCT_CONSTITUTION.md) — canonical product document.
+- [`docs/`](docs/) — feature specs, technical designs, task plans.

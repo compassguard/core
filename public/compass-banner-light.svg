@@ -1,0 +1,63 @@
+<svg width="1200" height="450" viewBox="0 0 1200 450" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Compass security layer banner</title>
+  <desc id="desc">Compass is a security layer for AI agents executing Solana actions.</desc>
+  <defs>
+    <radialGradient id="cyanGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(960 40) rotate(125) scale(390 390)">
+      <stop stop-color="#33E2C0" stop-opacity="0.38"/>
+      <stop offset="1" stop-color="#33E2C0" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="violetGlow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(170 430) rotate(-30) scale(320 320)">
+      <stop stop-color="#8A4CFF" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#8A4CFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1200" y2="450" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="0.48" stop-color="#F7FBFF"/>
+      <stop offset="1" stop-color="#F8F4FF"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="1200" y2="450" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#33E2C0" stop-opacity="0.36"/>
+      <stop offset="1" stop-color="#8A4CFF" stop-opacity="0.36"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="72" y1="76" x2="176" y2="180" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#33E2C0"/>
+      <stop offset="1" stop-color="#8A4CFF"/>
+    </linearGradient>
+    <pattern id="grid" width="36" height="36" patternUnits="userSpaceOnUse">
+      <path d="M36 0H0V36" stroke="#14213D" stroke-opacity="0.055"/>
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="450" rx="42" fill="url(#panel)"/>
+  <rect width="1200" height="450" rx="42" fill="url(#grid)"/>
+  <circle cx="998" cy="86" r="280" fill="url(#cyanGlow)"/>
+  <circle cx="170" cy="424" r="230" fill="url(#violetGlow)"/>
+  <rect x="0.75" y="0.75" width="1198.5" height="448.5" rx="41.25" stroke="url(#rim)" stroke-opacity="0.8" stroke-width="1.5"/>
+
+  <!-- logo tile -->
+  <rect x="72" y="76" width="104" height="104" rx="28" fill="url(#mark)"/>
+  <path d="M124 158C124 158 154 143 154 113V85L124 74L94 85V113C94 143 124 158 124 158Z" fill="white" fill-opacity="0.20" stroke="white" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M140 96L128 128L96 140L108 108L140 96Z" fill="white"/>
+  <path d="M110 111L128 128" stroke="#274155" stroke-opacity="0.75" stroke-width="5" stroke-linecap="round"/>
+
+  <!-- type -->
+  <text x="210" y="120" fill="#101218" font-family="Archivo, Arial, sans-serif" font-size="55" font-weight="800" letter-spacing="-1.8">Compass</text>
+  <text x="210" y="170" fill="#536074" font-family="Archivo, Arial, sans-serif" font-size="27" font-weight="600">Security layer for AI execution on Solana</text>
+
+  <!-- pills -->
+  <rect x="210" y="218" width="244" height="48" rx="24" fill="#FFFFFF" fill-opacity="0.72" stroke="#B9C5DC" stroke-opacity="0.85"/>
+  <text x="236" y="249" fill="#1F2937" font-family="JetBrains Mono, monospace" font-size="16" font-weight="700">POLICY BEFORE SIGNING</text>
+  <rect x="474" y="218" width="178" height="48" rx="24" fill="#101218"/>
+  <text x="503" y="249" fill="white" font-family="JetBrains Mono, monospace" font-size="16" font-weight="700">MCP GUARD</text>
+
+  <!-- big shield -->
+  <path d="M827 126C895 92 986 98 1042 143C1095 185 1114 258 1078 309C1033 371 920 379 838 340C767 306 731 230 756 179C767 156 785 141 827 126Z" fill="#101218" fill-opacity="0.035" stroke="#101218" stroke-opacity="0.12" stroke-width="2"/>
+  <path d="M912 298C912 298 984 262 984 190V125L912 99L840 125V190C840 262 912 298 912 298Z" stroke="#101218" stroke-width="10" stroke-linejoin="round" fill="none"/>
+  <path d="M945 155L918 226L847 253L874 182L945 155Z" fill="#101218"/>
+  <path d="M883 188L918 226" stroke="#33E2C0" stroke-width="9" stroke-linecap="round"/>
+
+  <!-- accent lines -->
+  <path d="M714 85H777" stroke="#8A4CFF" stroke-width="2" stroke-opacity="0.45"/>
+  <path d="M696 248H773" stroke="#33E2C0" stroke-width="2" stroke-opacity="0.45"/>
+  <path d="M1006 367H1084" stroke="#8A4CFF" stroke-width="2" stroke-opacity="0.35"/>
+</svg>

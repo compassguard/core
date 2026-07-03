@@ -1,0 +1,157 @@
+{
+  "change": "pipeline-implementation",
+  "branch": "feature/routed-guardrail-pipeline",
+  "delivery_strategy": "single-pr-default",
+  "review_budget": 400,
+  "verification": {
+    "after_each_task": [
+      "npm run lint",
+      "npm run test:back",
+      "npx tsc --noEmit"
+    ],
+    "final": [
+      "npm run lint",
+      "npm run test:back",
+      "npx tsc --noEmit",
+      "npm run mcp:dev"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Create LLM Router contracts",
+      "description": "Create back/services/intelligence/llm-router/llmRouterContracts.ts with LlmRouterInput, LlmRouterOutput, LlmRouterResult, LlmRouterConfig types",
+      "files": {
+        "create": ["back/services/intelligence/llm-router/llmRouterContracts.ts"]
+      },
+      "estimated_changed_lines": 40,
+      "dependencies": [],
+      "verification": ["npm run lint", "npx tsc --noEmit"]
+    },
+    {
+      "id": "T2",
+      "title": "Create LLM Router prompt template",
+      "description": "Create back/services/intelligence/llm-router/llmRouterPrompt.ts with the LLM system prompt for tool classification (transfer/swap/skip/unknown)",
+      "files": {
+        "create": ["back/services/intelligence/llm-router/llmRouterPrompt.ts"]
+      },
+      "estimated_changed_lines": 30,
+      "dependencies": [],
+      "verification": ["npm run lint", "npx tsc --noEmit"]
+    },
+    {
+      "id": "T3",
+      "title": "Create LLM Router adapter",
+      "description": "Create back/services/intelligence/llm-router/llmRouterAdapter.ts with routeToolCall(). Reuse LLM provider pattern from llmDecisionAdapter.ts (same COMPASS_LLM_* env vars). 3s timeout, error fallback to 'unknown'",
+      "files": {
+        "create": ["back/services/intelligence/llm-router/llmRouterAdapter.ts"]
+      },
+      "estimated_changed_lines": 80,
+      "dependencies": ["T1", "T2"],
+      "verification": ["npm run lint", "npx tsc --noEmit"]
+    },
+    {
+      "id": "T3b",
+      "title": "Wire LLM Decision into transfer path",
+      "description": "After evaluateTransferGateway() returns, prepare route-specific sanitized LLM Decision input with amount, recipient, token/SOL, wallet safety validation, gateway decision, and recipient/amount/suspicious-flag risk signals. Call evaluateLlmMetadata() when COMPASS_LLM_DECISION_ENABLED=true and clamp final output so gateway deny cannot loosen",
+      "files": {
+        "modify": ["back/services/mcp/proxy/mcpProxyDispatcher.ts"]
+      },
+      "estimated_changed_lines": 60,
+      "dependencies": ["T3", "T4"],
+      "verification": ["npm run lint", "npm run test:back", "npx tsc --noEmit"]
+    },
+    {
+      "id": "T3c",
+      "title": "Wire LLM Decision into swap path",
+      "description": "After evaluateSwapGateway() returns, prepare route-specific sanitized LLM Decision input with token in/out, amount, slippage, protocol, token risk score, gateway decision, and unknown-token/high-slippage/risky-protocol risk signals. Call evaluateLlmMetadata() when COMPASS_LLM_DECISION_ENABLED=true and clamp final output so gateway deny cannot loosen",
+      "files": {
+        "modify": ["back/services/mcp/proxy/mcpProxyDispatcher.ts"]
+      },
+      "estimated_changed_lines": 60,
+      "dependencies": ["T3", "T4"],
+      "verification": ["npm run lint", "npm run test:back", "npx tsc --noEmit"]
+    },
+    {
+      "id": "T4",
+      "title": "Update proxy contracts for routing",
+      "description": "Extend mcpProxyContracts.ts if needed to carry routing metadata (ProxyDecision extensions). Add router config types if not covered by router contracts",
+      "files": {
+        "modify": ["back/services/mcp/proxy/mcpProxyContracts.ts"]
+      },
+      "estimated_changed_lines": 20,
+      "dependencies": ["T1"],
+      "verification": ["npm run lint", "npx tsc --noEmit"]
+    },
+    {
+      "id": "T5",
+      "title": "Update proxy dispatcher with routing hook",
+      "description": "Modify mcpProxyDispatcher.ts: after evaluateProxyToolCallPolicy returns 'require_approval' (unknown tools), add optional LLM router hook. If COMPASS_LLM_ROUTER_ENABLED=true, call routeToolCall(). Route: transfer→transferGateway→LLM Decision clamp, swap→swapGateway→LLM Decision clamp, skip→allow, unknown→require_approval. If router is not enabled, keep current behavior",
+      "files": {
+        "modify": ["back/services/mcp/proxy/mcpProxyDispatcher.ts"]
+      },
+      "estimated_changed_lines": 90,
+      "dependencies": ["T3", "T3b", "T3c", "T4"],
+      "verification": ["npm run lint", "npm run test:back", "npx tsc --noEmit"]
+    },
+    {
+      "id": "T6",
+      "title": "Update audit sink with routing events",
+      "description": "Modify mcpProxyAudit.ts to add routing decision audit event types and logging for LLM router calls (tool name, classification, decision, latency, errors)",
+      "files": {
+        "modify": ["back/services/mcp/proxy/mcpProxyAudit.ts"]
+      },
+      "estimated_changed_lines": 30,
+      "dependencies": ["T1"],
+      "verification": ["npm run lint", "npx tsc --noEmit"]
+    },
+    {
+      "id": "T7",
+      "title": "Write LLM Router unit tests",
+      "description": "Create back/services/__tests__/llmRouterAdapter.test.ts. Mock LLM provider. Test: transfer classification, swap classification, skip classification, unknown classification, timeout fallback, invalid JSON fallback, provider error fallback",
+      "files": {
+        "create": ["back/services/__tests__/llmRouterAdapter.test.ts"]
+      },
+      "estimated_changed_lines": 80,
+      "dependencies": ["T3"],
+      "verification": ["npm run test:back"]
+    },
+    {
+      "id": "T8",
+      "title": "Write dispatcher routing tests",
+      "description": "Add tests in existing test file or new file. Test: router enabled→routes correctly, router disabled→current behavior, router returns unknown→require_approval, router returns skip→allow, transfer/swap routes call gateways before final decision",
+      "files": {
+        "create": ["back/services/__tests__/mcpProxyDispatcher.test.ts"]
+      },
+      "estimated_changed_lines": 80,
+      "dependencies": ["T5", "T7"],
+      "verification": ["npm run test:back"]
+    },
+    {
+      "id": "T9",
+      "title": "Final integration verification",
+      "description": "Run full test suite. Verify npm run mcp:dev starts. Check no legacy imports. Remove any debug code",
+      "files": {},
+      "estimated_changed_lines": 0,
+      "dependencies": ["T5", "T6", "T7", "T8", "T10"],
+      "verification": [
+        "npm run lint",
+        "npm run test:back",
+        "npx tsc --noEmit",
+        "npm run mcp:dev"
+      ]
+    },
+    {
+      "id": "T10",
+      "title": "Write LLM Decision integration tests",
+      "description": "Create or extend dispatcher tests with mocked LLM Decision. Test transfer input preparation, swap input preparation, disabled decision preserves gateway result, gateway deny cannot be loosened, and gateway allow can tighten to require_approval",
+      "files": {
+        "create": ["back/services/__tests__/mcpProxyLlmDecisionIntegration.test.ts"]
+      },
+      "estimated_changed_lines": 90,
+      "dependencies": ["T3b", "T3c", "T5"],
+      "verification": ["npm run test:back", "npx tsc --noEmit"]
+    }
+  ],
+  "total_estimated_changed_lines": 660
+}

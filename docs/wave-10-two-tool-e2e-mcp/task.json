@@ -1,0 +1,252 @@
+{
+  "change": "wave-10-two-tool-e2e-mcp",
+	"status": "done",
+  "reviewWorkloadForecast": {
+    "estimatedChangedLines": "1400-1800",
+    "budgetRisk": "High",
+    "chainedPrsRecommended": false,
+    "deliveryStrategy": "single-pr-default",
+    "decisionNeededBeforeApply": false,
+    "chainStrategy": "manual-phases",
+    "suggestedSplit": "Sequential implementation phases with manual checkpoints: Phase 1 contracts + registry, Phase 2 internal executor + router E2E, Phase 3 tests and verification. These are not separate PRs unless explicitly requested."
+  },
+  "guardText": [
+    "Decision needed before apply: No",
+    "Chained PRs recommended: No",
+    "Chain strategy: manual-phases",
+    "400-line budget risk: High"
+  ],
+  "workUnits": [
+    {
+      "unit": 1,
+      "goal": "Rename public tool contracts and update registry",
+      "checkpoint": "Phase checkpoint 1",
+      "notes": "Adds COMPASS_TRANSFER/COMPASS_SWAP names, updated schemas with userConfirmedRisk, removes deprecated tools from public list. Stop for user review after this phase.",
+      "base": "feature/wave-10-two-tool-e2e-mcp"
+    },
+    {
+      "unit": 2,
+      "goal": "Extract internal executor and wire E2E transfer/swap handlers",
+      "checkpoint": "Phase checkpoint 2",
+      "notes": "Creates internalExecutor.ts, replaces handleTransferTool with handleCompassTransfer (E2E), replaces handleSwapTool with handleCompassSwap (policy-only + pending status). Stop for user review after this phase.",
+      "base": "feature/wave-10-two-tool-e2e-mcp"
+    },
+    {
+      "unit": 3,
+      "goal": "Add E2E router integration tests",
+      "checkpoint": "Phase checkpoint 3",
+      "notes": "Adds mcpToolRegistry.test.ts and mcpToolCallRouter.test.ts with E2E transfer, non-devnet block, and swap-pending-builder scenarios. Stop for final review after verification.",
+      "base": "feature/wave-10-two-tool-e2e-mcp"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T10_1.1",
+      "phase": "Phase 1: Tool Contracts",
+      "title": "Add COMPASS_TRANSFER and COMPASS_SWAP to MCP_TOOL_NAMES in mcpToolContracts.ts",
+      "status": "done",
+      "filesPlanned": ["back/services/mcp/mcpToolContracts.ts"],
+      "dependsOn": [],
+      "acceptanceCriteria": [
+        "MCP_TOOL_NAMES.COMPASS_TRANSFER === 'compass_transfer'",
+        "MCP_TOOL_NAMES.COMPASS_SWAP === 'compass_swap'",
+        "Internal-only names remain: EXECUTE_APPROVED_ACTION, SIGN_AND_SEND_TRANSACTION, CREATE_CONDITIONAL_BUY_SOL",
+        "ExecuteMcpTransferInput type defined with candidateId, network, transactionPayload, approvalProof"
+      ]
+    },
+    {
+      "id": "T10_1.2",
+      "phase": "Phase 1: Tool Contracts",
+      "title": "Add userConfirmedRisk to COMPASS_TRANSFER and COMPASS_SWAP input schemas in mcpToolContracts.ts",
+      "status": "done",
+      "filesPlanned": ["back/services/mcp/mcpToolContracts.ts"],
+      "dependsOn": ["T10_1.1"],
+      "acceptanceCriteria": [
+        "COMPASS_TRANSFER_SCHEMA includes optional userConfirmedRisk boolean",
+        "COMPASS_SWAP_SCHEMA includes optional userConfirmedRisk boolean"
+      ]
+    },
+    {
+      "id": "T10_1.3",
+      "phase": "Phase 1: Tool Contracts",
+      "title": "Add E2E transfer input type with userConfirmedRisk in mcpToolContracts.ts",
+      "status": "done",
+      "filesPlanned": ["back/services/mcp/mcpToolContracts.ts"],
+      "dependsOn": ["T10_1.2"],
+      "acceptanceCriteria": [
+        "CompassTransferInput type mirrors existing transfer fields plus userConfirmedRisk",
+        "CompassSwapInput type mirrors existing swap fields plus userConfirmedRisk",
+        "Types exported for use in router and tests"
+      ]
+    },
+    {
+      "id": "T10_2.1",
+      "phase": "Phase 2: Registry Updates",
+      "title": "Rename GUARDED_TRANSFER_SOL entry to COMPASS_TRANSFER in mcpToolRegistry.ts",
+      "status": "done",
+      "filesPlanned": ["back/services/mcp/mcpToolRegistry.ts"],
+      "dependsOn": ["T10_1.3"],
+      "acceptanceCriteria": [
+        "GUARDED_TRANSFER_SOL renamed to COMPASS_TRANSFER",
+        "GUARDED_SWAP_SOL_USDC renamed to COMPASS_SWAP",
+        "Description updated to reflect E2E flow (not 'prepare')"
+      ]
+    },
+    {
+      "id": "T10_2.2",
+      "phase": "Phase 2: Registry Updates",
+      "title": "Remove EXECUTE_APPROVED_ACTION, SIGN_AND_SEND_TRANSACTION, CREATE_CONDITIONAL_BUY_SOL from public MCP_TOOL_REGISTRY",
+      "status": "done",
+      "filesPlanned": ["back/services/mcp/mcpToolRegistry.ts"],
+      "dependsOn": ["T10_2.1"],
+      "acceptanceCriteria": [
+        "listMcpTools() no longer includes execute_approved_action",
+        "listMcpTools() no longer includes sign_and_send_transaction",
+        "listMcpTools() no longer includes create_conditional_buy_sol",
+        "Internal tool entries preserved if needed for backward compat"
+      ]
+    },
+    {
+"id": "T10_2.3",
+      "phase": "Phase 2: Registry Updates",
+      "title": "Update COMPASS_TRANSFER and COMPASS_SWAP registry entries with userConfirmedRisk schema",
+      "status": "done",
+      "filesPlanned": ["back/services/mcp/mcpToolRegistry.ts"],
+      "dependsOn": ["T10_2.2"],
+      "acceptanceCriteria": [
+        "COMPASS_TRANSFER registry entry inputSchema includes userConfirmedRisk",
+        "COMPASS_SWAP registry entry inputSchema includes userConfirmedRisk"
+      ]
+    },
+{
+  "id": "T10_3.1",
+      "phase": "Phase 3: Internal Executor",
+      "title": "Create back/services/mcp/internalExecutor.ts with extracted execution logic",
+      "status": "done",
+      "filesPlanned": ["back/services/mcp/internalExecutor.ts"],
+      "dependsOn": ["T10_2.3"],
+      "acceptanceCriteria": [
+        "Function: executeMcpTransfer(input: ExecuteMcpTransferInput) with parse payload, devnet bypass guard, idempotency consume, signer create, signAndSend, audit",
+        "Idempotency consumed right before signing (not after building)",
+        "Devnet bypass guard calls pendingTransactionStore.consumeByCandidateId",
+        "On-chain approvalProof verification for non-devnet paths",
+        "Returns { ok, signature?, reason?, auditId }"
+      ]
+    },
+    {
+      "id": "T10_4.1",
+      "phase": "Phase 4: Router E2E Wiring",
+      "title": "Replace handleTransferTool with handleCompassTransfer in mcpToolCallRouter.ts",
+      "status": "done",
+      "filesPlanned": ["back/services/mcp/mcpToolCallRouter.ts"],
+      "dependsOn": ["T10_3.1"],
+      "acceptanceCriteria": [
+        "Route MCP_TOOL_NAMES.COMPASS_TRANSFER -> handleCompassTransfer",
+        "Parse input including userConfirmedRisk",
+        "Apply default actorWallet from local signer",
+        "Evaluate transfer gateway",
+        "If DENY: return deny result without building/executing",
+        "If REQUIRE_ADDITIONAL_CONTEXT: return context result",
+        "If REQUIRE_HUMAN_APPROVAL on devnet + userConfirmedRisk=true: continue to execution",
+        "If REQUIRE_HUMAN_APPROVAL on devnet without userConfirmedRisk: ask for confirmation",
+        "If REQUIRE_HUMAN_APPROVAL on non-devnet: block with 'external approval required' message",
+        "Build unsigned transfer transaction via buildSolTransferTransactionPayload",
+        "Call internalExecutor.executeMcpTransfer",
+        "Return signature/status result"
+      ]
+    },
+    {
+      "id": "T10_4.2",
+      "phase": "Phase 4: Router E2E Wiring",
+      "title": "Replace handleSwapTool with handleCompassSwap in mcpToolCallRouter.ts",
+      "status": "done",
+      "filesPlanned": ["back/services/mcp/mcpToolCallRouter.ts"],
+      "dependsOn": ["T10_4.1"],
+      "acceptanceCriteria": [
+        "Route MCP_TOOL_NAMES.COMPASS_SWAP -> handleCompassSwap",
+        "Parse input including userConfirmedRisk",
+        "Evaluate swap gateway (existing logic)",
+        "Return gateway decision (ALLOW/DENY/etc) plus data.executionStatus: 'pending_builder'",
+        "Do NOT build or execute swap transaction",
+        "Non-devnet still blocks with external approval message if policy requires it"
+      ]
+    },
+    {
+      "id": "T10_4.3",
+      "phase": "Phase 4: Router E2E Wiring",
+      "title": "Remove public execute_approved_action routing from mcpToolCallRouter.ts switch",
+      "status": "done",
+      "filesPlanned": ["back/services/mcp/mcpToolCallRouter.ts"],
+      "dependsOn": ["T10_4.2"],
+      "acceptanceCriteria": [
+        "EXECUTE_APPROVED_ACTION no longer handled as a public tool route",
+        "Internal logic from handleExecuteApprovedActionTool extracted into internalExecutor.ts",
+        "Existing internal-only handling preserved for backward compat during transition"
+      ]
+    },
+    {
+      "id": "T10_4.4",
+      "phase": "Phase 4: Router E2E Wiring",
+      "title": "Update denyRegisteredTool message to reference compass_transfer and compass_swap",
+      "status": "done",
+      "filesPlanned": ["back/services/mcp/mcpToolCallRouter.ts"],
+      "dependsOn": ["T10_4.3"],
+      "acceptanceCriteria": [
+        "Deny message updated: route through compass_transfer or compass_swap instead of guard + execute_approved_action pattern"
+      ]
+    },
+    {
+      "id": "T10_5.1",
+      "phase": "Phase 5: Tests",
+      "title": "Create back/services/__tests__/mcpToolRegistry.test.ts with public list assertions",
+      "status": "done",
+      "filesPlanned": ["back/services/__tests__/mcpToolRegistry.test.ts"],
+      "dependsOn": ["T10_2.3"],
+      "acceptanceCriteria": [
+        "listMcpTools() returns compass_transfer and compass_swap",
+        "listMcpTools() does NOT include execute_approved_action",
+        "listMcpTools() does NOT include sign_and_send_transaction",
+        "listMcpTools() does NOT include create_conditional_buy_sol",
+        "listMcpTools() includes read-only helpers: get_usdc_sol_quote, quote_swap, simulate_conditional_buy_oracle_check"
+      ]
+    },
+    {
+      "id": "T10_5.2",
+      "phase": "Phase 5: Tests",
+      "title": "Create back/services/__tests__/mcpToolCallRouter.test.ts with E2E transfer and swap scenarios",
+      "status": "done",
+      "filesPlanned": ["back/services/__tests__/mcpToolCallRouter.test.ts"],
+      "dependsOn": ["T10_4.4"],
+      "acceptanceCriteria": [
+        "Devnet transfer succeeds with userConfirmedRisk=true: returns ok=true with signature",
+        "Devnet transfer without userConfirmedRisk when approval required: returns REQUIRE_HUMAN_APPROVAL",
+        "Non-devnet transfer blocked with external approval message",
+        "Transfer DENY returns clear denial without executing",
+        "Swap returns ALLOW with data.executionStatus: 'pending_builder'",
+        "Hidden internal tool call rejected as unavailable"
+      ]
+    },
+    {
+      "id": "T10_5.3",
+      "phase": "Phase 5: Tests",
+      "title": "Add unit tests for internalExecutor.ts",
+      "status": "done",
+      "filesPlanned": ["back/services/__tests__/internalExecutor.test.ts"],
+      "dependsOn": ["T10_3.1"],
+      "acceptanceCriteria": [
+        "Idempotency consumed before signing",
+        "Devnet bypass guard rejects non-Compass-built payloads",
+        "Signer adapter called with correct unsigned transaction",
+        "Signature returned on success"
+      ]
+    }
+  ],
+	"verification": {
+		"commands": [
+			"npx vitest run back/services/__tests__/mcpToolRegistry.test.ts",
+			"npx vitest run back/services/__tests__/mcpToolCallRouter.test.ts",
+			"npx vitest run back/services/__tests__/internalExecutor.test.ts",
+			"npx tsc --noEmit"
+		]
+	}
+}

@@ -1,0 +1,77 @@
+[
+  {
+    "id": 1,
+    "title": "Create debugLogger.ts — core utility",
+    "description": "Create `back/services/guardrail/debugLogger.ts` with: `DebugModule` type, `debug()` export, env-based module filtering (`COMPASS_DEBUG`), self-contained redaction (`redactRecord`/`redactValue`/`redactUnknown`/`isPlainRecord` + `SENSITIVE_KEY_PATTERN`), and file output to `logs/compass-debug.log`. Extract `getLogFilePath()` and `getLogDir()` as functions (not module constants) so tests can override `process.cwd()` without mocking module-level state. Import only from Node.js stdlib (`node:fs`, `node:path`). Zero project imports.",
+    "files": [
+      "back/services/guardrail/debugLogger.ts"
+    ],
+    "estimatedLines": 55,
+    "dependsOn": [],
+    "verification": "File exists at `back/services/guardrail/debugLogger.ts`, exports `debug()` function and `DebugModule` type. No imports from the project, only `node:fs` and `node:path`. Running `COMPASS_DEBUG=true` with a debug call writes the expected line to `logs/compass-debug.log`."
+  },
+  {
+    "id": 2,
+    "title": "Add debug calls — proxy & guardrail (Priority 1)",
+    "description": "Insert `debug()` calls from `../../guardrail/debugLogger` (adjust relative path per file) into the 5 highest-priority files:\n\n- **mcpProxyDispatcher.ts**: Add `debug("proxy", "dispatch", ...)` at: (a) router classification point, (b) policy evaluation entry, (c) forwarding decision, (d) denial path. (+6 lines)\n- **executionGateway.ts**: Add `debug("execution", "classifyToolCall", ...)` in `classifyToolCall()` branches, and `debug("execution", "createCandidate", ...)` for input summary in `createCandidate()`. (+4 lines)\n- **policyEngine.ts**: Add `debug("policy", "evaluateRule", ...)` before/after each rule evaluation iteration. (+3 lines)\n- **policyEvaluationResult.ts**: Add `debug("policy", "applyDecision", ...)` when decision mapping is applied. (+2 lines)\n- **mcpProxyPolicyInterceptor.ts**: Add `debug("interceptor", "classify", ...)` per risk-class match and `debug("interceptor", "evaluate", ...)` for interceptor decision. (+3 lines)",
+    "files": [
+      "back/services/mcp/proxy/mcpProxyDispatcher.ts",
+      "back/services/guardrail/execution/executionGateway.ts",
+      "back/services/guardrail/policy/policyEngine.ts",
+      "back/services/guardrail/policy/policyEvaluationResult.ts",
+      "back/services/mcp/proxy/mcpProxyPolicyInterceptor.ts"
+    ],
+    "estimatedLines": 20,
+    "dependsOn": [1],
+    "verification": "Each file has an import of `debug` from `debugLogger.ts` and at least one `debug(...)` call. With `COMPASS_DEBUG=proxy,execution,policy,interceptor`, executing each code path produces a log line in `logs/compass-debug.log`. Without the env var, no file is written."
+  },
+  {
+    "id": 3,
+    "title": "Add debug calls — domain gateways (Priority 2)",
+    "description": "Insert `debug()` calls at the entry point of each domain gateway:\n\n- **transferGateway.ts**: `debug("gateway", "transfer", ...)` at entry\n- **swapGateway.ts**: `debug("gateway", "swap", ...)` at entry\n- **conditionalGateway.ts**: `debug("gateway", "conditional", ...)` at entry\n\n(Approximately +1 line per file, plus import.)",
+    "files": [
+      "back/services/domains/transfer/transferGateway.ts",
+      "back/services/domains/swap/swapGateway.ts",
+      "back/services/domains/conditional-parking-lot/conditionalGateway.ts"
+    ],
+    "estimatedLines": 5,
+    "dependsOn": [1],
+    "verification": "Each file imports `debug` and has an entry-point debug call. With `COMPASS_DEBUG=gateway`, hitting each gateway produces a log line."
+  },
+  {
+    "id": 4,
+    "title": "Migrate console.log/error calls to debug()",
+    "description": "Replace existing `console.log`/`console.error` calls with `debug()` in 4 files. Each is a drop-in replacement — same message, same information, but gated behind `COMPASS_DEBUG`:\n\n- **mcpServer.ts** (line 216): `console.error(...)` → `debug("gateway", "startServer", "Compass MCP stdio server failed to start", { message })`\n- **loadRepoEnv.ts** (line 145): `console.error(...)` → `debug("connection", "loadEnv", "Loaded variables from .env", { keys: safeKeys })`\n- **solanaConnection.ts** (line 32): `console.log(...)` → `debug("connection", "createConnection", "Creating shared connection", { url: RPC_URL })`\n- **fakeDownstreamMcpServer.ts** (line 272): `console.error(...)` → `debug("connection", "handleFailure", "Fake downstream MCP server failed", { message })`\n\n**Note:** This is a behavioral change — these messages were unconditional via console, now they require `COMPASS_DEBUG=gateway` or `COMPASS_DEBUG=connection` to appear.",
+    "files": [
+      "back/services/mcp/server/mcpServer.ts",
+      "back/services/mcp/config/loadRepoEnv.ts",
+      "back/services/solana/providers/solanaConnection.ts",
+      "back/services/__tests__/fixtures/fakeDownstreamMcpServer.ts"
+    ],
+    "estimatedLines": 8,
+    "dependsOn": [1],
+    "verification": "Each file has been migrated: old `console.log`/`console.error` string is removed, `debug()` call replaces it. Running without `COMPASS_DEBUG` produces no console output from these paths. Running with `COMPASS_DEBUG=gateway,connection` produces log file entries."
+  },
+  {
+    "id": 5,
+    "title": "Write unit tests for debugLogger.ts",
+    "description": "Create `back/services/__tests__/debugLogger.test.ts` with 10 test cases covering:\n1. COMPASS_DEBUG unset → no file created\n2. COMPASS_DEBUG=true → writes to file\n3. Module filtering (single module)\n4. Module filtering (multiple modules)\n5. Sensitive key redaction (top-level)\n6. Recursive redaction (nested objects)\n7. Format correctness (ISO timestamp, [module:fn] prefix)\n8. Data omitted when undefined (no JSON.stringify(undefined))\n9. COMPASS_DEBUG=0 → no output\n10. Whitespace in module list (\" proxy , policy \")\n\nUse temp directory isolation via `process.cwd()` mock (or override `getLogDir` via the extracted `getLogFilePath()` function). Clean up temp dirs in `afterEach`/`afterAll`.",
+    "files": [
+      "back/services/__tests__/debugLogger.test.ts"
+    ],
+    "estimatedLines": 95,
+    "dependsOn": [1],
+    "verification": "All 10 test cases pass. `COMPASS_DEBUG` env var is properly isolated between tests. No test leaves behind `logs-test-debug/` or similar temp directories."
+  },
+  {
+    "id": 6,
+    "title": "Update mcpServer.test.ts integration test",
+    "description": "Update the console.error assertion at line 359 in `mcpServer.test.ts`. The test currently asserts `console.error()` is called when the server fails. Replace with:\n- Set `process.env[\"COMPASS_DEBUG\"] = \"gateway\"` before the test runs\n- Assert that `logs/compass-debug.log` contains the expected debug line instead\n- Clean up the log file in `afterAll` or restore original env var\n\nThis test depends on task 4 (mcpServer.ts console migration) being completed first.",
+    "files": [
+      "back/services/__tests__/mcpServer.test.ts"
+    ],
+    "estimatedLines": 8,
+    "dependsOn": [4],
+    "verification": "Test passes. The old `console.error` assertion is removed. With `COMPASS_DEBUG=gateway`, the server failure produces a log file entry instead of stderr noise."
+  }
+]

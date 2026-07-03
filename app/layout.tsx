@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
-import { Analytics } from '@vercel/analytics/next';
-import '../front/src/styles/globals.css';
+// The public landing at `/` is served by app/route.ts from landing.html with
+// inline CSS, so no global stylesheet is needed here.
 
 export const metadata: Metadata = {
   title: 'Compass · The execution firewall for Solana AI agents',
@@ -18,10 +18,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>
-        {children}
-        <Analytics />
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    ".opencode/AGENTS.md",
+    "AGENTS.md"
+  ],
+  "skills": {
+    "paths": [
+      ".opencode/skills"
+    ]
+  },
+  "mcp": {
+    "compass": {
+      "type": "local",
+      "command": [
+        "npm",
+        "run",
+        "--silent",
+        "mcp:dev",
+        "--",
+        "--downstream-config",
+        "{\"name\":\"cdp\",\"command\":\"cdp\",\"args\":[\"mcp\"],\"envReferences\":[]}"
+      ],
+      "enabled": true,
+      "env": {
+        "COMPASS_MCP_DOWNSTREAM_CONFIG": "{\"name\":\"cdp\",\"command\":\"cdp\",\"args\":[\"mcp\"],\"envReferences\":[]}"
+      }
+    }
+  }
+}

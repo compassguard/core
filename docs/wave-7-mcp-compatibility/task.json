@@ -1,0 +1,140 @@
+{
+  "id": "wave-7-mcp-compatibility",
+  "title": "Wave 7 — MCP compatibility and approved execution hardening",
+  "status": "completed",
+  "branch": "feature/wave-7-mcp-compatibility",
+  "baseBranch": "release/compass_migration",
+  "goal": "Harden execute_approved_action with approval proof verification, unsigned transaction payload validation, retry-safe idempotency ordering, and real devnet local signer submission before expanding upstream MCP compatibility.",
+  "scopeDecision": "Wave 7a closes Wave 6 approved-action execution deferrals first. Wave 7b handles upstream/mirrored MCP compatibility separately to keep review scope safe.",
+  "reviewBudget": {
+    "maxChangedLines": 400,
+    "estimatedLines": {
+      "wave7aContractsAndParsing": "~140",
+      "wave7aSignerAndOrdering": "~220",
+      "wave7bUpstreamCompatibility": "~250+"
+    },
+    "risk": "medium",
+    "chainedPrsRecommended": true,
+    "suggestedSplit": "PR 1: Wave 7a contracts/parsing/proof validation. PR 2: Wave 7a signer submission and idempotency ordering. PR 3: Wave 7b upstream compatibility."
+  },
+  "context": {
+    "productSource": "docs/PRODUCT_CONSTITUTION.md",
+    "migrationPlan": "docs/compass-monad-on-solana/mvp-migration-plan.md#wave-7--mcp-compatibility-and-upstream-hardening",
+    "precedent": "docs/wave-6-signer-adapter/",
+    "relatedCode": [
+      "back/services/mcp/mcpToolContracts.ts",
+      "back/services/mcp/mcpToolRegistry.ts",
+      "back/services/mcp/mcpToolCallRouter.ts",
+      "back/services/signerAdapterContracts.ts",
+      "back/services/signerAdapter.ts",
+      "back/services/onchainApproval.ts"
+    ]
+  },
+  "acceptanceCriteria": [
+    "execute_approved_action requires candidateId, approvalProof, and unsigned VersionedTransaction payload.",
+    "execute_approved_action requires proof action_hash and transactionPayload.actionHash to match before signer lookup.",
+    "Missing approvalProof or transaction payload returns REQUIRE_ADDITIONAL_CONTEXT before signer lookup or idempotency consumption.",
+    "verifyActionApproval is called before signer resolution and before idempotency consumption.",
+    "Failed proof verification returns DENY and does not call signer methods.",
+    "Signer configuration failures do not consume idempotency, allowing retry after configuration is fixed.",
+    "Duplicate calls after the execution boundary return DENY with DUPLICATE_APPROVAL_EXECUTION.",
+    "LocalKeypairAdapter.signAndSendTransaction no longer returns mock-signature and submits to devnet RPC when enabled.",
+    "Mainnet local signer execution remains blocked.",
+    "Audit events include redacted proof/signing status and never include raw transaction bytes or secret material.",
+    "No legacy/ imports are introduced."
+  ],
+  "nonGoals": [
+    "No production private-key custody",
+    "No mainnet execution readiness",
+    "No durable idempotency persistence",
+    "No Dynamic SDK backend integration",
+    "No broad upstream MCP passthrough in Wave 7a",
+    "No allowlisted external mutating tools before approved execution hardening is complete"
+  ],
+  "verification": [
+    "npm run test:back -- back/services/__tests__/mcpToolCallRouter.test.ts back/services/__tests__/signerAdapter.test.ts",
+    "npm run test:back",
+    "npm run lint",
+    "npx tsc --noEmit --pretty false"
+  ],
+  "tasks": [
+    {
+      "id": "T1_RED_EXECUTE_INPUT",
+      "title": "Add RED tests for execute_approved_action proof and payload input",
+      "status": "completed",
+      "wave": "7a",
+      "description": "Add router tests proving missing approvalProof and missing transaction payload return REQUIRE_ADDITIONAL_CONTEXT before signer lookup or idempotency consumption.",
+      "filesPlanned": ["back/services/__tests__/mcpToolCallRouter.test.ts"]
+    },
+    {
+      "id": "T2_GREEN_EXECUTE_INPUT_CONTRACTS",
+      "title": "Add execute approved action input contracts and schema",
+      "status": "completed",
+      "wave": "7a",
+      "description": "Define typed execute input and update MCP registry schema with approvalProof and base64 unsigned VersionedTransaction payload.",
+      "filesPlanned": [
+        "back/services/mcp/mcpToolContracts.ts",
+        "back/services/mcp/mcpToolRegistry.ts",
+        "back/services/mcp/mcpToolCallRouter.ts"
+      ]
+    },
+    {
+      "id": "T3_RED_PROOF_ORDERING",
+      "title": "Add RED tests for proof verification ordering",
+      "status": "completed",
+      "wave": "7a",
+      "description": "Prove verifyActionApproval is called before signer lookup and idempotency, and failed proof verification blocks signer methods.",
+      "filesPlanned": ["back/services/__tests__/mcpToolCallRouter.test.ts"]
+    },
+    {
+      "id": "T4_GREEN_PROOF_ORDERING",
+      "title": "Wire verifyActionApproval into execute handler",
+      "status": "completed",
+      "wave": "7a",
+      "description": "Call verifyActionApproval from the execute handler, return proof failure reasons, and record approvalVerified audit metadata.",
+      "filesPlanned": ["back/services/mcp/mcpToolCallRouter.ts"]
+    },
+    {
+      "id": "T5_RED_SIGNER_SUBMISSION",
+      "title": "Add RED tests for real devnet signer submission",
+      "status": "completed",
+      "wave": "7a",
+      "description": "Prove LocalKeypairAdapter.signAndSendTransaction does not return mock-signature and submits signed bytes through the Solana connection boundary.",
+      "filesPlanned": ["back/services/__tests__/signerAdapter.test.ts"]
+    },
+    {
+      "id": "T6_GREEN_SIGNER_SUBMISSION",
+      "title": "Implement real devnet sign and send",
+      "status": "completed",
+      "wave": "7a",
+      "description": "Update LocalKeypairAdapter to sign and submit VersionedTransaction through devnet RPC while preserving mainnet and env guards.",
+      "filesPlanned": [
+        "back/services/signerAdapterContracts.ts",
+        "back/services/signerAdapter.ts"
+      ]
+    },
+    {
+      "id": "T7_GREEN_IDEMPOTENCY_REORDER",
+      "title": "Move idempotency consumption to execution boundary",
+      "status": "completed",
+      "wave": "7a",
+      "description": "Consume candidateId only after proof, payload, and signer availability succeed, then deny duplicate submission attempts.",
+      "filesPlanned": ["back/services/mcp/mcpToolCallRouter.ts"]
+    },
+    {
+      "id": "T8_VALIDATE_7A",
+      "title": "Validate Wave 7a and pause before upstream compatibility",
+      "status": "completed",
+      "wave": "7a",
+      "description": "Run focused and full verification before starting Wave 7b.",
+      "validationCommands": [
+        "npm run test:back -- back/services/__tests__/mcpToolCallRouter.test.ts back/services/__tests__/signerAdapter.test.ts",
+        "npm run test:back",
+        "npm run lint",
+        "npx tsc --noEmit --pretty false"
+      ]
+    }
+  ],
+  "createdAt": "2026-06-10",
+  "updatedAt": "2026-06-10"
+}

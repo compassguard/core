@@ -1,0 +1,36 @@
+import type { CompassPolicy } from "@shared/policyContracts";
+
+export const DEFAULT_POLICY: CompassPolicy = {
+	policy_id: "default-conservative",
+	version: "0.1.0",
+	default: "require_approval",
+	read_only: { default: "allow" },
+	transfers: {
+		max_usd_without_approval: 10,
+		require_approval_for_unknown_recipient: true,
+		blocked_recipients: ["known_bad_address"],
+	},
+	swaps: {
+		max_usd_without_approval: 25,
+		max_slippage_bps: 300,
+		require_approval_for_unknown_token: true,
+		allowed_protocols: ["Jupiter", "Raydium", "Orca"],
+	},
+	conditional_buys: {
+		default: "require_approval",
+		max_slippage_bps: 300,
+		max_oracle_age_seconds: 60,
+		max_confidence_bps: 100,
+	},
+	signing: {
+		sign_message: "require_approval",
+		sign_transaction: "require_simulation",
+		sign_and_send_transaction: "deny_unless_compass_built",
+	},
+	blocked: {
+		unknown_program: "require_approval",
+		unlimited_delegate: "deny",
+		authority_change: "deny",
+		suspicious_recipient: "deny",
+	},
+};

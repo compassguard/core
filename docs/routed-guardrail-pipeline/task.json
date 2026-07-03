@@ -1,0 +1,372 @@
+{
+  "change": "routed-guardrail-pipeline",
+  "branch": "feature/routed-guardrail-pipeline",
+  "delivery_strategy": "single-pr-default",
+  "review_budget": 400,
+  "verification": {
+    "after_each_task": [
+      "npm run lint",
+      "npm run test:back",
+      "npx tsc --noEmit"
+    ],
+    "final": [
+      "npm run lint",
+      "npm run test:back",
+      "npx tsc --noEmit",
+      "npm run mcp:dev"
+    ]
+  },
+  "notes": [
+    "No logic changes — only file moves, import path updates, and empty scaffold directories.",
+    "MCP proxy must NOT import transfer/swap gateways. Route-to-domain handoff remains future work.",
+    "Active code must NOT import from legacy/.",
+    "Use ponytail simplicity: if a one-line barrel file avoids breaking 20 imports, write it.",
+    "Do NOT delete existing files until their new location and imports are verified working."
+  ],
+  "tasks": [
+    {
+      "id": "T1a",
+      "title": "Move MCP config files to mcp/config/",
+      "description": "Move mcpRuntimeConfig.ts and loadRepoEnv.ts from mcp/ to mcp/config/. Update all imports in consumers (mcpServer.ts, mcpProxyDispatcher.ts, mcpProxyPolicyInterceptor.ts, mcpConfigWrapping.ts, and loadRepoEnv.test.ts).",
+      "files": {
+        "move": [
+          "back/services/mcp/mcpRuntimeConfig.ts → back/services/mcp/config/mcpRuntimeConfig.ts",
+          "back/services/mcp/loadRepoEnv.ts → back/services/mcp/config/loadRepoEnv.ts"
+        ],
+        "update_imports": [
+          "back/services/mcp/mcpServer.ts",
+          "back/services/mcp/mcpProxyDispatcher.ts",
+          "back/services/mcp/mcpProxyPolicyInterceptor.ts",
+          "back/services/mcp/mcpConfigWrapping.ts",
+          "back/services/__tests__/loadRepoEnv.test.ts"
+        ]
+      },
+      "estimated_changed_lines": 120,
+      "dependencies": [],
+      "verification": [
+        "npm run lint",
+        "npm run test:back",
+        "npx tsc --noEmit"
+      ],
+      "status": "completed",
+      "completedAt": "2026-06-15",
+      "notes": "mcpRuntimeConfig.ts imports from mcpProxyContracts (stays in mcp/proxy/ after T1b). After this task, mcpServer.ts must use ../config/mcpRuntimeConfig and ../config/loadRepoEnv. Old files kept as compatibility re-exports because tests still import from ../mcp/loadRepoEnv and ../mcp/mcpRuntimeConfig and cannot be modified in this task."
+    },
+    {
+      "id": "T1b",
+      "title": "Move MCP proxy files to mcp/proxy/",
+      "description": "Move all 7 proxy files (downstreamMcpStdioClient, mcpAuditSink, mcpConfigWrapping, mcpProxyAudit, mcpProxyContracts, mcpProxyDispatcher, mcpProxyPolicyInterceptor) from mcp/ to mcp/proxy/. Update intra-mcp imports and cross-boundary import in mcpAuditSink (../executionGatewayContracts). Move mcpConfigWrapping.test.ts and mcpProxyDispatcher.test.ts.",
+      "files": {
+        "move": [
+          "back/services/mcp/downstreamMcpStdioClient.ts → back/services/mcp/proxy/downstreamMcpStdioClient.ts",
+          "back/services/mcp/mcpAuditSink.ts → back/services/mcp/proxy/mcpAuditSink.ts",
+          "back/services/mcp/mcpConfigWrapping.ts → back/services/mcp/proxy/mcpConfigWrapping.ts",
+          "back/services/mcp/mcpProxyAudit.ts → back/services/mcp/proxy/mcpProxyAudit.ts",
+          "back/services/mcp/mcpProxyContracts.ts → back/services/mcp/proxy/mcpProxyContracts.ts",
+          "back/services/mcp/mcpProxyDispatcher.ts → back/services/mcp/proxy/mcpProxyDispatcher.ts",
+          "back/services/mcp/mcpProxyPolicyInterceptor.ts → back/services/mcp/proxy/mcpProxyPolicyInterceptor.ts"
+        ],
+        "move_tests": [
+          "back/services/__tests__/mcpConfigWrapping.test.ts",
+          "back/services/__tests__/mcpProxyDispatcher.test.ts"
+        ],
+        "update_imports": [
+          "back/services/mcp/mcpServer.ts",
+          "back/services/__tests__/mcpServer.test.ts"
+        ]
+      },
+      "estimated_changed_lines": 350,
+      "dependencies": ["T1a"],
+      "verification": [
+        "npm run lint",
+        "npm run test:back",
+        "npx tsc --noEmit"
+      ],
+      "status": "completed",
+      "completedAt": "2026-06-15",
+      "notes": "All intra-proxy imports (./mcpProxyContracts, ./mcpProxyAudit, etc.) stay as ./ since files move together. mcpAuditSink cross-boundary import changes from ../executionGatewayContracts to ../../executionGatewayContracts. Test files were intentionally left in __tests__/ per the apply instruction; compatibility re-export shims at the old mcp/ paths keep existing tests passing without modification."
+    },
+    {
+      "id": "T1c",
+      "title": "Move MCP server to mcp/server/ and update package.json script",
+      "description": "Move mcpServer.ts and mcpProxyServerContracts.ts to mcp/server/. Update package.json mcp:dev script to point to new entrypoint. Move mcpServer.test.ts. Update all intra-mcp imports in mcpServer.ts (now needs ../proxy/ and ../config/ paths).",
+      "files": {
+        "move": [
+          "back/services/mcp/mcpServer.ts → back/services/mcp/server/mcpServer.ts",
+          "back/services/mcp/mcpProxyServerContracts.ts → back/services/mcp/server/mcpProxyServerContracts.ts"
+        ],
+        "move_tests": [
+          "back/services/__tests__/mcpServer.test.ts"
+        ],
+        "update": [
+          "package.json (mcp:dev script entrypoint)"
+        ]
+      },
+      "estimated_changed_lines": 120,
+      "dependencies": ["T1a", "T1b"],
+      "verification": [
+        "npm run lint",
+        "npm run test:back",
+        "npx tsc --noEmit"
+      ],
+      "status": "completed",
+      "completedAt": "2026-06-15",
+      "notes": "mcpServer.ts imports from both proxy/ and config/ — both must be in place first. package.json script updated to back/services/mcp/server/mcpServer.ts. mcpServer.test.ts left in __tests__/ per the apply instruction; the compatibility shim at back/services/mcp/mcpServer.ts keeps tests passing. mcp:dev compiles and fails as expected without downstream MCP config."
+    },
+    {
+      "id": "T2a",
+      "title": "Move execution gateway to guardrail/execution/",
+      "description": "Move executionGateway.ts and executionGatewayContracts.ts to guardrail/execution/. Update imports in consumers: transferGateway, swapGateway, conditionalGateway, llmDecisionAdapter, llmDecisionContracts, llmDecisionSanitizer, mcpAuditSink, and all relevant test files.",
+      "files": {
+        "move": [
+          "back/services/executionGateway.ts → back/services/guardrail/execution/executionGateway.ts",
+          "back/services/executionGatewayContracts.ts → back/services/guardrail/execution/executionGatewayContracts.ts"
+        ],
+        "update_imports": [
+          "back/services/transferGateway.ts",
+          "back/services/swapGateway.ts",
+          "back/services/swapGatewayContracts.ts",
+          "back/services/conditionalGateway.ts",
+          "back/services/conditionalGatewayContracts.ts",
+          "back/services/llmDecisionAdapter.ts",
+          "back/services/llmDecisionContracts.ts",
+          "back/services/llmDecisionSanitizer.ts",
+          "back/services/mcp/proxy/mcpAuditSink.ts",
+          "back/services/__tests__/executionGateway.test.ts",
+          "back/services/__tests__/transferGateway.test.ts",
+          "back/services/__tests__/swapGateway.test.ts",
+          "back/services/__tests__/conditionalGateway.test.ts",
+          "back/services/__tests__/policyEngine.test.ts"
+        ]
+      },
+      "estimated_changed_lines": 90,
+      "dependencies": [],
+      "verification": [
+        "npm run lint",
+        "npm run test:back",
+        "npx tsc --noEmit"
+      ],
+      "status": "completed",
+      "completedAt": "2026-06-15",
+      "notes": "executionGateway imports from its own contracts (./executionGatewayContracts — stays relative). All consumers currently use ./executionGateway or ../executionGateway; after move, they need ../guardrail/execution/executionGateway. This task has the widest import blast radius but each change is a single path update."
+    },
+    {
+      "id": "T2b",
+      "title": "Move policy files to guardrail/policy/ and create router scaffold",
+      "description": "Move all 6 policy/ files to guardrail/policy/. Create empty guardrail/router/ directory with a README placeholder. Move loadPolicy.test.ts and policyEngine.test.ts.",
+      "files": {
+        "move": [
+          "back/services/policy/defaultPolicy.ts → back/services/guardrail/policy/defaultPolicy.ts",
+          "back/services/policy/loadPolicy.ts → back/services/guardrail/policy/loadPolicy.ts",
+          "back/services/policy/policyContracts.ts → back/services/guardrail/policy/policyContracts.ts",
+          "back/services/policy/policyEngine.ts → back/services/guardrail/policy/policyEngine.ts",
+          "back/services/policy/policyEvaluationResult.ts → back/services/guardrail/policy/policyEvaluationResult.ts",
+          "back/services/policy/policySchema.ts → back/services/guardrail/policy/policySchema.ts"
+        ],
+        "move_tests": [
+          "back/services/__tests__/loadPolicy.test.ts",
+          "back/services/__tests__/policyEngine.test.ts"
+        ],
+        "create": [
+          "back/services/guardrail/router/README.md"
+        ],
+        "update_imports": [
+          "back/services/transferGateway.ts",
+          "back/services/swapGateway.ts",
+          "back/services/conditionalGateway.ts",
+          "back/services/__tests__/transferGateway.test.ts",
+          "back/services/__tests__/swapGateway.test.ts",
+          "back/services/__tests__/conditionalGateway.test.ts"
+        ]
+      },
+      "estimated_changed_lines": 350,
+      "dependencies": ["T2a"],
+      "verification": [
+        "npm run lint",
+        "npm run test:back",
+        "npx tsc --noEmit"
+      ],
+      "status": "completed",
+      "completedAt": "2026-06-15",
+      "notes": "Intra-policy imports (./policyContracts, ./policySchema, etc.) stay relative since all 6 files move together. Cross-boundary: policyEvaluationResult, policyEngine, policyContracts import from ../../guardrail/execution/executionGatewayContracts (was ../executionGatewayContracts). The guardrail/router/ directory is an empty scaffold for future deterministic pre-routing — no implementation."
+    },
+    {
+      "id": "T3a",
+      "title": "Move transfer domain files to domains/transfer/",
+      "description": "Move transferGateway.ts, transferGatewayContracts.ts, transferAuditLog.ts, and walletSafetyValidation.ts to domains/transfer/. Update cross-boundary imports (execution gateway, policy). Move transferGateway.test.ts and walletSafetyValidation.test.ts.",
+      "files": {
+        "move": [
+          "back/services/transferGateway.ts → back/services/domains/transfer/transferGateway.ts",
+          "back/services/transferGatewayContracts.ts → back/services/domains/transfer/transferGatewayContracts.ts",
+          "back/services/transferAuditLog.ts → back/services/domains/transfer/transferAuditLog.ts",
+          "back/services/walletSafetyValidation.ts → back/services/domains/transfer/walletSafetyValidation.ts"
+        ],
+        "move_tests": [
+          "back/services/__tests__/transferGateway.test.ts",
+          "back/services/__tests__/walletSafetyValidation.test.ts"
+        ],
+        "update_imports": [
+          "back/services/__tests__/transferTransactionPayload.test.ts"
+        ]
+      },
+      "estimated_changed_lines": 400,
+      "dependencies": ["T2a", "T2b"],
+      "verification": [
+        "npm run lint",
+        "npm run test:back",
+        "npx tsc --noEmit"
+      ],
+      "notes": "transferGateway imports from ../../guardrail/execution/executionGateway, ../../guardrail/execution/executionGatewayContracts, ../../guardrail/policy/loadPolicy, ../../guardrail/policy/policyEngine, ../../guardrail/policy/policyContracts, and ./transferGatewayContracts. transferAuditLog imports from ./transferGatewayContracts (stays relative). walletSafetyValidation is self-contained (no cross-boundary imports). This task is at the review budget limit — do not add any scope."
+    },
+    {
+      "id": "T3b",
+      "title": "Move swap domain files to domains/swap/",
+      "description": "Move swapGateway.ts and swapGatewayContracts.ts to domains/swap/. Update cross-boundary imports (execution gateway, policy). Move swapGateway.test.ts.",
+      "files": {
+        "move": [
+          "back/services/swapGateway.ts → back/services/domains/swap/swapGateway.ts",
+          "back/services/swapGatewayContracts.ts → back/services/domains/swap/swapGatewayContracts.ts"
+        ],
+        "move_tests": [
+          "back/services/__tests__/swapGateway.test.ts"
+        ]
+      },
+      "estimated_changed_lines": 150,
+      "dependencies": ["T2a", "T2b"],
+      "verification": [
+        "npm run lint",
+        "npm run test:back",
+        "npx tsc --noEmit"
+      ],
+      "notes": "swapGateway imports from ../../guardrail/execution/executionGateway, ../../guardrail/policy/*, and ./swapGatewayContracts. swapGatewayContracts imports from ../../guardrail/execution/executionGatewayContracts and ../../guardrail/policy/policyContracts."
+    },
+    {
+      "id": "T4",
+      "title": "Move LLM decision files to intelligence/llm-decision/ and create llm-router scaffold",
+      "description": "Move llmDecisionAdapter.ts, llmDecisionContracts.ts, llmDecisionSanitizer.ts to intelligence/llm-decision/. Create empty intelligence/llm-router/ directory. Move llmDecisionAdapter.test.ts and llmDecisionSanitizer.test.ts.",
+      "files": {
+        "move": [
+          "back/services/llmDecisionAdapter.ts → back/services/intelligence/llm-decision/llmDecisionAdapter.ts",
+          "back/services/llmDecisionContracts.ts → back/services/intelligence/llm-decision/llmDecisionContracts.ts",
+          "back/services/llmDecisionSanitizer.ts → back/services/intelligence/llm-decision/llmDecisionSanitizer.ts"
+        ],
+        "move_tests": [
+          "back/services/__tests__/llmDecisionAdapter.test.ts",
+          "back/services/__tests__/llmDecisionSanitizer.test.ts"
+        ],
+        "create": [
+          "back/services/intelligence/llm-router/README.md"
+        ]
+      },
+      "estimated_changed_lines": 200,
+      "dependencies": ["T2a"],
+      "verification": [
+        "npm run lint",
+        "npm run test:back",
+        "npx tsc --noEmit"
+      ],
+      "notes": "llmDecisionAdapter imports from ./llmDecisionContracts (stays relative) and ../../guardrail/execution/executionGatewayContracts. llmDecisionSanitizer imports from ./llmDecisionContracts and ../../guardrail/execution/executionGatewayContracts. The llm-router/ directory is a future scaffold for the LLM-based tool classifier (transfer/swap/skip/unknown). No files or implementation yet."
+    },
+    {
+      "id": "T5a",
+      "title": "Move approval and signer files to support/",
+      "description": "Move onchainApproval.ts to support/approval/. Move signerAdapter.ts and signerAdapterContracts.ts to support/signer/. Move onchainApproval.test.ts and signerAdapter.test.ts.",
+      "files": {
+        "move": [
+          "back/services/onchainApproval.ts → back/services/support/approval/onchainApproval.ts",
+          "back/services/signerAdapter.ts → back/services/support/signer/signerAdapter.ts",
+          "back/services/signerAdapterContracts.ts → back/services/support/signer/signerAdapterContracts.ts"
+        ],
+        "move_tests": [
+          "back/services/__tests__/onchainApproval.test.ts",
+          "back/services/__tests__/signerAdapter.test.ts"
+        ]
+      },
+      "estimated_changed_lines": 180,
+      "dependencies": [],
+      "verification": [
+        "npm run lint",
+        "npm run test:back",
+        "npx tsc --noEmit"
+      ],
+      "notes": "onchainApproval.ts is self-contained (no cross-boundary imports from other service files). signerAdapter imports from ./signerAdapterContracts (stays relative). These are the cleanest moves — no upstream/downstream dependency changes."
+    },
+    {
+      "id": "T5b",
+      "title": "Move transaction and provider files to solana/",
+      "description": "Move transferTransactionPayload.ts, transferTransactionPayloadTypes.ts, transactionPayloadTypes.ts to solana/transactions/. Move solanaConnection.ts, solanaNetworkConfig.ts to solana/providers/. Move priceQuote.ts and priceProviders/ to solana/price-providers/. Move transferTransactionPayload.test.ts and priceQuote.test.ts.",
+      "files": {
+        "move": [
+          "back/services/transferTransactionPayload.ts → back/services/solana/transactions/transferTransactionPayload.ts",
+          "back/services/transferTransactionPayloadTypes.ts → back/services/solana/transactions/transferTransactionPayloadTypes.ts",
+          "back/services/transactionPayloadTypes.ts → back/services/solana/transactions/transactionPayloadTypes.ts",
+          "back/services/solanaConnection.ts → back/services/solana/providers/solanaConnection.ts",
+          "back/services/solanaNetworkConfig.ts → back/services/solana/providers/solanaNetworkConfig.ts",
+          "back/services/priceQuote.ts → back/services/solana/price-providers/priceQuote.ts",
+          "back/services/priceProviders/orcaUsdcSol.ts → back/services/solana/price-providers/orcaUsdcSol.ts"
+        ],
+        "move_tests": [
+          "back/services/__tests__/transferTransactionPayload.test.ts",
+          "back/services/__tests__/priceQuote.test.ts"
+        ]
+      },
+      "estimated_changed_lines": 140,
+      "dependencies": [],
+      "verification": [
+        "npm run lint",
+        "npm run test:back",
+        "npx tsc --noEmit"
+      ],
+      "notes": "Intra-group imports stay relative: transferTransactionPayload imports from ./transferTransactionPayloadTypes, transferTransactionPayloadTypes imports from ./transactionPayloadTypes, priceQuote imports from ./solanaNetworkConfig, orcaUsdcSol imports from ./solanaConnection. After move, orcaUsdcSol.solanaConnection import changes from ../solanaConnection to ../providers/solanaConnection."
+    },
+    {
+      "id": "T6",
+      "title": "Move conditional gateway to domains/conditional-parking-lot/",
+      "description": "Move conditionalGateway.ts and conditionalGatewayContracts.ts to domains/conditional-parking-lot/. Update cross-boundary imports. Move conditionalGateway.test.ts. Add deprecation/parking-lot note.",
+      "files": {
+        "move": [
+          "back/services/conditionalGateway.ts → back/services/domains/conditional-parking-lot/conditionalGateway.ts",
+          "back/services/conditionalGatewayContracts.ts → back/services/domains/conditional-parking-lot/conditionalGatewayContracts.ts"
+        ],
+        "move_tests": [
+          "back/services/__tests__/conditionalGateway.test.ts"
+        ],
+        "update": [
+          "back/services/domains/conditional-parking-lot/README.md (new — parking-lot note)"
+        ]
+      },
+      "estimated_changed_lines": 40,
+      "dependencies": ["T2a", "T2b"],
+      "verification": [
+        "npm run lint",
+        "npm run test:back",
+        "npx tsc --noEmit"
+      ],
+      "notes": "conditionalGateway imports from ../../guardrail/execution/executionGateway, ../../guardrail/policy/*, and ./conditionalGatewayContracts. Mark as isolated/deprecation candidate. Do NOT delete — preserve for reference. This is outside current Compass direction."
+    },
+    {
+      "id": "T7",
+      "title": "Final cleanup and full verification",
+      "description": "Remove any temporary re-export shims created in earlier phases (should be none if direct imports were used). Run full verification suite. Update any remaining README or doc path references. Confirm no imports from legacy/ exist in active code.",
+      "files": {
+        "cleanup": [
+          "Remove any temporary barrel/shim files at old paths (if created)"
+        ],
+        "verify": [
+          "Scan for legacy/ imports in app/, back/, shared/",
+          "Update docs/routed-guardrail-pipeline/technical-spec.md target folder map if needed"
+        ]
+      },
+      "estimated_changed_lines": 30,
+      "dependencies": ["T1c", "T2b", "T3a", "T3b", "T4", "T5a", "T5b", "T6"],
+      "verification": [
+        "npm run lint",
+        "npm run test:back",
+        "npx tsc --noEmit",
+        "npm run mcp:dev",
+        "grep -r \"from.*legacy\" back/services/ app/ shared/ --include=\"*.ts\" || echo \"No legacy imports found\""
+      ],
+      "notes": "This is the final gate. All phases must be complete. If any shim was left behind, remove it now. The mcp:dev check verifies the MCP server starts from its new entrypoint. If it fails due to missing downstream config (env vars), document that rather than changing behavior."
+    }
+  ]
+}

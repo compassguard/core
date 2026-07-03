@@ -1,0 +1,184 @@
+{
+  "id": "wave-5-conditional-gateway",
+  "title": "Wave 5b \u2014 Conditional gateway",
+  "status": "conditional_slice_completed_pending_review",
+  "branch": "feature/wave-5-swap-conditional-gateway",
+  "baseBranch": "release/compass_migration",
+  "goal": "Expose conditional SOL buy order creation through the Compass MCP gateway with policy, approval metadata, and audit, without implementing keeper execution or signing.",
+  "reviewBudget": {
+    "maxChangedLines": 400,
+    "warning": "Combined Wave 5 was requested, but conditional work must remain a separate reviewable track. Pause and split before implementation if swap work already consumes the budget."
+  },
+  "context": {
+    "productSource": "docs/PRODUCT_CONSTITUTION.md",
+    "migrationPlan": "docs/compass-monad-on-solana/mvp-migration-plan.md#wave-5--swap-and-conditional-flows-behind-gateway",
+    "precedent": "docs/wave-4-mcp-server/",
+    "relatedCode": [
+      "back/services/mcp/mcpToolContracts.ts",
+      "back/services/mcp/mcpToolRegistry.ts",
+      "back/services/mcp/mcpToolCallRouter.ts",
+      "back/services/executionGateway.ts",
+      "back/services/policy/policyContracts.ts",
+      "back/services/policy/policyEngine.ts",
+      "back/services/policy/defaultPolicy.yaml"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T1_RED_CONDITIONAL_POLICY_GATEWAY",
+      "title": "Add RED conditional gateway/policy tests",
+      "status": "completed",
+      "description": "Specify valid order approval, missing oracle/target/expiry context, expired/invalid order fail-closed, default approval, metadata fingerprints, and no legacy imports.",
+      "evidence": [
+        {
+          "timestamp": "2026-06-09T02:00:37Z",
+          "command": "npm run test:back -- back/services/__tests__/conditionalGateway.test.ts back/services/__tests__/policyEngine.test.ts",
+          "expected": "RED before conditional gateway/policy branch exists",
+          "actual": "RED as expected: conditional gateway tests failed because conditionalGateway/Contracts did not exist; policyEngine conditional tests failed because conditional_buy still fell through to policy.default (9 failed / 35 passed across focused files).",
+          "exitCode": 1
+        }
+      ]
+    },
+    {
+      "id": "T2_GREEN_CONDITIONAL_CONTRACTS_POLICY",
+      "title": "Implement conditional contracts and policy surface",
+      "status": "completed",
+      "description": "Add conditional contracts and the smallest conservative policy branch/defaults needed for order-creation decisions. Keep schemas/types separate from behavior.",
+      "filesPlanned": [
+        "back/services/conditionalGatewayContracts.ts",
+        "back/services/policy/policyContracts.ts",
+        "back/services/policy/policyEngine.ts",
+        "back/services/policy/defaultPolicy.yaml"
+      ],
+      "evidence": [
+        {
+          "timestamp": "2026-06-09T02:05:20Z",
+          "command": "npm run test:back -- back/services/__tests__/conditionalGateway.test.ts back/services/__tests__/policyEngine.test.ts back/services/__tests__/loadPolicy.test.ts",
+          "expected": "GREEN focused policy/gateway tests",
+          "actual": "GREEN: conditional policy/default schema and gateway contracts/behavior passed focused tests for default approval, missing context, expired orders, unsafe oracle evidence, and policy loader updates (51 tests / 3 files).",
+          "exitCode": 0
+        }
+      ],
+      "filesCompleted": [
+        "back/services/conditionalGatewayContracts.ts",
+        "back/services/policy/policyContracts.ts",
+        "back/services/policy/policyEngine.ts",
+        "back/services/policy/policySchema.ts",
+        "back/services/policy/defaultPolicy.yaml",
+        "back/services/__tests__/policyEngine.test.ts",
+        "back/services/__tests__/loadPolicy.test.ts"
+      ]
+    },
+    {
+      "id": "T3_GREEN_CONDITIONAL_GATEWAY",
+      "title": "Implement conditional gateway evaluation",
+      "status": "completed",
+      "description": "Create evaluateConditionalGateway with action candidate, policy context, fail-closed gate, approval metadata, and redacted audit-safe data.",
+      "filesPlanned": [
+        "back/services/conditionalGateway.ts"
+      ],
+      "evidence": [
+        {
+          "timestamp": "2026-06-09T02:05:20Z",
+          "command": "npm run test:back -- back/services/__tests__/conditionalGateway.test.ts back/services/__tests__/policyEngine.test.ts back/services/__tests__/loadPolicy.test.ts",
+          "expected": "GREEN gateway tests",
+          "actual": "GREEN: conditional gateway evaluated action candidates, policy context, proposal gating, approval metadata fingerprints, fail-closed reasons, and no-legacy import coverage (51 tests / 3 files with policy/loadPolicy).",
+          "exitCode": 0
+        }
+      ],
+      "filesCompleted": [
+        "back/services/conditionalGateway.ts",
+        "back/services/__tests__/conditionalGateway.test.ts"
+      ]
+    },
+    {
+      "id": "T4_RED_MCP_CONDITIONAL",
+      "title": "Add RED MCP conditional tests",
+      "status": "completed",
+      "description": "Specify tools/list and tools/call behavior for create_conditional_buy_sol and optional oracle simulation, with audit and direct-signing regression.",
+      "evidence": [
+        {
+          "timestamp": "2026-06-09T02:06:58Z",
+          "command": "npm run test:back -- back/services/__tests__/mcpToolRegistry.test.ts back/services/__tests__/mcpToolCallRouter.test.ts back/services/__tests__/mcpServer.test.ts",
+          "expected": "RED until conditional tools are registered/routed",
+          "actual": "RED as expected: registry/server list tests failed because conditional tools were absent; router tests failed because simulate/create conditional calls were unknown/unrouted and did not call evaluateConditionalGateway (5 failed / 15 passed).",
+          "exitCode": 1
+        }
+      ]
+    },
+    {
+      "id": "T5_GREEN_MCP_CONDITIONAL",
+      "title": "Register and route conditional tools",
+      "status": "completed",
+      "description": "Extend MCP contracts, registry, router, and result metadata typing for conditional order creation while keeping signing blocked.",
+      "filesPlanned": [
+        "back/services/mcp/mcpToolContracts.ts",
+        "back/services/mcp/mcpToolRegistry.ts",
+        "back/services/mcp/mcpToolCallRouter.ts"
+      ],
+      "evidence": [
+        {
+          "timestamp": "2026-06-09T02:09:39Z",
+          "command": "npm run test:back -- back/services/__tests__/mcpToolRegistry.test.ts back/services/__tests__/mcpToolCallRouter.test.ts back/services/__tests__/mcpServer.test.ts",
+          "expected": "GREEN focused MCP conditional tests",
+          "actual": "GREEN: MCP registry/router/server tests passed with simulate_conditional_buy_oracle_check and create_conditional_buy_sol listed/routed, oracle simulation ALLOW, conditional creation REQUIRE_HUMAN_APPROVAL, invalid conditional input REQUIRE_ADDITIONAL_CONTEXT, and direct signing regressions intact (20 tests / 3 files).",
+          "exitCode": 0
+        }
+      ],
+      "filesCompleted": [
+        "back/services/executionGateway.ts",
+        "back/services/mcp/mcpToolContracts.ts",
+        "back/services/mcp/mcpToolRegistry.ts",
+        "back/services/mcp/mcpToolCallRouter.ts",
+        "back/services/__tests__/mcpToolRegistry.test.ts",
+        "back/services/__tests__/mcpToolCallRouter.test.ts",
+        "back/services/__tests__/mcpServer.test.ts"
+      ]
+    },
+    {
+      "id": "T6_VALIDATE_REVIEW",
+      "title": "Validate and pause for review",
+      "status": "completed_pending_review",
+      "description": "Run full validation and stop for parent review. Do not implement keeper execution or signer behavior in this wave.",
+      "evidence": [
+        {
+          "timestamp": "2026-06-09T02:14:18Z",
+          "command": "npm run test:back",
+          "expected": "PASS",
+          "actual": "PASS: full backend Vitest suite passed after final conditional gateway adjustment (120 tests / 12 files).",
+          "exitCode": 0
+        },
+        {
+          "timestamp": "2026-06-09T02:14:24Z",
+          "command": "npm run lint",
+          "expected": "PASS",
+          "actual": "PASS with existing app/layout.tsx react-refresh/only-export-components warning; 0 errors.",
+          "exitCode": 0
+        },
+        {
+          "timestamp": "2026-06-09T02:15:06Z",
+          "command": "npx tsc --noEmit --pretty false",
+          "expected": "PASS",
+          "actual": "PASS: TypeScript no-emit completed with no errors.",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "acceptanceCriteria": [
+    "Conditional order creation is a first-party MCP tool and never a legacy chat flow.",
+    "Valid creation remains policy-bound and auditable.",
+    "Missing oracle, target, amount, expiry, or slippage evidence fails closed.",
+    "Keeper execution and signing are not implemented.",
+    "Direct sign/send remains denied."
+  ],
+  "nonGoals": [
+    "Keeper execution",
+    "recurring task scheduler",
+    "signer adapter",
+    "transaction submission",
+    "upstream MCP passthrough",
+    "durable audit storage"
+  ],
+  "updatedAt": "2026-06-09T02:15:06Z"
+}

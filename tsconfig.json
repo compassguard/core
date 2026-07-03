@@ -15,10 +15,9 @@
     "incremental": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["front/src/*"],
-      "@front/*": ["front/src/*"],
       "@back/*": ["back/*"],
-      "@shared/*": ["shared/*"]
+      "@shared/*": ["shared/types/*"],
+      "@hosted/*": ["hosted/*"]
     },
     "plugins": [{ "name": "next" }]
   },
@@ -28,5 +27,5 @@
     "**/*.tsx",
     ".next/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "front/node_modules", "front/src/main.tsx"]
+  "exclude": ["node_modules"]
 }

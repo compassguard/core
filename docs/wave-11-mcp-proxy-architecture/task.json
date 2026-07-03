@@ -1,0 +1,306 @@
+{
+  "change": "wave-11-mcp-proxy-architecture",
+	"status": "done",
+  "reviewWorkloadForecast": {
+    "estimatedChangedLines": "1200-1800",
+    "budgetRisk": "High",
+    "chainedPrsRecommended": false,
+    "deliveryStrategy": "manual-phases",
+    "decisionNeededBeforeApply": false,
+    "chainStrategy": "manual-phases",
+		"suggestedSplit": "Sequential manual checkpoints, not PRs: Phase 1 proxy test fixtures and failing tests, Phase 2 proxy contracts and downstream stdio client, Phase 3 proxy server dispatcher with policy/audit interception, Phase 4 installer wrapping and script updates, Phase 5 native MCP retirement and verification. Completed in manual phases."
+  },
+  "guardText": [
+    "Decision needed before apply: No",
+    "Chained PRs recommended: No",
+    "Chain strategy: manual-phases",
+    "400-line budget risk: High"
+  ],
+  "workUnits": [
+    {
+      "unit": 1,
+      "phase": "Phase 1: Proxy Test Fixtures And RED Coverage",
+      "goal": "Create fake downstream MCP fixtures and failing proxy behavior tests before implementation.",
+      "checkpoint": "Manual checkpoint 1",
+      "notes": "Review test intent before production code: downstream tools/list passthrough, allowed call forwarding, denied call blocking, fail-closed startup/listing behavior, native tool absence, and installer secret redaction.",
+      "base": "feature/wave-11-mcp-proxy-architecture"
+    },
+    {
+      "unit": 2,
+      "phase": "Phase 2: Proxy Contracts And Downstream Stdio Client",
+      "goal": "Add proxy-only contracts and one-downstream stdio MCP client lifecycle.",
+      "checkpoint": "Manual checkpoint 2",
+      "notes": "No native Compass tool schemas or static public registry. Contracts live separately from behavior per project type convention.",
+      "base": "feature/wave-11-mcp-proxy-architecture"
+    },
+    {
+      "unit": 3,
+      "phase": "Phase 3: Proxy Dispatcher, Policy Interceptor, And Audit",
+      "goal": "Replace native routing with proxy dispatcher behavior for initialize, safe methods, tools/list, and intercepted tools/call.",
+      "checkpoint": "Manual checkpoint 3",
+      "notes": "All tools/call requests must classify, evaluate policy/approval, audit intent, then forward only on allow; uncertainty denies without forwarding.",
+      "base": "feature/wave-11-mcp-proxy-architecture"
+    },
+    {
+      "unit": 4,
+      "phase": "Phase 4: Installer Wrapping And Runtime Scripts",
+      "goal": "Wrap one downstream MCP config behind Compass without copying secrets.",
+      "checkpoint": "Manual checkpoint 4",
+      "notes": "Generated/dry-run output must redact raw secrets and preserve env indirection where possible.",
+      "base": "feature/wave-11-mcp-proxy-architecture"
+    },
+    {
+      "unit": 5,
+      "phase": "Phase 5: Native MCP Retirement And Final Verification",
+      "goal": "Delete or retire native registry/router/executor/contracts/tests that no longer describe active Wave 11 behavior.",
+      "checkpoint": "Manual checkpoint 5",
+      "notes": "Keep reusable audit/policy/env helpers only when decoupled from native MCP tool contracts.",
+      "base": "feature/wave-11-mcp-proxy-architecture"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T11_1.1",
+      "phase": "Phase 1: Proxy Test Fixtures And RED Coverage",
+      "title": "Create fake downstream MCP server fixture with tools/list and tools/call behaviors",
+      "status": "done",
+      "filesPlanned": ["back/services/__tests__/fixtures/fakeDownstreamMcpServer.ts"],
+      "dependsOn": [],
+      "acceptanceCriteria": [
+        "Fixture starts over stdio and returns deterministic downstream tool descriptors",
+        "Fixture records forwarded tools/call requests for assertions",
+        "Fixture can simulate startup, listing, and call failures"
+      ]
+    },
+    {
+      "id": "T11_1.2",
+      "phase": "Phase 1: Proxy Test Fixtures And RED Coverage",
+      "title": "Add RED tests for downstream tools/list passthrough and native tool absence",
+      "status": "done",
+      "filesPlanned": ["back/services/__tests__/mcpProxyDispatcher.test.ts"],
+      "dependsOn": ["T11_1.1"],
+      "acceptanceCriteria": [
+        "tools/list returns fake downstream descriptors unchanged",
+        "tools/list does not expose compass_transfer, compass_swap, helper tools, or hidden internal primitives",
+        "No static Compass-owned schema mapping is required by the test"
+      ]
+    },
+    {
+      "id": "T11_1.3",
+      "phase": "Phase 1: Proxy Test Fixtures And RED Coverage",
+      "title": "Add RED tests for allowed, denied, and fail-closed downstream tools/call",
+      "status": "done",
+      "filesPlanned": ["back/services/__tests__/mcpProxyDispatcher.test.ts"],
+      "dependsOn": ["T11_1.2"],
+      "acceptanceCriteria": [
+        "Allowed call forwards original tool name and arguments to downstream",
+        "Denied or unclassified call does not reach downstream and returns stable reason plus suggestedAction",
+        "Downstream disconnect, discovery failure, policy failure, or audit failure denies before forwarding"
+      ]
+    },
+    {
+      "id": "T11_1.4",
+      "phase": "Phase 1: Proxy Test Fixtures And RED Coverage",
+      "title": "Add RED tests for installer secret-safe wrapping",
+		"status": "done",
+      "filesPlanned": ["back/services/__tests__/mcpConfigWrapping.test.ts"],
+      "dependsOn": ["T11_1.1"],
+      "acceptanceCriteria": [
+        "One downstream server is wrapped behind a Compass proxy command",
+        "Raw secret env values are not written to generated config or dry-run output",
+        "Multi-downstream or remote MCP shapes are rejected as Wave 11 out of scope"
+      ]
+    },
+    {
+      "id": "T11_2.1",
+      "phase": "Phase 2: Proxy Contracts And Downstream Stdio Client",
+      "title": "Create proxy-only MCP contracts separate from native tool contracts",
+		"status": "done",
+      "filesPlanned": ["back/services/mcp/mcpProxyContracts.ts"],
+      "dependsOn": ["T11_1.2", "T11_1.3"],
+      "acceptanceCriteria": [
+        "Defines DownstreamMcpStdioConfig, DownstreamMcpTool, ProxiedMcpToolCall, ProxyDecision, and proxy result envelopes",
+        "Contracts do not import MCP_TOOL_NAMES, native schemas, or native result types",
+        "Types preserve one downstream stdio server per proxy process"
+      ]
+    },
+    {
+      "id": "T11_2.2",
+      "phase": "Phase 2: Proxy Contracts And Downstream Stdio Client",
+      "title": "Implement downstream stdio MCP client lifecycle",
+		"status": "done",
+      "filesPlanned": ["back/services/mcp/downstreamMcpStdioClient.ts"],
+      "dependsOn": ["T11_2.1"],
+      "acceptanceCriteria": [
+        "Starts exactly one downstream MCP process using command, args, env, and cwd",
+        "Supports initialize/capability discovery, tools/list, tools/call, and shutdown cleanup",
+        "Converts startup, protocol, listing, and call failures into fail-closed proxy errors"
+      ]
+    },
+    {
+      "id": "T11_2.3",
+      "phase": "Phase 2: Proxy Contracts And Downstream Stdio Client",
+      "title": "Add safe non-tool MCP method classification",
+		"status": "done",
+      "filesPlanned": ["back/services/mcp/mcpProxySafeMethods.ts"],
+      "dependsOn": ["T11_2.1"],
+      "acceptanceCriteria": [
+        "Defines explicit allowlist for safe non-tool methods supported in Wave 11",
+        "tools/call is excluded from generic passthrough and always routes through interception",
+        "Unknown methods fail closed with stable operator guidance"
+      ]
+    },
+    {
+      "id": "T11_3.1",
+      "phase": "Phase 3: Proxy Dispatcher, Policy Interceptor, And Audit",
+      "title": "Implement generic MCP tool-call policy interceptor",
+		"status": "done",
+      "filesPlanned": ["back/services/mcp/mcpProxyPolicyInterceptor.ts"],
+      "dependsOn": ["T11_2.1"],
+      "acceptanceCriteria": [
+        "Classifies arbitrary downstream tool calls without recreating a native Compass registry",
+        "Evaluates reusable policy/approval primitives before forwarding",
+        "Returns allow or deny with reason and suggestedAction; uncertainty denies"
+      ]
+    },
+    {
+      "id": "T11_3.2",
+      "phase": "Phase 3: Proxy Dispatcher, Policy Interceptor, And Audit",
+      "title": "Implement proxy audit helper for intercepted downstream calls",
+		"status": "done",
+      "filesPlanned": ["back/services/mcp/mcpProxyAudit.ts"],
+      "dependsOn": ["T11_3.1"],
+      "acceptanceCriteria": [
+        "Records intent, policy decision, denial reason, forwarding attempt, downstream outcome, and failures",
+        "Redacts secret-bearing arguments and env values before audit output",
+        "Audit write failure causes fail-closed denial before forwarding"
+      ]
+    },
+    {
+      "id": "T11_3.3",
+      "phase": "Phase 3: Proxy Dispatcher, Policy Interceptor, And Audit",
+      "title": "Implement proxy request dispatcher for initialize, safe methods, tools/list, and tools/call",
+		"status": "done",
+      "filesPlanned": ["back/services/mcp/mcpProxyDispatcher.ts"],
+      "dependsOn": ["T11_2.2", "T11_2.3", "T11_3.1", "T11_3.2"],
+      "acceptanceCriteria": [
+        "tools/list returns downstream descriptors without native schema duplication",
+        "tools/call runs interceptor and audit before forwarding allowed calls",
+        "Denied, unsafe, unknown, or failed requests do not forward and return stable guidance"
+      ]
+    },
+    {
+      "id": "T11_3.4",
+      "phase": "Phase 3: Proxy Dispatcher, Policy Interceptor, And Audit",
+      "title": "Refactor client-facing MCP server to use proxy dispatcher only",
+		"status": "done",
+      "filesPlanned": ["back/services/mcp/mcpServer.ts", "back/services/mcp/mcpServerContracts.ts"],
+      "dependsOn": ["T11_3.3"],
+      "acceptanceCriteria": [
+        "mcpServer.ts no longer imports mcpToolRegistry.ts or mcpToolCallRouter.ts",
+        "Client-facing stdio server delegates active behavior to mcpProxyDispatcher.ts",
+        "Server contracts describe proxy protocol envelopes, not native Compass tool results"
+      ]
+    },
+    {
+      "id": "T11_4.1",
+      "phase": "Phase 4: Installer Wrapping And Runtime Scripts",
+      "title": "Create secret-safe MCP config wrapping helper",
+		"status": "done",
+      "filesPlanned": ["back/services/mcp/mcpConfigWrapping.ts"],
+      "dependsOn": ["T11_1.4", "T11_2.1"],
+      "acceptanceCriteria": [
+        "Wraps one existing local MCP server config into a Compass proxy entry",
+        "Preserves env references and cwd/args for downstream startup",
+        "Redacts secret-like values from previews, errors, and dry-run output"
+      ]
+    },
+    {
+      "id": "T11_4.2",
+      "phase": "Phase 4: Installer Wrapping And Runtime Scripts",
+      "title": "Update OpenCode MCP installer to wrap downstream stdio servers",
+		"status": "done",
+      "filesPlanned": ["scripts/install-opencode-mcp.mjs", ".opencode/opencode.json"],
+      "dependsOn": ["T11_4.1"],
+      "acceptanceCriteria": [
+        "Installer exposes Compass as the only client-facing MCP server",
+        "Original downstream command is passed to Compass proxy without copying raw secrets",
+        "Dry-run output shows redacted wrapped config and one-downstream limitations"
+      ]
+    },
+    {
+      "id": "T11_4.3",
+      "phase": "Phase 4: Installer Wrapping And Runtime Scripts",
+      "title": "Update package scripts for proxy-only MCP runtime",
+		"status": "done",
+      "filesPlanned": ["package.json"],
+      "dependsOn": ["T11_3.4", "T11_4.2"],
+      "acceptanceCriteria": [
+        "mcp runtime script starts the proxy-only stdio server with downstream config inputs",
+        "No script advertises a native Compass MCP tool server as the active architecture",
+        "Existing install script name remains usable if compatible with proxy wrapping"
+      ]
+    },
+    {
+      "id": "T11_5.1",
+      "phase": "Phase 5: Native MCP Retirement And Final Verification",
+      "title": "Delete or retire native MCP registry, router, executor, and native tool contracts",
+		"status": "done",
+      "filesPlanned": [
+        "back/services/mcp/mcpToolRegistry.ts",
+        "back/services/mcp/mcpToolCallRouter.ts",
+        "back/services/mcp/internalExecutor.ts",
+        "back/services/mcp/mcpToolContracts.ts",
+        "back/services/mcp/mcpToolResults.ts"
+      ],
+      "dependsOn": ["T11_3.4", "T11_4.3"],
+      "acceptanceCriteria": [
+        "Files are deleted when no active import remains, or reduced only to reusable proxy-neutral primitives",
+        "No active app/back/shared import depends on native Compass MCP tool names or schemas",
+        "Reusable policy, audit, provider, and loadRepoEnv helpers remain decoupled from native MCP contracts"
+      ]
+    },
+    {
+      "id": "T11_5.2",
+      "phase": "Phase 5: Native MCP Retirement And Final Verification",
+      "title": "Replace native MCP tests with proxy-only tests",
+		"status": "done",
+      "filesPlanned": [
+        "back/services/__tests__/mcpServer.test.ts",
+        "back/services/__tests__/mcpToolRegistry.test.ts",
+        "back/services/__tests__/mcpToolCallRouter.test.ts",
+        "back/services/__tests__/internalExecutor.test.ts",
+        "back/services/__tests__/mcpProxyDispatcher.test.ts",
+        "back/services/__tests__/mcpConfigWrapping.test.ts"
+      ],
+      "dependsOn": ["T11_5.1"],
+      "acceptanceCriteria": [
+        "Native registry/router/internal-executor assertions are deleted or rewritten as proxy behavior assertions",
+        "Proxy tests cover downstream listing, allow/deny forwarding, fail-closed paths, native tool absence, and secret-safe wrapping",
+        "No test requires compass_transfer, compass_swap, native helper tools, or hidden native primitives"
+      ]
+    },
+    {
+      "id": "T11_5.3",
+      "phase": "Phase 5: Native MCP Retirement And Final Verification",
+      "title": "Run focused and full verification commands and record any follow-up fixes",
+		"status": "done",
+      "filesPlanned": ["docs/wave-11-mcp-proxy-architecture/task.json"],
+      "dependsOn": ["T11_5.2"],
+      "acceptanceCriteria": [
+        "Focused proxy tests pass before full suite",
+        "Typecheck, lint, and whitespace verification pass",
+        "Any implementation checkpoint failure is fixed before moving to the next manual phase"
+      ]
+    }
+  ],
+  "verification": {
+    "commands": [
+      "npx vitest run back/services/__tests__/mcpProxyDispatcher.test.ts back/services/__tests__/mcpConfigWrapping.test.ts",
+      "npm run test:back",
+      "npx tsc --noEmit",
+      "npm run lint",
+      "git diff --check"
+    ]
+  }
+}

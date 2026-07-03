@@ -1,0 +1,167 @@
+{
+  "id": "wave-5-swap-gateway",
+  "title": "Wave 5a — Swap gateway",
+  "status": "swap_slice_completed_pending_final_review",
+  "branch": "feature/wave-5-swap-conditional-gateway",
+  "baseBranch": "release/compass_migration",
+  "goal": "Expose swap quote and guarded swap proposal flows through the Compass MCP gateway with policy, approval metadata, and audit.",
+  "reviewBudget": {
+    "maxChangedLines": 400,
+    "warning": "Combined Wave 5 was requested, but swap and conditional must remain reviewable tracks. Pause and split before implementation if this track plus tests is forecast above 400 changed lines."
+  },
+  "context": {
+    "productSource": "docs/PRODUCT_CONSTITUTION.md",
+    "migrationPlan": "docs/compass-monad-on-solana/mvp-migration-plan.md#wave-5--swap-and-conditional-flows-behind-gateway",
+    "precedent": "docs/wave-4-mcp-server/",
+    "relatedCode": [
+      "back/services/mcp/mcpToolContracts.ts",
+      "back/services/mcp/mcpToolRegistry.ts",
+      "back/services/mcp/mcpToolCallRouter.ts",
+      "back/services/policy/policyEngine.ts",
+      "back/services/policy/defaultPolicy.yaml",
+      "back/services/transferGateway.ts"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T1_RED_SWAP_GATEWAY",
+      "title": "Add RED swap gateway tests",
+      "status": "completed",
+      "description": "Specify allow, high-slippage approval, unknown-token approval, missing-context fail-closed, metadata fingerprints, and no legacy imports before implementation.",
+      "evidence": [
+        {
+          "timestamp": "2026-06-09T01:34:21Z",
+          "command": "npm run test:back -- back/services/__tests__/swapGateway.test.ts",
+          "expected": "RED before swapGateway exists",
+          "actual": "RED as expected: focused swap gateway tests collected and failed because back/services/swapGateway.ts and back/services/swapGatewayContracts.ts did not exist yet (6 failed / 0 passed).",
+          "exitCode": 1
+        }
+      ]
+    },
+    {
+      "id": "T2_GREEN_SWAP_CONTRACTS_GATEWAY",
+      "title": "Implement swap contracts and gateway",
+      "status": "completed",
+      "description": "Create swapGatewayContracts.ts and swapGateway.ts with evaluateSwapGateway mirroring transferGateway while keeping types separate from behavior.",
+      "filesPlanned": [
+        "back/services/swapGatewayContracts.ts",
+        "back/services/swapGateway.ts"
+      ],
+      "evidence": [
+        {
+          "timestamp": "2026-06-09T01:35:22Z",
+          "command": "npm run test:back -- back/services/__tests__/swapGateway.test.ts",
+          "expected": "GREEN focused gateway tests",
+          "actual": "GREEN: swap gateway tests passed for separated contracts, ALLOW known SOL/USDC, high-slippage REQUIRE_HUMAN_APPROVAL, unknown-token REQUIRE_HUMAN_APPROVAL, missing-context REQUIRE_ADDITIONAL_CONTEXT, metadata fingerprints, and no legacy imports (6 passed / 1 file).",
+          "exitCode": 0
+        }
+      ],
+      "filesCompleted": [
+        "back/services/swapGatewayContracts.ts",
+        "back/services/swapGateway.ts",
+        "back/services/__tests__/swapGateway.test.ts"
+      ]
+    },
+    {
+      "id": "T3_RED_MCP_SWAP",
+      "title": "Add RED MCP swap tests",
+      "status": "completed",
+      "description": "Specify tools/list and tools/call behavior for quote_swap and guarded_swap_sol_usdc, including audit and direct-signing regression.",
+      "evidence": [
+        {
+          "timestamp": "2026-06-09T01:36:42Z",
+          "command": "npm run test:back -- back/services/__tests__/mcpToolRegistry.test.ts back/services/__tests__/mcpToolCallRouter.test.ts",
+          "expected": "RED until swap tools are registered/routed",
+          "actual": "RED as expected: MCP tests failed because quote_swap and guarded_swap_sol_usdc were not registered/routed yet (4 failed / 7 passed).",
+          "exitCode": 1
+        }
+      ]
+    },
+    {
+      "id": "T4_GREEN_MCP_SWAP",
+      "title": "Register and route swap tools",
+      "status": "completed",
+      "description": "Extend MCP contracts, registry, router, and approval metadata typing for swap results without changing signer behavior.",
+      "filesPlanned": [
+        "back/services/mcp/mcpToolContracts.ts",
+        "back/services/mcp/mcpToolRegistry.ts",
+        "back/services/mcp/mcpToolCallRouter.ts"
+      ],
+      "evidence": [
+        {
+          "timestamp": "2026-06-09T01:38:31Z",
+          "command": "npm run test:back -- back/services/__tests__/mcpToolRegistry.test.ts back/services/__tests__/mcpToolCallRouter.test.ts",
+          "expected": "GREEN focused MCP swap tests",
+          "actual": "GREEN: MCP registry/router tests passed with quote_swap and guarded_swap_sol_usdc listed and routed, quote ALLOW, guarded swap REQUIRE_HUMAN_APPROVAL, invalid swap REQUIRE_ADDITIONAL_CONTEXT, and signing/unknown-tool regressions (11 passed / 2 files).",
+          "exitCode": 0
+        }
+      ],
+      "filesCompleted": [
+        "back/services/mcp/mcpToolContracts.ts",
+        "back/services/mcp/mcpToolRegistry.ts",
+        "back/services/mcp/mcpToolCallRouter.ts",
+        "back/services/__tests__/mcpToolRegistry.test.ts",
+        "back/services/__tests__/mcpToolCallRouter.test.ts",
+        "back/services/__tests__/mcpServer.test.ts"
+      ]
+    },
+    {
+      "id": "T5_VALIDATE_REVIEW",
+      "title": "Validate and pause for review",
+      "status": "completed_pending_final_review",
+      "description": "Run full validation and stop for parent review before conditional implementation if combined diff approaches the review budget.",
+      "evidence": [
+        {
+          "timestamp": "2026-06-09T01:38:39Z",
+          "command": "npm run test:back -- back/services/__tests__/swapGateway.test.ts back/services/__tests__/mcpToolRegistry.test.ts back/services/__tests__/mcpToolCallRouter.test.ts back/services/__tests__/mcpServer.test.ts",
+          "expected": "PASS focused swap/MCP/server tests",
+          "actual": "PASS: focused Wave 5a swap + MCP suites passed (22 tests / 4 files).",
+          "exitCode": 0
+        },
+        {
+          "timestamp": "2026-06-09T01:48:38Z",
+          "command": "npm run test:back -- back/services/__tests__/mcpToolCallRouter.test.ts back/services/__tests__/mcpToolRegistry.test.ts back/services/__tests__/swapGateway.test.ts back/services/__tests__/mcpServer.test.ts",
+          "expected": "PASS focused swap/MCP/server tests after reviewer blocker fix",
+          "actual": "PASS: focused Wave 5a swap + MCP suites passed after adding unsupported pair regression (23 tests / 4 files).",
+          "exitCode": 0
+        },
+        {
+          "timestamp": "2026-06-09T01:48:41Z",
+          "command": "npm run test:back",
+          "expected": "PASS",
+          "actual": "PASS: full backend Vitest suite passed after unsupported pair fix (108 tests / 11 files).",
+          "exitCode": 0
+        },
+        {
+          "timestamp": "2026-06-09T01:49:30Z",
+          "command": "npm run lint",
+          "expected": "PASS",
+          "actual": "PASS with existing app/layout.tsx react-refresh/only-export-components warning; 0 errors.",
+          "exitCode": 0
+        },
+        {
+          "timestamp": "2026-06-09T01:49:40Z",
+          "command": "npx tsc --noEmit --pretty false",
+          "expected": "PASS",
+          "actual": "PASS: TypeScript no-emit completed with no errors.",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "acceptanceCriteria": [
+    "Swap tools are first-party MCP tools and never legacy chat flows.",
+    "Sensitive swaps pass through evaluateAction using actionKind swap.",
+    "High slippage, unknown token, unallowed protocol, and missing evidence produce conservative decisions.",
+    "Audit output is structured and redacted.",
+    "Direct sign/send remains denied."
+  ],
+  "nonGoals": [
+    "Signer adapter",
+    "transaction submission",
+    "upstream MCP passthrough",
+    "large legacy swap guard port",
+    "durable audit storage"
+  ],
+  "updatedAt": "2026-06-09T01:49:40Z"
+}

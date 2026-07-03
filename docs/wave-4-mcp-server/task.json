@@ -1,0 +1,233 @@
+{
+  "id": "wave-4-mcp-server",
+  "title": "Wave 4 — MCP server and tool boundary",
+  "status": "completed_pending_commit_merge",
+  "branch": "feature/wave-4-mcp-server",
+  "baseBranch": "release/compass_migration",
+  "goal": "Expose the existing Compass MCP Guard backend core through a first-party MCP server/tool boundary before adding more mutating flows.",
+  "context": {
+    "whyNow": "After Wave 3.5, the active backend is a clean guard core but has no agent-facing entrypoint. Existing swap/conditional/signer work should wait until agents can only reach guarded tools through Compass.",
+    "productSource": "docs/PRODUCT_CONSTITUTION.md",
+    "relatedDocs": [
+      "docs/compass-monad-on-solana/mvp-migration-plan.md",
+      "docs/back-architecture.html",
+      "docs/wave-3-transfer-behind-gateway/functional-spec.md",
+      "docs/wave-3-transfer-behind-gateway/technical-spec.md"
+    ],
+    "relatedCode": [
+      "back/services/executionGateway.ts",
+      "back/services/executionGatewayContracts.ts",
+      "back/services/policy/policyEngine.ts",
+      "back/services/transferGateway.ts",
+      "back/services/transferGatewayContracts.ts",
+      "back/services/transferAuditLog.ts",
+      "back/services/priceQuote.ts"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Define MCP tool contracts",
+      "status": "completed",
+      "description": "Create dedicated contracts/types for Compass MCP tools, registry entries, tool-call input, and stable tool-call results. Keep types separate from behavior.",
+      "filesCompleted": [
+        "back/services/mcp/mcpToolContracts.ts"
+      ],
+      "evidence": [
+        {
+          "timestamp": "2026-06-07T21:08:24Z",
+          "command": "npm run test:back -- back/services/__tests__/mcpToolRegistry.test.ts back/services/__tests__/mcpToolCallRouter.test.ts",
+          "result": "RED as expected: focused Wave 4 MCP tests collected and failed because back/services/mcp contracts, registry, and router modules did not exist yet (8 failed / 0 passed).",
+          "exitCode": 1
+        },
+        {
+          "timestamp": "2026-06-07T21:14:10Z",
+          "command": "npm run test:back",
+          "result": "GREEN: full backend suite passed after adding separated MCP contracts plus pure registry/router implementation (93 tests / 9 files passing).",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "Implement first-party tool registry",
+      "status": "completed",
+      "description": "List the initial Compass-controlled tools: quote/read, guarded transfer, deny-only direct signing. Ensure tools/list cannot expose raw signer or legacy chat tools.",
+      "filesCompleted": [
+        "back/services/mcp/mcpToolRegistry.ts"
+      ],
+      "evidence": [
+        {
+          "timestamp": "2026-06-07T21:15:46Z",
+          "command": "npm run test:back -- back/services/__tests__/mcpToolRegistry.test.ts back/services/__tests__/mcpToolCallRouter.test.ts",
+          "result": "GREEN focused MCP suite passed; registry lists exactly get_usdc_sol_quote, guarded_transfer_sol, and sign_and_send_transaction, with no raw signer/private-key tools exposed.",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "title": "Implement pure tools/call router",
+      "status": "completed",
+      "description": "Route calls through classification, policy/transfer gateway, result builders, and audit behavior without adding MCP transport complexity first.",
+      "filesCompleted": [
+        "back/services/mcp/mcpToolResults.ts",
+        "back/services/mcp/mcpAuditSink.ts",
+        "back/services/mcp/mcpToolCallRouter.ts"
+      ],
+      "evidence": [
+        {
+          "timestamp": "2026-06-07T21:15:46Z",
+          "command": "npm run test:back -- back/services/__tests__/mcpToolRegistry.test.ts back/services/__tests__/mcpToolCallRouter.test.ts",
+          "result": "GREEN focused router tests passed for quote ALLOW, transfer REQUIRE_HUMAN_APPROVAL via evaluateTransferGateway, direct signing DENY, unknown mutating DENY, invalid transfer REQUIRE_ADDITIONAL_CONTEXT, audit ids, and no raw transaction leaks in results.",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "title": "Add backend tests for MCP decisions",
+      "status": "completed",
+      "description": "Cover ALLOW quote, REQUIRE_HUMAN_APPROVAL transfer, DENY direct signing, DENY unknown mutating tool, invalid transfer input, and no legacy imports.",
+      "filesCompleted": [
+        "back/services/__tests__/mcpToolRegistry.test.ts",
+        "back/services/__tests__/mcpToolCallRouter.test.ts"
+      ],
+      "evidence": [
+        {
+          "timestamp": "2026-06-07T21:18:15Z",
+          "command": "npm run test:back",
+          "result": "GREEN full backend regression suite passed: 93 tests / 9 files.",
+          "exitCode": 0
+        },
+        {
+          "timestamp": "2026-06-07T21:18:15Z",
+          "command": "npm run lint",
+          "result": "PASS with existing warning only in app/layout.tsx react-refresh/only-export-components; 0 errors.",
+          "exitCode": 0
+        },
+        {
+          "timestamp": "2026-06-07T21:18:15Z",
+          "command": "npx tsc --noEmit --pretty false",
+          "result": "PASS: TypeScript completed with no errors.",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "id": "T5",
+      "title": "Add local MCP server entrypoint",
+      "status": "completed",
+      "description": "Add the minimal server/transport wrapper once pure registry/router tests are green. Keep it local/dev-only until demo evidence exists.",
+      "filesCompleted": [
+        "back/services/mcp/mcpServerContracts.ts",
+        "back/services/mcp/mcpServer.ts",
+        "back/services/__tests__/mcpServer.test.ts",
+        "package.json",
+        "package-lock.json",
+        "docs/wave-4-mcp-server/technical-spec.md"
+      ],
+      "evidence": [
+        {
+          "timestamp": "2026-06-09T00:26:36Z",
+          "command": "npm run test:back -- back/services/__tests__/mcpServer.test.ts",
+          "result": "RED as expected: focused MCP server tests collected and failed because back/services/mcp/mcpServer.ts did not exist yet (4 failed / 1 no-legacy scan passed).",
+          "exitCode": 1
+        },
+        {
+          "timestamp": "2026-06-09T00:29:09Z",
+          "command": "npm run test:back -- back/services/__tests__/mcpServer.test.ts",
+          "result": "GREEN: local MCP server entrypoint tests passed after adding thin Server/Stdio transport wiring, testable handlers, Compass-result-to-MCP content mapping, safe structured transport errors, and no-legacy import coverage (5 tests / 1 file).",
+          "exitCode": 0
+        },
+        {
+          "timestamp": "2026-06-09T00:29:18Z",
+          "command": "npm run test:back -- back/services/__tests__/mcpToolRegistry.test.ts back/services/__tests__/mcpToolCallRouter.test.ts back/services/__tests__/mcpServer.test.ts",
+          "result": "GREEN: focused Wave 4 MCP suites passed with registry, router, and server entrypoint coverage (13 tests / 3 files).",
+          "exitCode": 0
+        },
+        {
+          "timestamp": "2026-06-09T00:31:19Z",
+          "command": "npx tsc --noEmit --pretty false",
+          "result": "PASS: TypeScript completed with no errors after SDK integration and MCP server handler typing fixes.",
+          "exitCode": 0
+        },
+        {
+          "timestamp": "2026-06-09T00:32:05Z",
+          "command": "npm run test:back",
+          "result": "PASS: full backend Vitest suite passed after T5 local MCP server entrypoint (10 files, 98 tests).",
+          "exitCode": 0
+        },
+        {
+          "timestamp": "2026-06-09T00:32:15Z",
+          "command": "npm run lint",
+          "result": "PASS with existing warning only in app/layout.tsx react-refresh/only-export-components; 0 errors.",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "id": "T6",
+      "title": "Document manual MCP evidence",
+      "status": "completed",
+      "description": "Record how to run tools/list and tools/call locally, including one allow, one require-approval, and one deny outcome.",
+      "filesCompleted": [
+        "package.json",
+        "docs/wave-4-mcp-server/manual-evidence.md",
+        "docs/wave-4-mcp-server/task.json",
+        "docs/wave-4-mcp-server/technical-spec.md"
+      ],
+      "evidence": [
+        {
+          "timestamp": "2026-06-09T00:40:00Z",
+          "command": "node --input-type=module <<'NODE' ... StdioClientTransport({ command: 'npm', args: ['run', '--silent', 'mcp:dev'] }) ... client.listTools(); client.callTool(get_usdc_sol_quote); client.callTool(guarded_transfer_sol); client.callTool(sign_and_send_transaction); NODE",
+          "result": "PASS: local MCP stdio server returned tools/list with get_usdc_sol_quote, guarded_transfer_sol and sign_and_send_transaction; tools/call returned ALLOW for get_usdc_sol_quote with auditId and quote data, REQUIRE_HUMAN_APPROVAL for guarded_transfer_sol with approvalRequired true and auditId, DENY for sign_and_send_transaction with DIRECT_SIGN_AND_SEND_BLOCKED and auditId; rawTransaction sentinel did not leak.",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "id": "T7",
+      "title": "Validate and review",
+      "status": "completed",
+      "description": "Run npm run test:back, npm run lint, npx tsc --noEmit --pretty false, and a fresh reviewer before merging into release/compass_migration.",
+      "evidence": [
+        {
+          "timestamp": "2026-06-09T00:44:00Z",
+          "command": "npm run test:back && npm run lint && npx tsc --noEmit --pretty false",
+          "result": "PASS: full backend Vitest suite passed (10 files, 98 tests); ESLint passed with 0 errors and 1 existing app/layout.tsx react-refresh warning; TypeScript no-emit completed cleanly.",
+          "exitCode": 0
+        },
+        {
+          "timestamp": "2026-06-09T00:48:00Z",
+          "command": "fresh final reviewer audit",
+          "result": "GO: reviewer found no blockers for Wave 4 T1-T6. Confirmed local MCP stdio entrypoint, tools/list, tools/call ALLOW/REQUIRE_HUMAN_APPROVAL/DENY outcomes, no legacy imports, direct signing denied, no raw tx leakage, no upstream passthrough, durable audit intentionally deferred. Non-blocking hygiene: doc churn should be split or reverted; tmp/ ignored; manual evidence doc added.",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "acceptanceCriteria": [
+    "MCP tool registry lists only Compass-controlled tools for this wave.",
+    "tools/call produces ALLOW, REQUIRE_HUMAN_APPROVAL, and DENY outcomes through the existing guard primitives.",
+    "guarded_transfer_sol uses evaluateTransferGateway rather than legacy chat orchestration.",
+    "direct signing/raw send calls are denied fail-closed.",
+    "No active module imports from legacy/.",
+    "Backend tests cover the first-party MCP router behavior."
+  ],
+  "nonGoals": [
+    "SignerAdapter implementation",
+    "Swap/conditional migration",
+    "Broad upstream MCP compatibility mode",
+    "Durable audit storage",
+    "Private-key custody",
+    "Legacy chat reactivation"
+  ],
+  "verification": [
+    "npm run test:back",
+    "npm run lint",
+    "npx tsc --noEmit --pretty false",
+    "Manual MCP evidence once the server entrypoint exists"
+  ],
+  "updatedAt": "2026-06-09T00:48:00Z"
+}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { evaluateWalletSafety, isPendingActionExpired, DEFAULT_WARN_TRANSFER_SOL } from '../walletSafetyValidation';
-import type { OnchainWalletFacts } from '../walletSafetyValidation';
+import { evaluateWalletSafety, isPendingActionExpired, DEFAULT_WARN_TRANSFER_SOL } from '../domains/transfer/walletSafetyValidation';
+import type { OnchainWalletFacts } from '../domains/transfer/walletSafetyValidation';
 
 describe('evaluateWalletSafety', () => {
   const defaultOnchainMock: OnchainWalletFacts = {

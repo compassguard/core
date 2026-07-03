@@ -1,0 +1,216 @@
+{
+  "info": {
+    "name": "Compass MCP Guard — Hosted Backend",
+    "description": "Functional test collection for the hosted evaluation, audit, policy, and health endpoints.\n\nSet the {{baseUrl}} variable to your deployed URL (e.g. http://localhost:3001 for local, or https://solana-hackathon.vercel.app for prod).\nSet the {{apiKey}} variable to your COMPASS_HOSTED_API_KEY.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3001" },
+    { "key": "apiKey", "value": "" },
+    { "key": "invalidApiKey", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Evaluation",
+      "item": [
+        {
+          "name": "Read-only tool → ALLOW",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/v1/evaluate", "host": ["{{baseUrl}}"], "path": ["v1", "evaluate"] },
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"correlationId\": \"test_ro_001\",\n  \"idempotencyKey\": \"idem_ro_001\",\n  \"toolName\": \"get_balance\",\n  \"arguments\": { \"wallet\": \"Alice\" },\n  \"localFindings\": [\n    { \"code\": \"READ_ONLY\", \"severity\": \"info\", \"message\": \"Safe read\" }\n  ],\n  \"requestedAt\": \"2026-06-19T18:00:00.000Z\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Transfer within limits → CONFIRM (missing amount)",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/v1/evaluate", "host": ["{{baseUrl}}"], "path": ["v1", "evaluate"] },
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"correlationId\": \"test_tf_001\",\n  \"idempotencyKey\": \"idem_tf_001\",\n  \"toolName\": \"transfer_sol\",\n  \"arguments\": {\n    \"recipient\": \"wallet_bob\",\n    \"amountSol\": 0.1\n  },\n  \"localFindings\": [\n    { \"code\": \"ROUTABLE_MUTATION\", \"severity\": \"warn\", \"message\": \"Transfer needs policy check\" }\n  ],\n  \"requestedAt\": \"2026-06-19T18:00:00.000Z\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Swap with valid params → CONFIRM (needs LLM judge)",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/v1/evaluate", "host": ["{{baseUrl}}"], "path": ["v1", "evaluate"] },
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"correlationId\": \"test_sw_001\",\n  \"idempotencyKey\": \"idem_sw_001\",\n  \"toolName\": \"swap_token\",\n  \"arguments\": {\n    \"fromToken\": \"SOL\",\n    \"toToken\": \"USDC\",\n    \"amount\": 1.0,\n    \"slippage\": 50\n  },\n  \"localFindings\": [\n    { \"code\": \"ROUTABLE_MUTATION\", \"severity\": \"warn\", \"message\": \"Swap routed to hosted\" }\n  ],\n  \"requestedAt\": \"2026-06-19T18:00:00.000Z\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Unknown tool → LLM judge decides",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/v1/evaluate", "host": ["{{baseUrl}}"], "path": ["v1", "evaluate"] },
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"correlationId\": \"test_uk_001\",\n  \"idempotencyKey\": \"idem_uk_001\",\n  \"toolName\": \"some_random_new_defi_thing\",\n  \"arguments\": { \"foo\": \"bar\" },\n  \"localFindings\": [\n    { \"code\": \"UNKNOWN_TOOL\", \"severity\": \"warn\", \"message\": \"Not in registry\" }\n  ],\n  \"requestedAt\": \"2026-06-19T18:00:00.000Z\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Auth failure → 401",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/v1/evaluate", "host": ["{{baseUrl}}"], "path": ["v1", "evaluate"] },
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{invalidApiKey}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"correlationId\": \"test_auth_001\",\n  \"idempotencyKey\": \"idem_auth_001\",\n  \"toolName\": \"transfer_sol\",\n  \"arguments\": {},\n  \"localFindings\": [],\n  \"requestedAt\": \"2026-06-19T18:00:00.000Z\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Missing auth → 401",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/v1/evaluate", "host": ["{{baseUrl}}"], "path": ["v1", "evaluate"] },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"correlationId\": \"test_noauth_001\",\n  \"idempotencyKey\": \"idem_noauth_001\",\n  \"toolName\": \"transfer_sol\",\n  \"arguments\": {},\n  \"localFindings\": [],\n  \"requestedAt\": \"2026-06-19T18:00:00.000Z\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Bad request → 400",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/v1/evaluate", "host": ["{{baseUrl}}"], "path": ["v1", "evaluate"] },
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"foo\": \"bar\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Audit",
+      "item": [
+        {
+          "name": "POST /v1/audit/events → write audit entry",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/v1/audit/events", "host": ["{{baseUrl}}"], "path": ["v1", "audit", "events"] },
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idempotencyKey\": \"audit_write_001\",\n  \"userId\": \"user_test\",\n  \"entry\": {\n    \"correlationId\": \"corr_audit_001\",\n    \"toolName\": \"transfer_sol\",\n    \"decision\": \"confirm\",\n    \"riskLevel\": \"medium\",\n    \"reasons\": [\"TRANSFER_MISSING_AMOUNT\"],\n    \"auditRef\": \"aud_audit_001\"\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /v1/audits → query by userId",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/v1/audits?userId=user_test&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "audits"],
+              "query": [
+                { "key": "userId", "value": "user_test" },
+                { "key": "limit", "value": "10" }
+              ]
+            },
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" }
+            ]
+          }
+        },
+        {
+          "name": "GET /v1/audits → query by sessionId",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/v1/audits?sessionId=session_abc&limit=5",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "audits"],
+              "query": [
+                { "key": "sessionId", "value": "session_abc" },
+                { "key": "limit", "value": "5" }
+              ]
+            },
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" }
+            ]
+          }
+        },
+        {
+          "name": "GET /v1/audits → missing params → 400",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/v1/audits", "host": ["{{baseUrl}}"], "path": ["v1", "audits"] },
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Policy",
+      "item": [
+        {
+          "name": "GET /v1/policies → policy snapshot",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/v1/policies", "host": ["{{baseUrl}}"], "path": ["v1", "policies"] },
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

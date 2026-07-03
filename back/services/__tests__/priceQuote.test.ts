@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import * as orca from '../tools/orcaSwap';
-import { getUsdcSolQuote } from '../priceQuote';
+import * as orca from '../solana/price-providers/orcaUsdcSol';
+import { getUsdcSolQuote } from '../solana/providers/priceQuote';
 
 const COMMON_QUOTE = {
   input_amount_base_units: '100000000',

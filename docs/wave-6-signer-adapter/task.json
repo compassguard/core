@@ -1,0 +1,271 @@
+{
+  "id": "wave-6-signer-adapter",
+  "title": "Wave 6 — Signer adapter boundary and idempotency",
+  "status": "implemented_ready_for_verification",
+  "branch": "feature/wave-6-signer-idempotency",
+  "baseBranch": "release/compass_migration",
+  "goal": "Make the signing boundary explicit and testable: define SignerAdapter interface, add devnet LocalKeypairAdapter (Wave 6a, guarded by env flag), add in-process approval idempotency guard, and wire an execute_approved_action MCP tool that gates execution behind the idempotency store and local signer.",
+  "reviewBudget": {
+    "maxChangedLines": 400,
+    "estimatedLines": {
+      "wave6a": "~260 (contracts ~55 + adapter ~85 + idempotency store ~50 + tests ~70)",
+      "wave6b": "~175 (contracts patch ~10 + registry ~35 + router handler ~55 + tests ~75)",
+      "combined": "~435"
+    },
+    "warning": "Combined Wave 6 estimate (~435 lines) exceeds the 400-line review budget. Stop after T5_VALIDATE_6A green and open Wave 6b as a separate PR targeting release/compass_migration before starting T6_RED_MCP_EXECUTE.",
+    "splitBoundary": "T5_VALIDATE_6A must be green (signerAdapter tests pass, approvalIdempotencyStore tests pass, full suite clean) before starting 6b MCP wiring.",
+    "chainStrategy": "stacked-to-main: Wave 6b PR targets release/compass_migration, Wave 6a must merge first."
+  },
+  "context": {
+    "productSource": "docs/PRODUCT_CONSTITUTION.md",
+    "migrationPlan": "docs/compass-monad-on-solana/mvp-migration-plan.md#wave-6--approval-and-signer-adapter-boundary",
+    "precedent": "docs/wave-5-swap-gateway/",
+    "relatedCode": [
+      "back/services/onchainApproval.ts",
+      "back/services/mcp/mcpToolCallRouter.ts",
+      "back/services/mcp/mcpToolContracts.ts",
+      "back/services/mcp/mcpToolRegistry.ts",
+      "back/services/executionGateway.ts",
+      "back/services/executionGatewayContracts.ts"
+    ]
+  },
+  "openQuestions": [
+    {
+      "id": "Q1",
+      "question": "Should LocalKeypairAdapter be implemented in Wave 6, or deferred to Wave 8 (demo hardening)?",
+      "resolution": "DECIDED: Implement LocalKeypairAdapter in Wave 6a. Guard strictly behind COMPASS_LOCAL_SIGNER_ENABLED=true env flag with devnet restriction."
+    },
+    {
+      "id": "Q2",
+      "question": "Should the in-process idempotency store be in-memory only, or should it persist to a durable store (SQLite/JSONL) immediately?",
+      "resolution": "DECIDED: In-memory only for MVP. Upgrade to durable store in Wave 8+ if demo hardening requires it."
+    },
+    {
+      "id": "Q3",
+      "question": "What should execute_approved_action return on success? (a) signer-ready metadata for frontend Dynamic wallet, (b) call local signer and return tx signature, or (c) both based on env config?",
+      "resolution": "DECIDED: Use LocalKeypairAdapter when COMPASS_LOCAL_SIGNER_ENABLED=true and return tx signature when implementation has transaction bytes available. If LOCAL_SIGNER_NOT_CONFIGURED, the tool returns DENY with LOCAL_SIGNER_NOT_CONFIGURED. Actual signAndSendTransaction call with VersionedTransaction deferred to Wave 7; Wave 6b establishes the handler path and returns ALLOW with signerPath metadata."
+    },
+    {
+      "id": "Q4",
+      "question": "Should execute_approved_action write back to the on-chain PDA to mark the approval consumed, or rely solely on the in-process idempotency store?",
+      "resolution": "DECIDED: Rely on in-process store for MVP. The Anchor program marks the action as executed when the guarded_transfer instruction runs; Compass does not need a separate PDA marking."
+    },
+    {
+      "id": "Q5",
+      "question": "Should execute_approved_action require a full OnchainActionApprovalProof, or accept a lighter proof for early devnet testing?",
+      "resolution": "DECIDED: Accept only candidateId for now. No call to verifyActionApproval in Wave 6. Document that full OnchainActionApprovalProof and on-chain verification are deferred to Wave 7. Approval input schema requires only candidateId; approvalProof field is omitted from Wave 6 tool schema."
+    }
+  ],
+  "acceptanceCriteria": [
+    "Compass backend does not hold user private keys in any non-devnet, non-demo code path.",
+    "SignerAdapter interface is exported from a contracts file covering getAddress, signTransaction, and optional signAndSendTransaction.",
+    "LocalKeypairAdapter is gated behind COMPASS_LOCAL_SIGNER_ENABLED=true and throws LOCAL_SIGNER_MAINNET_FORBIDDEN for any non-devnet RPC.",
+    "ApprovalIdempotencyStore.consume returns ok:true the first time and ok:false DUPLICATE_APPROVAL_EXECUTION on repeats.",
+    "execute_approved_action MCP tool checks the idempotency store and the signer adapter before returning ALLOW.",
+    "A duplicate execute_approved_action call with the same candidateId returns DENY with DUPLICATE_APPROVAL_EXECUTION.",
+    "execute_approved_action with LOCAL_SIGNER_NOT_CONFIGURED returns DENY with LOCAL_SIGNER_NOT_CONFIGURED.",
+    "Direct sign_and_send_transaction remains denied with an updated message referencing execute_approved_action.",
+    "Backend tests cover all acceptance criteria.",
+    "No legacy/ imports are introduced."
+  ],
+  "nonGoals": [
+    "No private-key custody in production",
+    "No Dynamic SDK integration in backend",
+    "No keeper or automated execution engine",
+    "No upstream MCP compatibility (Wave 7)",
+    "No durable idempotency persistence (Wave 8+)",
+    "No transaction simulation beyond existing gateway paths",
+    "No mainnet execution readiness",
+    "No verifyActionApproval call in Wave 6 (on-chain proof verification deferred to Wave 7)",
+    "No actual VersionedTransaction signing in Wave 6 execute handler (deferred to Wave 7 when unsigned tx bytes are passed)"
+  ],
+  "verification": [
+    "npm run test:back",
+    "npm run lint",
+    "npx tsc --noEmit --pretty false",
+    "Manual: call execute_approved_action twice with same candidateId and confirm second call returns DENY DUPLICATE_APPROVAL_EXECUTION",
+    "Manual: attempt createSignerAdapter without COMPASS_LOCAL_SIGNER_ENABLED and confirm factory returns LOCAL_SIGNER_NOT_CONFIGURED",
+    "Manual: set COMPASS_LOCAL_SIGNER_ENABLED=true with a mainnet RPC URL and confirm createSignerAdapter returns LOCAL_SIGNER_MAINNET_FORBIDDEN"
+  ],
+  "tasks": [
+    {
+      "id": "T1_RED_SIGNER_ADAPTER",
+      "title": "Add RED signer adapter tests",
+      "status": "completed",
+      "wave": "6a",
+      "description": "Write tests for SignerAdapter interface, LocalKeypairAdapter, createSignerAdapter factory, devnet restriction, and idempotency store before implementation.",
+      "testsSpec": [
+        "SignerAdapter interface: a class satisfying the interface compiles and getAddress is callable",
+        "LocalKeypairAdapter.getAddress returns the correct base58 address for a test keypair",
+        "createSignerAdapter returns LOCAL_SIGNER_NOT_CONFIGURED when COMPASS_LOCAL_SIGNER_ENABLED is absent",
+        "createSignerAdapter returns LOCAL_SIGNER_MAINNET_FORBIDDEN when RPC URL contains 'mainnet'",
+        "approvalIdempotencyStore.consume returns ok:true on first call",
+        "approvalIdempotencyStore.consume returns DUPLICATE_APPROVAL_EXECUTION on second call with same ID",
+        "approvalIdempotencyStore.consume returns ok:true for a different ID after a prior ID was consumed",
+        "No legacy/ import appears in any new Wave 6a file"
+      ]
+    },
+    {
+      "id": "T2_GREEN_SIGNER_ADAPTER",
+      "title": "Implement signer adapter contracts and local keypair adapter",
+      "status": "completed",
+      "wave": "6a",
+      "description": "Create signerAdapterContracts.ts, signerAdapter.ts with LocalKeypairAdapter and createSignerAdapter factory. Keep types/contracts separate from behavior.",
+      "filesPlanned": [
+        "back/services/signerAdapterContracts.ts",
+        "back/services/signerAdapter.ts",
+        "back/services/__tests__/signerAdapter.test.ts",
+        "back/services/__tests__/approvalIdempotencyStore.test.ts"
+      ]
+    },
+    {
+      "id": "T3_RED_IDEMPOTENCY",
+      "title": "Add RED idempotency store tests",
+      "status": "completed",
+      "wave": "6a",
+      "description": "Write tests for ApprovalIdempotencyStore.consume single-consume semantics and clear() for test teardown.",
+      "testsSpec": [
+        "consume returns ok:true on first call for candidateId",
+        "consume returns ok:false DUPLICATE_APPROVAL_EXECUTION on repeat call",
+        "consume returns ok:true for different candidateId after prior consumption",
+        "has returns correct boolean state",
+        "clear() resets store state"
+      ]
+    },
+    {
+      "id": "T4_GREEN_IDEMPOTENCY",
+      "title": "Implement approval idempotency store",
+      "status": "completed",
+      "wave": "6a",
+      "description": "Create approvalIdempotencyStore.ts with module-level singleton store. Module-level singleton (singleton per server process); clear() is test-only.",
+      "filesPlanned": [
+        "back/services/approvalIdempotencyStore.ts"
+      ]
+    },
+    {
+      "id": "T5_VALIDATE_6A",
+      "title": "Validate Wave 6a and pause for review",
+      "status": "completed",
+      "wave": "6a",
+      "description": "Run full validation suite and stop for parent review before starting Wave 6b MCP wiring.",
+      "validationCommands": [
+        "npm run test:back -- back/services/__tests__/signerAdapter.test.ts back/services/__tests__/approvalIdempotencyStore.test.ts",
+        "npm run test:back",
+        "npm run lint",
+        "npx tsc --noEmit --pretty false"
+      ]
+    },
+    {
+      "id": "T6_RED_MCP_EXECUTE",
+      "title": "Add RED MCP execute_approved_action tests",
+      "status": "completed",
+      "wave": "6b",
+      "description": "Write tests for execute_approved_action tool: registry entry, routing, idempotency, signer path, audit, and sign_and_send_transaction regression.",
+      "testsSpec": [
+        "execute_approved_action is listed in tools/list with riskClass: SIGNING",
+        "handleMcpToolCall with sign_and_send_transaction still returns DENY (regression)",
+        "handleMcpToolCall with execute_approved_action and missing candidateId returns REQUIRE_ADDITIONAL_CONTEXT",
+        "handleMcpToolCall with valid candidateId that was already consumed returns DENY with DUPLICATE_APPROVAL_EXECUTION",
+        "handleMcpToolCall with LOCAL_SIGNER_NOT_CONFIGURED returns DENY with LOCAL_SIGNER_NOT_CONFIGURED",
+        "handleMcpToolCall with valid candidateId and LOCAL_SIGNER_NOT_CONFIGURED returns DENY (no ALLOW in Wave 6)",
+        "Audit event is emitted for every execute attempt (allow and deny)",
+        "No raw transaction data leaks into MCP results or audit metadata"
+      ]
+    },
+    {
+      "id": "T7_GREEN_MCP_EXECUTE",
+      "title": "Register and route execute_approved_action tool",
+      "status": "completed",
+      "wave": "6b",
+      "description": "Add EXECUTE_APPROVED_ACTION to MCP contracts, registry, and router. Implement handleExecuteApprovedActionTool handler. Update sign_and_send_transaction deny message.",
+      "filesPlanned": [
+        "back/services/mcp/mcpToolContracts.ts",
+        "back/services/mcp/mcpToolRegistry.ts",
+        "back/services/mcp/mcpToolCallRouter.ts"
+      ]
+    },
+    {
+      "id": "T8_VALIDATE_REVIEW",
+      "title": "Validate and pause for review",
+      "status": "completed",
+      "wave": "6b",
+      "description": "Run full validation suite. Stop for parent review before proceeding to Wave 7.",
+      "validationCommands": [
+        "npm run test:back -- back/services/__tests__/mcpToolRegistry.test.ts back/services/__tests__/mcpToolCallRouter.test.ts",
+        "npm run test:back",
+        "npm run lint",
+        "npx tsc --noEmit --pretty false"
+      ]
+    }
+  ],
+  "implementationEvidence": {
+    "mode": "Strict TDD",
+    "deliveryDecision": "size:exception approved for single PR despite combined estimate over 400 lines",
+    "completedTasks": [
+      "T1_RED_SIGNER_ADAPTER",
+      "T2_GREEN_SIGNER_ADAPTER",
+      "T3_RED_IDEMPOTENCY",
+      "T4_GREEN_IDEMPOTENCY",
+      "T5_VALIDATE_6A",
+      "T6_RED_MCP_EXECUTE",
+      "T7_GREEN_MCP_EXECUTE",
+      "T8_VALIDATE_REVIEW"
+    ],
+    "tddCycleEvidence": [
+      {
+        "task": "T1_RED_SIGNER_ADAPTER",
+        "testFile": "back/services/__tests__/signerAdapter.test.ts",
+        "layer": "Unit",
+        "safetyNet": "N/A (pre-existing untracked Wave 6a tests)",
+        "red": "Reconciled existing RED-intended tests before production validation",
+        "green": "npm run test:back -- back/services/__tests__/signerAdapter.test.ts back/services/__tests__/approvalIdempotencyStore.test.ts -> 18 passed",
+        "triangulate": "11 signer adapter cases cover env disabled, false flag, mainnet RPC, devnet RPC, address derivation, no legacy import",
+        "refactor": "No additional production refactor needed for 6a"
+      },
+      {
+        "task": "T3_RED_IDEMPOTENCY",
+        "testFile": "back/services/__tests__/approvalIdempotencyStore.test.ts",
+        "layer": "Unit",
+        "safetyNet": "N/A (pre-existing untracked Wave 6a tests)",
+        "red": "Reconciled existing RED-intended tests before production validation",
+        "green": "npm run test:back -- back/services/__tests__/signerAdapter.test.ts back/services/__tests__/approvalIdempotencyStore.test.ts -> 18 passed",
+        "triangulate": "7 idempotency cases cover first consume, duplicate, different candidate, has(), clear(), singleton export",
+        "refactor": "No additional production refactor needed for 6a"
+      },
+      {
+        "task": "T6_RED_MCP_EXECUTE",
+        "testFile": "back/services/__tests__/mcpToolRegistry.test.ts, back/services/__tests__/mcpToolCallRouter.test.ts, back/services/__tests__/mcpServer.test.ts",
+        "layer": "Unit/integration",
+        "safetyNet": "npm run test:back -> 138 passed before 6b edits",
+        "red": "Focused MCP tests failed before implementation: missing execute_approved_action registry/router and old sign_and_send deny message",
+        "green": "npm run test:back -- back/services/__tests__/mcpToolRegistry.test.ts back/services/__tests__/mcpToolCallRouter.test.ts -> 18 passed",
+        "triangulate": "Added server tools/list expectation after full suite caught the registry surface change",
+        "refactor": "Kept handler local to router and contracts/types in dedicated files"
+      },
+      {
+        "task": "T8_VALIDATE_REVIEW",
+        "testFile": "Full backend suite",
+        "layer": "Validation",
+        "safetyNet": "Focused and full backend suites run",
+        "red": "Full suite initially failed mcpServer tools/list expectation after adding execute_approved_action",
+        "green": "npm run test:back -> 141 passed",
+        "triangulate": "Registry, router, and server tests now all assert the execute tool surface",
+        "refactor": "No further refactor needed"
+      }
+    ],
+    "commands": [
+      "npm run test:back -- back/services/__tests__/signerAdapter.test.ts back/services/__tests__/approvalIdempotencyStore.test.ts -> 18 passed",
+      "npm run test:back -- back/services/__tests__/mcpToolRegistry.test.ts back/services/__tests__/mcpToolCallRouter.test.ts -> RED before implementation",
+      "npm run test:back -- back/services/__tests__/mcpToolRegistry.test.ts back/services/__tests__/mcpToolCallRouter.test.ts -> 18 passed after implementation",
+      "npm run test:back -> 141 passed",
+      "npm run lint -> exit 0 with existing app/layout.tsx react-refresh warning",
+      "npx tsc --noEmit --pretty false -> exit 0"
+    ],
+    "deviations": [
+      "execute_approved_action follows task.json Q5 resolution: candidateId-only in Wave 6; full approvalProof and verifyActionApproval are deferred to Wave 7.",
+      "execute_approved_action denies LOCAL_SIGNER_NOT_CONFIGURED in Wave 6 rather than returning frontend-wallet ALLOW metadata, matching task.json acceptance criteria and testsSpec."
+    ]
+  },
+  "createdAt": "2026-06-09",
+  "updatedAt": "2026-06-10"
+}

@@ -9,7 +9,7 @@ import {
   verifyActionApproval,
   verifyOracleExecutionTx,
   verifyTransferGuardReadiness,
-} from '../onchainApproval';
+} from '@hosted/onchain/onchainApproval';
 
 const PROGRAM_ID = '11111111111111111111111111111111';
 const USER = '11111111111111111111111111111111';
@@ -136,14 +136,15 @@ describe('onchainApproval', () => {
     expect(result.reason).toBe('ACTION_HASH_INVALID_FORMAT');
   });
 
-  it('returns ok when guarded transfer tx contains expected action', async () => {
+  it('requires action hash and user before accepting a guarded transfer tx proof', async () => {
     vi.spyOn(web3.Connection.prototype, 'getTransaction').mockResolvedValue(txWithGuardedTransfer as never);
 
     const result = await verifyActionApproval({
       execute_tx_signature: 'test',
     });
 
-    expect(result.ok).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe('INCOMPLETE_ACTION_APPROVAL_PROOF');
   });
 
   it('returns execution invalid when tx does not include guarded_transfer instruction', async () => {
