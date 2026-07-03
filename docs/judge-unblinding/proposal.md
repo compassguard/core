@@ -1,8 +1,10 @@
 # Judge Un-blinding — feed the judge the real transaction (proposal)
 
-> **Status: DRAFT / proposal — the "judge" workstream the
-> [demo-day plan](../compass-demo-day/proposal.md) depends on.**
-> **Demo-day-critical. Same mid-July deadline.** Updated 2026-06-24, grounded in a read of this repo
+> **Status: DRAFT / proposal — RE-TIMED 2026-07-03** by the [demo-day plan](../compass-demo-day/proposal.md)
+> re-scope to the `/verify`-endpoint MVP. This workstream now **splits in two**: the **decode half** (derive
+> policy flags from the real tx, not self-reported args) is **needed by the MVP to be honest** and lands now;
+> the **simulate + LLM half** (the old "mandate-stop" moment) is the **post-MVP deep-verify tier** — no longer
+> mid-July-critical. Updated 2026-06-24 (re-timed 2026-07-03), grounded in a read of this repo
 > @ `release/compass_migration`. Meets the demo-day plan at the
 > [Judge handoff contract](../compass-demo-day/proposal.md#judge-handoff-contract).
 > Technical detail → [technical-spec.md](./technical-spec.md).
@@ -12,8 +14,9 @@
 Today the judge (deterministic policy + advisory LLM) decides on the agent's **self-reported arguments**,
 not the real transaction. So a within-cap action that's outside the owner's mandate — the demo's headline
 (**~$0 authority/approval escalation, Grok/Bankr**) — can't actually be caught. This workstream **un-blinds
-the judge**: decode + simulate the real tx and judge on ground truth. It is the load-bearing piece of the
-demo's "mandate-stop" moment.
+the judge**: decode + simulate the real tx and judge on ground truth. Its **decode half** (ground-truth flags)
+is what the re-scoped **`/verify` MVP** needs to be honest; its **simulate + LLM half** is the post-MVP
+deep-verify tier (see status above).
 
 ## The problem (grounded in code)
 
@@ -51,10 +54,13 @@ injection-proof) in front of LLM-on-real-action**. Same ground-truth judging Cra
 deterministic layer they lack — once the judge sees the real tx. The decode/simulate step is what makes our
 hybrid strictly stronger than CrabTrap, not weaker.
 
-## Demo-day dependency (read with the demo-day plan)
+## Relationship to the demo-day plan (re-scoped 2026-07-03)
 
-The demo headline — *"an action caps would pass but is outside the owner's mandate gets stopped, with a
-plain-English reason"* — is **impossible without this workstream**. The demo-day plan delivers everything
-*around* the judge; this delivers the judge it depends on. **Plumbing-ready and judge-ready must land by the
-same mid-July date** — the handoff contract pins the interface; this is the reminder it must also pin the
-*timing*.
+The demo-day plan is now the **`/verify`-endpoint MVP** (deterministic-only), so the old headline — *"an
+action caps would pass but is outside the owner's mandate gets stopped by the LLM"* — is a **scripted roadmap
+beat**, not the MVP demo. What the re-scope pulls **forward** from this workstream is the **decode half**: the
+MVP's deterministic checks (caps, recipient, `authority_change`) must derive from the **decoded/ground-truth
+tx**, not self-reported args — otherwise a compromised agent that omits the flag passes, and the demo's
+"blocked" beat collapses under one question ("a real attacker just wouldn't set the flag"). The **simulate +
+LLM half** stays here as the **post-MVP deep-verify tier**. The handoff contract still pins the interface; the
+*timing* now splits — **decode-now, simulate/LLM-later**.
