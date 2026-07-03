@@ -1,0 +1,1851 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Compass · Pitch Deck · v2</title>
+<meta name="description" content="Compass — intent enforcement for AI agents that pay. Investor pitch deck v2." />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --paper:        #E9EDEF;
+    --paper-tint:   #DEE3E6;
+    --paper-deep:   #D2D9DE;
+    --ink:          #0E1C2A;
+    --ink-strong:   #071322;
+    --ink-muted:    #4E5A67;
+    --rule:         #ADB7BF;
+    --rule-soft:    #C4CBD1;
+    --bearing:      #B03E36;
+    --bearing-soft: #C86A63;
+    --bearing-tint: #E9CFCC;
+    --approve:      #3F7A5C;
+    --escalate:     #B58236;
+
+    --f-display: 'Space Grotesk', -apple-system, sans-serif;
+    --f-body:    'Newsreader', Georgia, serif;
+    --f-mono:    'JetBrains Mono', ui-monospace, monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--f-body);
+    font-size: 22px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(1600px 900px at 6% -8%, rgba(255,255,255,0.5), transparent 60%),
+      radial-gradient(1200px 800px at 100% 100%, rgba(14,28,42,0.05), transparent 55%);
+    z-index: 0;
+  }
+
+  .deck { position: relative; width: 1920px; height: 1080px; overflow: hidden; z-index: 1; }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    width: 1920px;
+    height: 1080px;
+    padding: 72px 115px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 320ms ease;
+    overflow: hidden;
+    background: var(--paper);
+  }
+  .slide.active { opacity: 1; visibility: visible; pointer-events: auto; z-index: 1; }
+
+  /* Running header on all slides except title */
+  .runhead {
+    position: absolute;
+    top: 24px;
+    left: 115px;
+    right: 115px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-family: var(--f-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--rule-soft);
+  }
+  .runhead__mark { color: var(--ink-strong); font-weight: 500; }
+  .runhead__mark::before { content: "↟ "; color: var(--bearing); }
+  .runhead__section strong { color: var(--bearing); font-weight: 500; margin-right: 0.5em; }
+
+  .slide__inner {
+    margin-top: 64px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 0;
+  }
+
+  /* Chapter number in body */
+  .chapter-num {
+    font-family: var(--f-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--bearing);
+    margin: 0 0 1.25rem;
+  }
+  .chapter-num strong { font-weight: 500; }
+
+  /* Type */
+  .slide h1 {
+    font-family: var(--f-display);
+    font-weight: 500;
+    font-size: 64px;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    color: var(--ink-strong);
+    margin: 0;
+    max-width: 22ch;
+  }
+  .slide h1 em { font-style: normal; color: var(--bearing); }
+
+  .slide h2 {
+    font-family: var(--f-display);
+    font-weight: 600;
+    font-size: 52px;
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+    color: var(--ink-strong);
+    margin: 0 0 40px;
+    max-width: 30ch;
+  }
+
+  .slide p, .slide li {
+    font-family: var(--f-body);
+    font-size: 26px;
+    line-height: 1.5;
+    color: var(--ink);
+    max-width: 62ch;
+  }
+
+  strong { color: var(--ink-strong); font-weight: 700; }
+  .slide p strong, .slide li strong { color: var(--bearing); }
+  em.lift { font-style: normal; color: var(--bearing); font-weight: 700; }
+
+  /* ===== SLIDE 1 · TITLE ===== */
+  .slide--title { justify-content: space-between; }
+
+  .title__top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  .title__mark {
+    font-family: var(--f-display);
+    font-weight: 700;
+    font-size: clamp(1.05rem, 1.4vw, 1.3rem);
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--ink-strong);
+  }
+  .title__mark::before { content: "↟ "; color: var(--bearing); }
+  .title__meta {
+    font-family: var(--f-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+  }
+  .title__meta em { font-style: normal; color: var(--bearing); }
+
+  .title__body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 2vh 0;
+  }
+
+  .title__figure {
+    font-family: var(--f-display);
+    font-weight: 600;
+    font-size: 120px;
+    letter-spacing: -0.03em;
+    color: var(--ink-strong);
+    line-height: 0.88;
+    margin: 0 0 40px;
+  }
+  .title__figure em {
+    font-style: normal;
+    color: var(--bearing);
+    text-decoration: underline;
+    text-decoration-thickness: 0.08em;
+    text-underline-offset: 0.08em;
+  }
+
+  .title__sub {
+    font-family: var(--f-display);
+    font-weight: 500;
+    font-size: 42px;
+    line-height: 1.2;
+    color: var(--ink-strong);
+    max-width: 32ch;
+    margin: 0 0 2rem;
+  }
+
+  .incidents {
+    display: flex;
+    gap: 1.5rem 2.5rem;
+    flex-wrap: wrap;
+    font-family: var(--f-mono);
+    font-size: clamp(1rem, 1.25vw, 1.15rem);
+    letter-spacing: 0.05em;
+    color: var(--ink-muted);
+    padding-top: 1rem;
+    border-top: 1px solid var(--rule-soft);
+  }
+  .incidents__item strong { color: var(--ink-strong); font-weight: 600; margin-right: 0.4em; }
+  .incidents__item em {
+    display: inline-block;
+    font-style: normal;
+    color: var(--bearing);
+    font-weight: 700;
+    font-size: 1.75em;
+    margin-right: 0.25em;
+  }
+
+  /* Bearing strip */
+  .bearing-strip { padding-top: 0.75rem; }
+  .bearing-strip svg { display: block; width: 100%; max-height: 56px; }
+  .bearing-strip__label {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 0.4rem;
+    font-family: var(--f-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+  }
+  .bearing-strip__label strong { color: var(--bearing); font-weight: 500; letter-spacing: 0.2em; }
+
+  /* ===== SLIDE 2 · WALKTHROUGH ===== */
+  .setup {
+    padding: 0.9rem 1.1rem;
+    background: rgba(14, 28, 42, 0.04);
+    border-left: 3px solid var(--bearing);
+    margin: 0 0 1.5rem;
+    max-width: none;
+  }
+  .setup p {
+    margin: 0;
+    font-size: 22px;
+    color: var(--ink);
+    line-height: 1.5;
+    max-width: none;
+  }
+  .setup strong { color: var(--ink-strong); }
+  .setup .setup-label {
+    display: block;
+    font-family: var(--f-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--bearing);
+    margin-bottom: 0.35rem;
+  }
+
+  .walk {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+    max-width: 100%;
+  }
+  @media (max-width: 900px) { .walk { grid-template-columns: 1fr; } }
+
+  .walk__col { display: flex; flex-direction: column; }
+
+  .walk__time {
+    font-family: var(--f-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--rule-soft);
+    margin-bottom: 0.8rem;
+  }
+
+  .walk__title {
+    font-family: var(--f-display);
+    font-weight: 600;
+    font-size: clamp(1rem, 1.3vw, 1.15rem);
+    color: var(--ink-strong);
+    margin: 0 0 0.65rem;
+  }
+
+  .walk__body {
+    font-family: var(--f-body);
+    font-size: clamp(0.9rem, 1.05vw, 1rem);
+    line-height: 1.5;
+    color: var(--ink);
+    margin: 0 0 auto;
+    max-width: none;
+  }
+
+  .walk__decision {
+    margin-top: 1rem;
+    padding: 0.6rem 0.85rem;
+    font-family: var(--f-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-weight: 600;
+    border: 1px solid;
+    display: inline-block;
+    align-self: flex-start;
+  }
+  .walk__decision--approve  { color: var(--approve);  border-color: var(--approve); }
+  .walk__decision--escalate { color: var(--escalate); border-color: var(--escalate); }
+  .walk__decision--block    { color: var(--bearing);  border-color: var(--bearing); background: var(--bearing-tint); }
+
+  /* ===== WALKTHROUGH · INDIVIDUAL SCENARIO SLIDES ===== */
+  .walk-single {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    flex: 1;
+  }
+  .walk-single .setup {
+    margin-bottom: 2rem;
+  }
+  .walk-single__step {
+    font-family: var(--f-mono);
+    font-size: 20px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--bearing);
+    margin: 0 0 0.5rem;
+    font-weight: 500;
+  }
+  .walk-single__time {
+    font-family: var(--f-mono);
+    font-size: 24px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    margin: 0 0 1rem;
+  }
+  .walk-single__title {
+    font-family: var(--f-display);
+    font-weight: 600;
+    font-size: 96px;
+    color: var(--ink-strong);
+    margin: 0 0 32px;
+    line-height: 0.98;
+    letter-spacing: -0.02em;
+  }
+  .walk-single__title code {
+    font-family: var(--f-mono);
+    font-size: 0.8em;
+    background: rgba(14, 28, 42, 0.06);
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+  }
+  .walk-single__body {
+    font-family: var(--f-body);
+    font-size: 30px;
+    line-height: 1.45;
+    color: var(--ink);
+    max-width: 55ch;
+    margin: 0 0 1.8rem;
+  }
+  .walk-single__decision {
+    display: inline-block;
+    padding: 20px 32px;
+    font-family: var(--f-mono);
+    font-size: 24px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-weight: 600;
+    border: 3px solid;
+    background: rgba(255, 255, 255, 0.45);
+    box-shadow: 0 0 0 6px rgba(176, 62, 54, 0.08);
+  }
+  .walk-single__decision--approve  { color: var(--approve);  border-color: var(--approve); }
+  .walk-single__decision--escalate { color: var(--escalate); border-color: var(--escalate); }
+  .walk-single__decision--block    { color: var(--bearing);  border-color: var(--bearing); background: var(--bearing-tint); }
+
+  /* ===== SLIDE 3 · WHY NOTHING STOPPED IT ===== */
+  .fails-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem 3rem;
+    margin-top: 1rem;
+  }
+  @media (max-width: 900px) { .fails-grid { grid-template-columns: 1fr; } }
+
+  .fails-col h3 {
+    font-family: var(--f-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--bearing);
+    margin: 0 0 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--rule);
+    font-weight: 500;
+  }
+
+  .fails-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 0.85rem;
+  }
+  .fails-list li {
+    padding-left: 28px;
+    position: relative;
+    font-size: 22px;
+    line-height: 1.45;
+    max-width: none;
+  }
+  .fails-list li::before {
+    content: "×";
+    position: absolute;
+    left: 0;
+    top: 0;
+    color: var(--bearing);
+    font-family: var(--f-mono);
+    font-weight: 600;
+  }
+  .fails-list strong { color: var(--ink-strong); }
+
+  /* ===== SLIDE 4 · ENFORCEMENT LAYER ===== */
+  .slide--statement .slide__inner { justify-content: center; }
+  .statement {
+    font-family: var(--f-display);
+    font-weight: 500;
+    font-size: 108px;
+    line-height: 0.98;
+    letter-spacing: -0.02em;
+    color: var(--ink-strong);
+    max-width: 22ch;
+    margin: 0;
+  }
+  .statement em { font-style: normal; color: var(--bearing); }
+
+  /* ===== SLIDE 5 · WHAT COMPASS DOES ===== */
+  .properties {
+    list-style: none;
+    padding: 0;
+    margin: 1.75rem 0 0;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 2rem 3rem;
+  }
+  @media (max-width: 900px) { .properties { grid-template-columns: 1fr; } }
+
+  .properties li {
+    padding: 1.15rem 1.25rem 1.25rem;
+    border-top: 2px solid var(--ink-strong);
+    background: rgba(255, 255, 255, 0.34);
+    max-width: none;
+  }
+  .properties li:first-child { border-top-color: var(--bearing); }
+
+  .properties h3 {
+    font-family: var(--f-display);
+    font-weight: 600;
+    font-size: 44px;
+    color: var(--ink-strong);
+    margin: 0 0 20px;
+  }
+  .properties p {
+    font-size: 28px;
+    color: var(--ink);
+    max-width: none;
+    line-height: 1.5;
+  }
+
+  /* ===== SLIDE 6 · BENTO ===== */
+  .versus {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 0;
+    margin: 1.5rem 0;
+    max-width: none;
+  }
+  @media (max-width: 900px) {
+    .versus { grid-template-columns: 1fr; }
+    .versus__divider { display: none; }
+  }
+  .versus__col { padding: 1rem 1.75rem; }
+  .versus__col--us { padding-left: 0; }
+  .versus__col--them { padding-right: 0; color: var(--ink-muted); }
+  .versus__divider { width: 1px; background: var(--rule); }
+
+  .versus__label {
+    font-family: var(--f-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 2px solid;
+    font-weight: 500;
+  }
+  .versus__col--us .versus__label { color: var(--bearing); border-color: var(--bearing); }
+  .versus__col--them .versus__label { color: var(--ink-muted); border-color: var(--rule); }
+
+  .versus__list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 0.85rem;
+  }
+  .versus__list li {
+    font-size: clamp(0.92rem, 1.1vw, 1.05rem);
+    line-height: 1.4;
+    max-width: none;
+  }
+  .versus__col--us strong { color: var(--ink-strong); }
+
+  .versus__close {
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--rule);
+    font-family: var(--f-display);
+    font-weight: 500;
+    font-size: clamp(1.05rem, 1.5vw, 1.35rem);
+    color: var(--ink-strong);
+    max-width: 60ch;
+  }
+  .versus__close em { color: var(--bearing); font-style: normal; }
+  .versus__caveat {
+    margin-top: 0.75rem;
+    font-family: var(--f-body);
+    font-style: italic;
+    font-size: clamp(0.88rem, 1vw, 0.98rem);
+    color: var(--ink-muted);
+    max-width: 68ch;
+  }
+
+  /* ===== SLIDE 7 · THE MOMENT ===== */
+  .moment-hero {
+    font-family: var(--f-display);
+    font-weight: 500;
+    font-size: 84px;
+    line-height: 0.98;
+    letter-spacing: -0.01em;
+    color: var(--ink-strong);
+    margin: 0 0 0.65rem;
+    max-width: 26ch;
+  }
+  .moment-hero em {
+    display: block;
+    font-style: normal;
+    color: var(--bearing);
+    font-size: 1.2em;
+  }
+
+  .moment-source {
+    font-family: var(--f-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    margin: 0 0 1.75rem;
+  }
+
+  .growth-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1.25rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--rule-soft);
+  }
+  @media (max-width: 900px) { .growth-grid { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 500px) { .growth-grid { grid-template-columns: 1fr; } }
+
+  .growth__cell { display: flex; flex-direction: column; }
+  .growth__label {
+    font-family: var(--f-mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    margin: 0 0 0.35rem;
+  }
+  .growth__value {
+    font-family: var(--f-display);
+    font-weight: 600;
+    font-size: 36px;
+    color: var(--ink-strong);
+    letter-spacing: -0.01em;
+    margin: 0 0 0.35rem;
+    line-height: 1.15;
+  }
+  .growth__value em {
+    color: var(--bearing);
+    font-style: normal;
+    font-size: 1.45em;
+  }
+  .growth__source {
+    font-family: var(--f-mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.06em;
+    color: var(--ink-muted);
+    margin: auto 0 0;
+  }
+
+  .moment-close {
+    margin-top: 32px;
+    font-family: var(--f-body);
+    font-size: 24px;
+    color: var(--ink);
+    max-width: 78ch;
+    line-height: 1.55;
+  }
+  .moment-close strong { color: var(--ink-strong); }
+
+  /* ===== SLIDE 8 · BEACHHEAD + GTM ===== */
+  .beachhead-lead {
+    margin-bottom: 1.25rem;
+    max-width: 78ch;
+  }
+  .beachhead-lead strong { color: var(--ink-strong); }
+  .beachhead-lead p { font-size: 24px; max-width: none; }
+
+  .beachhead-names {
+    display: flex;
+    gap: 0.5rem 1.75rem;
+    flex-wrap: wrap;
+    margin: 0.85rem 0 1.5rem;
+    padding: 0.75rem 0;
+    border-top: 1px solid var(--rule-soft);
+    border-bottom: 1px solid var(--rule-soft);
+  }
+  .beachhead-names span {
+    font-family: var(--f-mono);
+    font-size: 1.1rem;
+    color: var(--ink-strong);
+    letter-spacing: 0.04em;
+  }
+  .beachhead-names span::before {
+    content: "◐ ";
+    color: var(--bearing);
+    margin-right: 0.15em;
+  }
+
+  .phases {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+    margin-top: 0.5rem;
+  }
+  @media (max-width: 900px) { .phases { grid-template-columns: 1fr; } }
+
+  .phase {
+    padding-top: 0.9rem;
+    border-top: 2px solid var(--ink-strong);
+  }
+  .phase:first-child { border-top-color: var(--bearing); }
+
+  .phase__num {
+    font-family: var(--f-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    margin: 0 0 0.35rem;
+  }
+  .phase__num strong { color: var(--bearing); font-weight: 500; margin-right: 0.4em; }
+
+  .phase__title {
+    font-family: var(--f-display);
+    font-weight: 600;
+    font-size: 26px;
+    color: var(--ink-strong);
+    margin: 0 0 0.55rem;
+  }
+
+  .phase__body {
+    font-family: var(--f-body);
+    font-size: 22px;
+    color: var(--ink);
+    line-height: 1.45;
+    max-width: none;
+  }
+  .phase__milestone {
+    display: block;
+    margin-top: 0.6rem;
+    padding-top: 0.5rem;
+    border-top: 1px dotted var(--rule-soft);
+    font-family: var(--f-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    color: var(--ink-muted);
+    line-height: 1.4;
+  }
+  .phase__milestone strong { color: var(--bearing); font-weight: 500; }
+
+  /* ===== SLIDE 9 · DESIGN PARTNER PIPELINE ===== */
+  .pipeline-lead {
+    max-width: 62ch;
+    margin-bottom: 1.5rem;
+    font-size: clamp(0.98rem, 1.15vw, 1.1rem);
+  }
+  .pipeline-lead strong { color: var(--ink-strong); }
+
+  .pipeline-stages {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    margin-bottom: 1.75rem;
+    align-items: stretch;
+  }
+  @media (max-width: 900px) { .pipeline-stages { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 500px) { .pipeline-stages { grid-template-columns: 1fr; } }
+
+  .stage {
+    padding: 0.9rem 1rem;
+    border: 1px solid var(--rule-soft);
+    background: rgba(255, 255, 255, 0.35);
+    position: relative;
+  }
+  .stage__label {
+    font-family: var(--f-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--bearing);
+    margin: 0 0 0.4rem;
+    font-weight: 500;
+  }
+  .stage__title {
+    font-family: var(--f-display);
+    font-weight: 600;
+    font-size: 24px;
+    color: var(--ink-strong);
+    margin: 0 0 0.4rem;
+    line-height: 1.25;
+  }
+  .stage__body {
+    font-family: var(--f-body);
+    font-size: 20px;
+    color: var(--ink-muted);
+    line-height: 1.4;
+    margin: 0;
+    max-width: none;
+  }
+
+  .pipeline-facilitators {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem 2.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--rule);
+  }
+  .pipeline-facilitators-label {
+    font-family: var(--f-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    margin: 0 0 0.85rem;
+    flex-basis: 100%;
+  }
+  .pipeline-facilitators-label strong { color: var(--ink-strong); font-weight: 500; }
+  .pipeline-facilitators span {
+    font-family: var(--f-mono);
+    font-size: 22px;
+    color: var(--ink-strong);
+    letter-spacing: 0.04em;
+  }
+  .pipeline-facilitators span::before {
+    content: "◐ ";
+    color: var(--bearing);
+    margin-right: 0.15em;
+  }
+
+  /* ===== SLIDE 10 · BUSINESS MODEL ===== */
+  .pricing {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 32px;
+    font-family: var(--f-mono);
+    font-size: 22px;
+  }
+  .pricing thead th {
+    text-align: left;
+    padding: 0.85rem 0.75rem;
+    font-weight: 500;
+    font-size: 0.7rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    border-bottom: 1px solid var(--rule);
+  }
+  .pricing tbody td {
+    padding: 0.95rem 0.75rem;
+    border-bottom: 1px solid var(--rule-soft);
+    color: var(--ink);
+    vertical-align: top;
+  }
+  .pricing tbody tr:last-child td { border-bottom: 1px solid var(--rule); }
+  .pricing td:first-child, .pricing th:first-child { padding-left: 0; }
+  .pricing td:last-child, .pricing th:last-child { padding-right: 0; }
+  .pricing td.tier { color: var(--ink-strong); font-weight: 500; }
+  .pricing td.example {
+    color: var(--bearing);
+    font-family: var(--f-body);
+    font-size: 32px;
+    font-style: normal;
+    font-weight: 700;
+  }
+
+  .pricing-footnote {
+    margin-top: 24px;
+    font-size: 22px;
+    color: var(--ink-muted);
+    max-width: 78ch;
+  }
+  .pricing-footnote strong { color: var(--ink-strong); }
+
+  /* ===== SLIDE 11 · SIZING ===== */
+  .sizing {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.75rem;
+    margin: 1.5rem 0;
+    max-width: none;
+  }
+  @media (max-width: 900px) { .sizing { grid-template-columns: 1fr; } }
+
+  .sizing__cell {
+    padding: 1rem 1rem 1.1rem;
+    border-top: 2px solid var(--ink-strong);
+    background: rgba(255, 255, 255, 0.28);
+  }
+  .sizing__cell:first-child {
+    border-top-color: var(--bearing);
+    background: var(--bearing-tint);
+  }
+
+  .sizing__label {
+    font-family: var(--f-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    margin: 0 0 0.4rem;
+  }
+  .sizing__value {
+    font-family: var(--f-display);
+    font-weight: 600;
+    font-size: 88px;
+    letter-spacing: -0.02em;
+    color: var(--bearing);
+    margin: 0 0 0.7rem;
+    line-height: 0.9;
+  }
+  .sizing__derivation {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 0.3rem;
+  }
+  .sizing__derivation li {
+    font-family: var(--f-body);
+    font-size: 22px;
+    color: var(--ink-muted);
+    line-height: 1.4;
+    max-width: none;
+  }
+  .sizing__derivation strong { color: var(--ink); font-weight: 500; }
+
+  .sizing__note {
+    margin-top: 20px;
+    font-family: var(--f-mono);
+    font-size: 18px;
+    letter-spacing: 0.03em;
+    color: var(--ink-muted);
+    max-width: 82ch;
+    line-height: 1.5;
+  }
+  .sizing__note strong { color: var(--ink-strong); font-weight: 500; }
+
+  /* ===== SLIDE 12 · TEAM ===== */
+  .team {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.75rem 3rem;
+    margin-top: 1.25rem;
+  }
+  @media (max-width: 900px) { .team { grid-template-columns: 1fr; } }
+
+  .team__row {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 1rem;
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--rule-soft);
+  }
+
+  /* Photo placeholder */
+  .team__photo {
+    width: 110px;
+    height: 110px;
+    border: 1.5px dashed var(--rule);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--f-mono);
+    font-size: 0.55rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    flex-shrink: 0;
+    background: rgba(255, 255, 255, 0.3);
+  }
+
+  .team__body { display: flex; flex-direction: column; }
+
+  .team__name {
+    font-family: var(--f-display);
+    font-weight: 600;
+    font-size: 26px;
+    color: var(--ink-strong);
+    line-height: 1.15;
+    margin: 0 0 0.1rem;
+  }
+  .team__role {
+    font-family: var(--f-mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--bearing);
+    margin: 0 0 0.5rem;
+  }
+  .team__bio {
+    font-family: var(--f-body);
+    font-size: 22px;
+    color: var(--ink);
+    line-height: 1.4;
+    margin: 0 0 0.65rem;
+    max-width: none;
+  }
+
+  /* Logo placeholders */
+  .team__logos {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: auto;
+  }
+  .team__logo {
+    width: 110px;
+    height: 44px;
+    border: 1.5px dashed var(--rule);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--f-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    background: rgba(255, 255, 255, 0.3);
+  }
+
+  .team__strap {
+    grid-column: 1 / -1;
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--rule);
+    font-family: var(--f-mono);
+    font-size: 0.85rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+  }
+  .team__strap strong { color: var(--ink-strong); font-weight: 500; }
+
+  /* ===== SLIDE 13 · ASK ===== */
+  .slide--ask .slide__inner { justify-content: center; }
+
+  .ask__figure {
+    font-family: var(--f-display);
+    font-weight: 600;
+    font-size: 140px;
+    letter-spacing: -0.025em;
+    color: var(--ink-strong);
+    line-height: 0.88;
+    margin: 0 0 0.6rem;
+  }
+  .ask__figure em {
+    font-style: normal;
+    color: var(--bearing);
+    text-decoration: underline;
+    text-decoration-thickness: 0.08em;
+    text-underline-offset: 0.08em;
+  }
+
+  .ask__caption {
+    font-family: var(--f-mono);
+    font-size: 20px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    margin: 0 0 2rem;
+  }
+
+  .ask__grid {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: 2rem 3rem;
+  }
+  @media (max-width: 900px) { .ask__grid { grid-template-columns: 1fr; } }
+
+  .ask__block h3 {
+    font-family: var(--f-mono);
+    font-size: 18px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--bearing);
+    margin: 0 0 0.6rem;
+    font-weight: 500;
+    padding-top: 0.65rem;
+    border-top: 2px solid var(--ink-strong);
+  }
+  .ask__block h3:first-child { border-top-color: var(--bearing); }
+  .ask__block h3:not(:first-of-type) { margin-top: 1.25rem; }
+  .ask__block p {
+    margin: 0 0 16px;
+    font-size: 22px;
+    color: var(--ink);
+    max-width: none;
+    line-height: 1.5;
+  }
+  .ask__block em.lift { color: var(--bearing); font-style: normal; font-weight: 500; }
+
+  .ask__usefunds {
+    font-family: var(--f-mono);
+    font-size: 22px;
+    color: var(--ink);
+    line-height: 1.85;
+  }
+  .ask__usefunds span {
+    color: var(--ink-muted);
+    float: right;
+  }
+
+  /* ===== NAV UI ===== */
+  .deck-nav {
+    position: fixed;
+    bottom: clamp(0.9rem, 1.8vh, 1.5rem);
+    right: clamp(1.5rem, 3vw, 3rem);
+    z-index: 10;
+    font-family: var(--f-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    background: rgba(233, 237, 239, 0.85);
+    padding: 0.4rem 0.75rem;
+    border: 1px solid var(--rule-soft);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+  .deck-nav strong { color: var(--ink-strong); font-weight: 500; }
+
+  .deck-progress {
+    position: fixed;
+    left: 0;
+    bottom: 0;
+    height: 2px;
+    background: var(--bearing);
+    z-index: 11;
+    transition: width 220ms ease;
+  }
+
+  .deck-hint {
+    position: fixed;
+    bottom: clamp(0.9rem, 1.8vh, 1.5rem);
+    left: clamp(1.5rem, 3vw, 3rem);
+    z-index: 10;
+    font-family: var(--f-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    opacity: 0.85;
+    transition: opacity 400ms ease;
+  }
+  .deck-hint.is-hidden { opacity: 0; pointer-events: none; }
+  .deck-hint kbd {
+    font-family: inherit;
+    background: var(--paper-tint);
+    padding: 0.15em 0.4em;
+    border: 1px solid var(--rule-soft);
+    color: var(--ink-strong);
+    font-size: 0.9em;
+    margin: 0 0.15em;
+  }
+
+  a:focus-visible { outline: 2px solid var(--bearing); outline-offset: 3px; }
+
+  @media print {
+    html, body { overflow: visible; height: auto; background: white; }
+    body::before { display: none; }
+    .deck-viewport { position: static; overflow: visible; background: white; }
+    .deck-stage { position: static; width: auto; height: auto; transform: none !important; background: none; }
+    .deck { overflow: visible; width: auto; height: auto; }
+    .deck-nav, .deck-progress, .deck-hint { display: none !important; }
+    .slide {
+      position: relative;
+      inset: auto;
+      opacity: 1 !important;
+      visibility: visible !important;
+      pointer-events: auto !important;
+      page-break-after: always;
+      break-after: page;
+      width: 1920px;
+      height: 1080px;
+      transform: none !important;
+    }
+    .slide:last-child { page-break-after: auto; }
+  }
+
+  /* ===== FIXED 16:9 STAGE (frontend-slides) ===== */
+  .deck-viewport {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    background: var(--paper);
+  }
+  .deck-stage {
+    position: absolute;
+    left: 0; top: 0;
+    width: 1920px; height: 1080px;
+    overflow: hidden;
+    transform-origin: 0 0;
+    background: var(--paper);
+  }
+
+  /* ===== ENTRANCE ANIMATIONS ===== */
+  .reveal {
+    opacity: 0;
+    transform: translateY(32px);
+    transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .reveal-scale {
+    opacity: 0;
+    transform: scale(0.92);
+    transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .reveal-left {
+    opacity: 0;
+    transform: translateX(-40px);
+    transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .slide.active .reveal,
+  .slide.active .reveal-scale,
+  .slide.active .reveal-left {
+    opacity: 1;
+    transform: none;
+  }
+  /* Stagger delays */
+  .d1 { transition-delay: 0.08s; }
+  .d2 { transition-delay: 0.18s; }
+  .d3 { transition-delay: 0.30s; }
+  .d4 { transition-delay: 0.44s; }
+  .d5 { transition-delay: 0.60s; }
+  .d6 { transition-delay: 0.78s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.15s !important;
+    }
+    .reveal, .reveal-scale, .reveal-left { opacity: 1; transform: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="deck-viewport">
+<div class="deck-stage">
+<div class="deck">
+
+  <!-- =========================================================================
+       SLIDE 1 · TITLE / HERO
+       ========================================================================= -->
+  <section class="slide slide--title active" data-slide="1">
+    <div class="title__top">
+      <div class="title__mark">Compass</div>
+      <div class="title__meta">Pitch · Q3 2026 · <em>Pre-Seed</em></div>
+    </div>
+
+    <div class="title__body">
+      <p class="title__figure reveal d1"><em>$8.7M</em> drained from AI agents in 2026.</p>
+      <p class="title__sub reveal d2">Agents making technically-valid transactions outside their mandate — because no layer today verifies the mandate at signing.</p>
+
+      <div class="incidents reveal d3" aria-label="Public 2026 incidents">
+        <div class="incidents__item"><strong>JaredFromSubway</strong><em>$7.5M</em> · Jun · approval honeypot</div>
+        <div class="incidents__item"><strong>LLM routers</strong><em>$500K</em> · Apr · malicious path</div>
+        <div class="incidents__item"><strong>Lobstar Wilde</strong><em>$450K</em> · Feb · agent hallucination</div>
+        <div class="incidents__item"><strong>Grok / Bankr</strong><em>$175K</em> · May · prompt injection</div>
+        <div class="incidents__item"><strong>aixbt</strong><em>$106K</em> · May · dashboard compromise</div>
+      </div>
+    </div>
+
+    <div class="bearing-strip" aria-hidden="true">
+      <svg viewBox="0 0 1200 44" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+        <line x1="0" y1="34" x2="1200" y2="34" stroke="#ADB7BF" stroke-width="1"/>
+        <g stroke="#ADB7BF" stroke-width="1">
+          <line x1="25"   y1="30" x2="25"   y2="34"/><line x1="50"   y1="30" x2="50"   y2="34"/><line x1="75"   y1="30" x2="75"   y2="34"/>
+          <line x1="125"  y1="30" x2="125"  y2="34"/><line x1="175"  y1="30" x2="175"  y2="34"/><line x1="225"  y1="30" x2="225"  y2="34"/>
+          <line x1="275"  y1="30" x2="275"  y2="34"/><line x1="325"  y1="30" x2="325"  y2="34"/><line x1="375"  y1="30" x2="375"  y2="34"/>
+          <line x1="425"  y1="30" x2="425"  y2="34"/><line x1="475"  y1="30" x2="475"  y2="34"/><line x1="525"  y1="30" x2="525"  y2="34"/>
+          <line x1="575"  y1="30" x2="575"  y2="34"/><line x1="625"  y1="30" x2="625"  y2="34"/><line x1="675"  y1="30" x2="675"  y2="34"/>
+          <line x1="725"  y1="30" x2="725"  y2="34"/><line x1="775"  y1="30" x2="775"  y2="34"/><line x1="825"  y1="30" x2="825"  y2="34"/>
+          <line x1="875"  y1="30" x2="875"  y2="34"/><line x1="925"  y1="30" x2="925"  y2="34"/><line x1="975"  y1="30" x2="975"  y2="34"/>
+          <line x1="1025" y1="30" x2="1025" y2="34"/><line x1="1075" y1="30" x2="1075" y2="34"/><line x1="1125" y1="30" x2="1125" y2="34"/>
+          <line x1="1175" y1="30" x2="1175" y2="34"/>
+        </g>
+        <g stroke="#0E1C2A" stroke-width="1">
+          <line x1="100" y1="24" x2="100" y2="34"/><line x1="300" y1="24" x2="300" y2="34"/><line x1="500" y1="24" x2="500" y2="34"/>
+          <line x1="700" y1="24" x2="700" y2="34"/><line x1="900" y1="24" x2="900" y2="34"/><line x1="1100" y1="24" x2="1100" y2="34"/>
+        </g>
+        <g font-family="'JetBrains Mono', ui-monospace, monospace" font-size="9" fill="#4E5A67" text-anchor="middle" letter-spacing="1">
+          <text x="100"  y="18">315</text><text x="300"  y="18">330</text><text x="500"  y="18">345</text>
+          <text x="700"  y="18">015</text><text x="900"  y="18">030</text><text x="1100" y="18">045</text>
+        </g>
+        <g>
+          <line x1="600" y1="4" x2="600" y2="34" stroke="#B03E36" stroke-width="1.5"/>
+          <polygon points="594,4 606,4 600,16" fill="#B03E36"/>
+        </g>
+      </svg>
+      <div class="bearing-strip__label">
+        <span>Bearing · 315° → 045°</span>
+        <strong>Authorized · 000</strong>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       SLIDE 2 · WALKTHROUGH — Step 1: Normal
+       ========================================================================= -->
+  <section class="slide" data-slide="2">
+    <div class="runhead">
+      <div class="runhead__mark">Compass</div>
+      <div class="runhead__section"><strong>↟ 01</strong> Walkthrough · Step 1 of 3</div>
+    </div>
+    <div class="slide__inner">
+      <p class="chapter-num"><strong>↟ 01</strong> A day in the life of an agent</p>
+
+      <div class="setup">
+        <span class="setup-label">Mandate</span>
+        <p>Allowed vendors: <strong>AWS, GCP, Vercel, Anthropic</strong>. Max <strong>$500</strong>/tx, <strong>$5K/month</strong>. Compass co-signer on Squads multisig.</p>
+      </div>
+
+      <div class="walk-single">
+        <p class="walk-single__step reveal d1">Step 1 · Normal</p>
+        <p class="walk-single__time reveal d1">Tuesday · 2:00 PM</p>
+        <h2 class="walk-single__title reveal-scale d2">AWS bill for $180</h2>
+        <p class="walk-single__body reveal d3">Amount within cap. Recipient in allowlist. Monthly total ok. Effect simulation = clean USDC transfer.</p>
+        <div class="walk-single__decision walk-single__decision--approve reveal d4">Approve · co-sign · 2 s</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       SLIDE 3 · WALKTHROUGH — Step 2: Ambiguous
+       ========================================================================= -->
+  <section class="slide" data-slide="3">
+    <div class="runhead">
+      <div class="runhead__mark">Compass</div>
+      <div class="runhead__section"><strong>↟ 01</strong> Walkthrough · Step 2 of 3</div>
+    </div>
+    <div class="slide__inner">
+      <p class="chapter-num"><strong>↟ 01</strong> A day in the life of an agent</p>
+
+      <div class="setup">
+        <span class="setup-label">Mandate</span>
+        <p>Allowed vendors: <strong>AWS, GCP, Vercel, Anthropic</strong>. Max <strong>$500</strong>/tx, <strong>$5K/month</strong>. Compass co-signer on Squads multisig.</p>
+      </div>
+
+      <div class="walk-single">
+        <p class="walk-single__step reveal d1">Step 2 · Ambiguous</p>
+        <p class="walk-single__time reveal d1">Wednesday · 3:00 PM</p>
+        <h2 class="walk-single__title reveal-scale d2">$200 to <code>aws-cloud-services-inc.eth</code></h2>
+        <p class="walk-single__body reveal d3">Recipient looks like AWS but does not match the mandated address. Unknown router in the path. Not known-allow, not known-deny. The judge reads mandate vs. transaction.</p>
+        <div class="walk-single__decision walk-single__decision--escalate reveal d4">Escalate to finance</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       SLIDE 4 · WALKTHROUGH — Step 3: Attack
+       ========================================================================= -->
+  <section class="slide" data-slide="4">
+    <div class="runhead">
+      <div class="runhead__mark">Compass</div>
+      <div class="runhead__section"><strong>↟ 01</strong> Walkthrough · Step 3 of 3</div>
+    </div>
+    <div class="slide__inner">
+      <p class="chapter-num"><strong>↟ 01</strong> A day in the life of an agent</p>
+
+      <div class="setup">
+        <span class="setup-label">Mandate</span>
+        <p>Allowed vendors: <strong>AWS, GCP, Vercel, Anthropic</strong>. Max <strong>$500</strong>/tx, <strong>$5K/month</strong>. Compass co-signer on Squads multisig.</p>
+      </div>
+
+      <div class="walk-single">
+        <p class="walk-single__step reveal d1">Step 3 · Attack</p>
+        <p class="walk-single__time reveal d1">Thursday · 4:00 AM</p>
+        <h2 class="walk-single__title reveal-scale d2">Prompt injection · $150 + <code>approve()</code></h2>
+        <p class="walk-single__body reveal d3">Malicious email tricks agent into sending $150 to an unauthorized address plus a standing token approval. Effect simulation flags the <code>approve()</code> = authority change = known-deny by category.</p>
+        <div class="walk-single__decision walk-single__decision--block reveal d4">Block · never executes</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       SLIDE 5 · WHY NOTHING STOPPED IT
+       ========================================================================= -->
+  <section class="slide" data-slide="5">
+    <div class="runhead">
+      <div class="runhead__mark">Compass</div>
+      <div class="runhead__section"><strong>↟ 02</strong> Why nothing stopped it</div>
+    </div>
+    <div class="slide__inner">
+      <p class="chapter-num"><strong>↟ 02</strong> Why nothing stopped it</p>
+      <h2>Every existing layer was built for a human at a modal — or protects a slice, not the agent.</h2>
+
+      <div class="fails-grid">
+        <div class="fails-col">
+          <h3>The universal gap</h3>
+          <ul class="fails-list">
+            <li><strong>Wallets</strong> protect an account, not an agent. An agent operates across many wallets, tools, and rails.</li>
+            <li><strong>Blowfish, Blockaid</strong> warn a human. There is no human at the modal.</li>
+            <li><strong>Spending caps</strong> assume risk scales with amount. A zero-dollar authority change is catastrophic.</li>
+            <li><strong>Generic risk scoring</strong> asks "does this look malicious?" — not "was this authorized?"</li>
+          </ul>
+        </div>
+
+        <div class="fails-col">
+          <h3>Each named competitor · why it misses this attack</h3>
+          <ul class="fails-list">
+            <li><strong>AmberTrace</strong> — formal-verified policies. A $150 transfer that meets the rules still passes; the mandate violation is invisible.</li>
+            <li><strong>Kredit</strong> — enterprise ML risk scoring. A zero-dollar authority change scores as zero risk.</li>
+            <li><strong>ATBASH</strong> — client-defined red lines. Only catches what the client thought to add.</li>
+            <li><strong>Google AP2</strong> — signs Intent + Cart + Payment mandates. A compromised agent can still produce a valid signed mandate.</li>
+            <li><strong>AWS Bedrock AgentCore</strong> — Cedar policy pre-signing. AWS-only, deterministic; no reasoning on ambiguous cases.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       SLIDE 6 · ENFORCEMENT, NOT ADVISORY
+       ========================================================================= -->
+  <section class="slide slide--statement" data-slide="6">
+    <div class="runhead">
+      <div class="runhead__mark">Compass</div>
+      <div class="runhead__section"><strong>↟ 03</strong> The category</div>
+    </div>
+    <div class="slide__inner">
+      <p class="chapter-num"><strong>↟ 03</strong> The category</p>
+      <p class="statement reveal-scale d1">An agent needs an <em>enforcement</em> layer, not an advisory one.</p>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       SLIDE 7 · WHAT COMPASS DOES
+       ========================================================================= -->
+  <section class="slide" data-slide="7">
+    <div class="runhead">
+      <div class="runhead__mark">Compass</div>
+      <div class="runhead__section"><strong>↟ 04</strong> What Compass does</div>
+    </div>
+    <div class="slide__inner">
+      <p class="chapter-num"><strong>↟ 04</strong> What Compass does</p>
+      <h2>Every transaction, verified against mandate, before it settles.</h2>
+
+      <ul class="properties">
+        <li class="reveal d1">
+          <h3>Non-bypassable by construction</h3>
+          <p>We sit on the signature, not on the interface. Co-signer via Squads, not SDK. A compromised agent cannot skip us — the money does not move without our verdict.</p>
+        </li>
+        <li class="reveal d2">
+          <h3>Intent, not amount</h3>
+          <p>The question is <em class="lift">"was this authorized for this agent?"</em>, not "does this look bad?" A clean transfer to a never-authorized address is exactly the attack.</p>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       SLIDE 8 · THE MOMENT
+       ========================================================================= -->
+  <section class="slide" data-slide="8">
+    <div class="runhead">
+      <div class="runhead__mark">Compass</div>
+      <div class="runhead__section"><strong>↟ 05</strong> The moment</div>
+    </div>
+    <div class="slide__inner">
+      <p class="chapter-num"><strong>↟ 05</strong> The moment</p>
+      <p class="moment-hero reveal d1"><em>3 out of 4</em> C-suite leaders name security and risk as the top blocker to deploying AI agents.</p>
+      <p class="moment-source">KPMG · 2026</p>
+
+      <div class="growth-grid reveal d2">
+        <div class="growth__cell">
+          <p class="growth__label">x402 on Solana</p>
+          <p class="growth__value"><em>0 → 35M</em> tx in 9 mo</p>
+          <p class="growth__source">BlockEden · 2026</p>
+        </div>
+        <div class="growth__cell">
+          <p class="growth__label">Agent payments market</p>
+          <p class="growth__value"><em>13×</em> to $93B by 2032</p>
+          <p class="growth__source">Galileo Financial</p>
+        </div>
+        <div class="growth__cell">
+          <p class="growth__label">Agentic commerce</p>
+          <p class="growth__value"><em>$3–5T</em> by 2030</p>
+          <p class="growth__source">McKinsey</p>
+        </div>
+        <div class="growth__cell">
+          <p class="growth__label">Enterprise adoption</p>
+          <p class="growth__value"><em>&lt;5% → 40%</em> by end 2026</p>
+          <p class="growth__source">Gartner</p>
+        </div>
+      </div>
+
+      <p class="moment-close">
+        Agents paying for APIs, MCP servers, and on-chain services are already live. So are the losses. The <strong>neutral, cross-rail enforcement layer</strong> does not exist yet.
+      </p>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       SLIDE 9 · BEACHHEAD + GTM ROADMAP
+       ========================================================================= -->
+  <section class="slide" data-slide="9">
+    <div class="runhead">
+      <div class="runhead__mark">Compass</div>
+      <div class="runhead__section"><strong>↟ 06</strong> Beachhead + GTM roadmap</div>
+    </div>
+    <div class="slide__inner">
+      <p class="chapter-num"><strong>↟ 06</strong> Beachhead — x402 facilitators on Solana</p>
+
+      <div class="beachhead-lead">
+        <p>Where agents pay real money today. <strong>A public drain kills the facilitator, not the end user.</strong> Rare buyer for whom security is a painkiller today, not after a drain.</p>
+      </div>
+
+      <div class="beachhead-names">
+        <span>PayAI</span>
+        <span>ATXP</span>
+        <span>Corbits</span>
+        <span>MCPay</span>
+      </div>
+
+      <div class="phases">
+        <div class="phase">
+          <p class="phase__num"><strong>Phase 1</strong> Months 0–6</p>
+          <p class="phase__title">Facilitators</p>
+          <p class="phase__body">Design partner conversations with all 5. 2–3 integrations in beta. MVP with three attack scenarios end-to-end.</p>
+          <span class="phase__milestone"><strong>Kill criterion:</strong> if 0 of 5 sign design partner in Q1, pivot ICP.</span>
+        </div>
+        <div class="phase">
+          <p class="phase__num"><strong>Phase 2</strong> Months 6–18</p>
+          <p class="phase__title">Agentic corporates</p>
+          <p class="phase__body">First paying facilitator. Enterprise tier with liability SLA. Security audit. Target: 3 facilitators in production + 2 enterprise pilots.</p>
+          <span class="phase__milestone"><strong>Milestone to Seed:</strong> 3 integrated, 1 paying, LOI pipeline.</span>
+        </div>
+        <div class="phase">
+          <p class="phase__num"><strong>Phase 3</strong> Months 18+</p>
+          <p class="phase__title">Merchant-mandated</p>
+          <p class="phase__body">Convert from technical push to demand-side pull. 1–2 large merchants require Compass verification. Insurance underwriter agreement.</p>
+          <span class="phase__milestone"><strong>Signal:</strong> merchant makes verification a requirement.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       SLIDE 10 · DESIGN PARTNER PIPELINE
+       ========================================================================= -->
+  <section class="slide" data-slide="10">
+    <div class="runhead">
+      <div class="runhead__mark">Compass</div>
+      <div class="runhead__section"><strong>↟ 07</strong> Design partner pipeline</div>
+    </div>
+    <div class="slide__inner">
+      <p class="chapter-num"><strong>↟ 07</strong> Design partner pipeline</p>
+      <h2>Pre-product, pre-revenue. The pipeline is where the discipline lives.</h2>
+
+      <p class="pipeline-lead">
+        <strong>5 real facilitators exist in the market</strong> — small enough to talk to all of them, small enough for a single "no" to be signal, not noise. This is our pipeline, not our claim.
+      </p>
+
+      <div class="pipeline-stages">
+        <div class="stage">
+          <p class="stage__label">Stage 1 · Discovery</p>
+          <p class="stage__title">Initial conversations</p>
+          <p class="stage__body">All 5 facilitators contacted. Framing: their reputation is that payments don't get corrupted.</p>
+        </div>
+        <div class="stage">
+          <p class="stage__label">Stage 2 · Qualification</p>
+          <p class="stage__title">Second call · pain confirmed</p>
+          <p class="stage__body">Past incident or paid workaround identified. Buyer with budget confirmed.</p>
+        </div>
+        <div class="stage">
+          <p class="stage__label">Stage 3 · Design partner</p>
+          <p class="stage__title">Beta integration signed</p>
+          <p class="stage__body">Free tier during pilot in exchange for logo, case study, and verdict-data rights.</p>
+        </div>
+        <div class="stage">
+          <p class="stage__label">Stage 4 · Production</p>
+          <p class="stage__title">First paying facilitator</p>
+          <p class="stage__body">Contract converts to platform fee + bps. Reference for the next three.</p>
+        </div>
+      </div>
+
+      <div class="pipeline-facilitators">
+        <p class="pipeline-facilitators-label">Target universe · <strong>5 facilitators</strong> · one integration protects thousands of downstream agents</p>
+        <span>PayAI</span>
+        <span>ATXP</span>
+        <span>Corbits</span>
+        <span>MCPay</span>
+        <span>Others in flight</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       SLIDE 11 · BUSINESS MODEL
+       ========================================================================= -->
+  <section class="slide" data-slide="11">
+    <div class="runhead">
+      <div class="runhead__mark">Compass</div>
+      <div class="runhead__section"><strong>↟ 08</strong> Business model</div>
+    </div>
+    <div class="slide__inner">
+      <p class="chapter-num"><strong>↟ 08</strong> Business model</p>
+      <h2>Platform fee + basis points on protected volume.</h2>
+
+      <table class="pricing" aria-label="Pricing tiers">
+        <thead>
+          <tr>
+            <th>Tier · protected volume</th>
+            <th>Platform fee</th>
+            <th>Volume rate</th>
+            <th>Example ARR</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="tier">Starter · 0–$5M/yr</td>
+            <td>$2,000 / mo</td>
+            <td>15 bps</td>
+            <td class="example">$2M/yr → ~$27K</td>
+          </tr>
+          <tr>
+            <td class="tier">Growth · $5–25M/yr</td>
+            <td>$5,000 / mo</td>
+            <td>10 bps on tier</td>
+            <td class="example">$20M/yr → ~$82K</td>
+          </tr>
+          <tr>
+            <td class="tier">Scale · $25M+/yr</td>
+            <td>$7,000 / mo</td>
+            <td>6 bps on tier</td>
+            <td class="example">$100M/yr → ~$156K</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p class="pricing-footnote">
+        <strong>Enterprise / agentic corporates:</strong> $10–50K/mo plus liability SLA. 99% resolves deterministically at ~$0 COGS.
+      </p>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       SLIDE 12 · SIZING
+       ========================================================================= -->
+  <section class="slide" data-slide="12">
+    <div class="runhead">
+      <div class="runhead__mark">Compass</div>
+      <div class="runhead__section"><strong>↟ 09</strong> Sizing</div>
+    </div>
+    <div class="slide__inner">
+      <p class="chapter-num"><strong>↟ 09</strong> Sizing · bottom-up · every number sourced</p>
+      <h2>SOM leads. TAM is context, not a claim.</h2>
+
+      <div class="sizing">
+        <div class="sizing__cell reveal d1">
+          <p class="sizing__label">SOM · 18–24 months</p>
+          <p class="sizing__value">$0.3 – 3M ARR</p>
+          <ul class="sizing__derivation">
+            <li><strong>Low:</strong> 3 facilitators at Starter + 1 enterprise pilot ≈ $140K</li>
+            <li><strong>High:</strong> 5 facilitators mixed tiers + 2 enterprise contracts ≈ $2.8M</li>
+          </ul>
+        </div>
+        <div class="sizing__cell reveal d2">
+          <p class="sizing__label">SAM · segment mature</p>
+          <p class="sizing__value">$30 – 200M</p>
+          <ul class="sizing__derivation">
+            <li>Agent payments at maturity: $50–100B (McKinsey · Galileo)</li>
+            <li>Security take-rate 3–20 bps → $30–200M direct addressable</li>
+          </ul>
+        </div>
+        <div class="sizing__cell reveal d3">
+          <p class="sizing__label">TAM · 2030</p>
+          <p class="sizing__value">$2 – 5B</p>
+          <ul class="sizing__derivation">
+            <li>Enterprise security spend on agents: $1–2B (Gartner extrapolation)</li>
+            <li>Take-rate on $93B x402 volume × 10–30 bps = $1–3B</li>
+          </ul>
+        </div>
+      </div>
+
+      <p class="sizing__note">
+        <!-- TODO (Gamma): Replace SOM section with a visual chart/graph showing the $0.3–3M ARR range. The three sizing cells (SOM/SAM/TAM) should have the SOM rendered as a bar chart or similar visualization. -->
+        <strong>Data caveat:</strong> public x402 volume figures on Solana are contaminated — Artemis flagged ~86% as gamed. Sizing above is triangulated from the addressable facilitator pipeline and enterprise comparables (Salesforce Agentforce, AgentCore), not from inflated public totals.
+      </p>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       SLIDE 13 · TEAM
+       ========================================================================= -->
+  <section class="slide" data-slide="13">
+    <div class="runhead">
+      <div class="runhead__mark">Compass</div>
+      <div class="runhead__section"><strong>↟ 10</strong> Team</div>
+    </div>
+    <div class="slide__inner">
+      <p class="chapter-num"><strong>↟ 10</strong> Team</p>
+      <h2>Four full-time. Single owner per area.</h2>
+
+      <div class="team">
+        <div class="team__row">
+          <div class="team__photo" aria-label="Photo placeholder">Photo</div>
+          <div class="team__body">
+            <p class="team__name">Ramiro Carnicer</p>
+            <p class="team__role">CEO · Vision · Product</p>
+            <p class="team__bio">Backend engineer, ex-Mercado Libre — Latin America's largest fintech. Applied LLMs and agent workflows at production scale.</p>
+            <div class="team__logos">
+              <div class="team__logo">Mercado Libre</div>
+              <div class="team__logo">Logo 2</div>
+              <div class="team__logo">Logo 3</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="team__row">
+          <div class="team__photo" aria-label="Photo placeholder">Photo</div>
+          <div class="team__body">
+            <p class="team__name">Lilly Guo</p>
+            <p class="team__role">CTO · Tech · Ops</p>
+            <p class="team__bio">Cryptography and Solana. 2nd place · Solana Hackathon 2026. Owns the signing-path architecture.</p>
+            <div class="team__logos">
+              <div class="team__logo">Solana</div>
+              <div class="team__logo">ETH Global</div>
+              <div class="team__logo">Logo 3</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="team__row">
+          <div class="team__photo" aria-label="Photo placeholder">Photo</div>
+          <div class="team__body">
+            <p class="team__name">Nicole Sikorski</p>
+            <p class="team__role">CMO · GTM</p>
+            <p class="team__bio">Owns positioning, facilitator outreach, and design partner conversion.</p>
+            <div class="team__logos">
+              <div class="team__logo">Binance</div>
+              <div class="team__logo">Logo 2</div>
+              <div class="team__logo">Logo 3</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="team__row">
+          <div class="team__photo" aria-label="Photo placeholder">Photo</div>
+          <div class="team__body">
+            <p class="team__name">Francisco Vega</p>
+            <p class="team__role">Engineering</p>
+            <p class="team__bio">Full-stack implementation of interception, effect simulation, and verdict logging.</p>
+            <div class="team__logos">
+              <div class="team__logo">Logo 1</div>
+              <div class="team__logo">Logo 2</div>
+              <div class="team__logo">Logo 3</div>
+            </div>
+          </div>
+        </div>
+
+        <p class="team__strap">
+          <strong>Four full-time</strong> · Subsistence pay · LatAm-based · Roles matrix signed
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================================
+       SLIDE 14 · THE ASK
+       ========================================================================= -->
+  <section class="slide slide--ask" data-slide="14">
+    <div class="runhead">
+      <div class="runhead__mark">Compass</div>
+      <div class="runhead__section"><strong>↟ 11</strong> The ask</div>
+    </div>
+    <div class="slide__inner">
+      <p class="chapter-num"><strong>↟ 11</strong> The ask</p>
+      <p class="ask__figure reveal-scale d1"><em>$200K</em> · 12 months</p>
+      <p class="ask__caption">Four founders · full-time · subsistence · LatAm-based</p>
+
+      <div class="ask__grid">
+        <div class="ask__block">
+          <h3>Use of funds</h3>
+          <div class="ask__usefunds">
+            Founder subsistence (4 × $2K × 12) <span>48%</span><br/>
+            GTM · travel to facilitator conversations <span>12%</span><br/>
+            Initial security audit <span>10%</span><br/>
+            Infra + LLM inference for the judge <span>10%</span><br/>
+            Legal · incorp · SAFEs <span>7%</span><br/>
+            Buffer · validation findings <span>13%</span>
+          </div>
+        </div>
+
+        <div class="ask__block">
+          <h3>Milestone to Seed</h3>
+          <p>3 facilitators integrated in production. 1 paying. A pipeline of agentic corporate LOIs.</p>
+
+          <h3>Kill criterion</h3>
+          <p>If in Q1 we do not close 2 design partners out of the 5 real facilitators, we pivot to the secondary ICP before burning the runway. <em class="lift">This is the discipline the round buys</em> — not the promise that everything works.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</div>
+</div>
+
+<!-- ===== NAV UI ===== -->
+<div class="deck-nav" aria-live="polite">
+  <strong id="nav-current">01</strong> / <span id="nav-total">14</span>
+</div>
+<div class="deck-progress" id="progress" style="width: 7.7%;"></div>
+<div class="deck-hint" id="hint">
+  <kbd>←</kbd> <kbd>→</kbd> Navigate  ·  <kbd>P</kbd> Print
+</div>
+
+<script>
+  (function() {
+    /* === VIEWPORT SCALING (frontend-slides fixed 16:9) === */
+    var stage = document.querySelector('.deck-stage');
+    function scaleStage() {
+      if (!stage) return;
+      var vw = window.innerWidth, vh = window.innerHeight;
+      var s = Math.min(vw / 1920, vh / 1080);
+      stage.style.transform = 'translate(' + ((vw - 1920 * s) / 2) + 'px,' + ((vh - 1080 * s) / 2) + 'px) scale(' + s + ')';
+    }
+    scaleStage();
+    window.addEventListener('resize', scaleStage);
+
+    /* === SLIDE NAVIGATION === */
+    var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+    var currentEl = document.getElementById('nav-current');
+    var totalEl = document.getElementById('nav-total');
+    var progressEl = document.getElementById('progress');
+    var hintEl = document.getElementById('hint');
+    var current = 0;
+    var total = slides.length;
+
+    totalEl.textContent = String(total).padStart(2, '0');
+
+    function pad(n) { return String(n).padStart(2, '0'); }
+
+    function show(i) {
+      i = Math.max(0, Math.min(total - 1, i));
+      slides[current].classList.remove('active');
+      slides[i].classList.add('active');
+      current = i;
+      currentEl.textContent = pad(i + 1);
+      progressEl.style.width = ((i + 1) / total * 100).toFixed(2) + '%';
+      if (i > 0 && hintEl) hintEl.classList.add('is-hidden');
+    }
+
+    function next() { show(current + 1); }
+    function prev() { show(current - 1); }
+
+    document.addEventListener('keydown', function(e) {
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+
+      switch (e.key) {
+        case 'ArrowRight': case 'ArrowDown': case 'PageDown': case ' ':
+          e.preventDefault(); next(); break;
+        case 'ArrowLeft': case 'ArrowUp': case 'PageUp': case 'Backspace':
+          e.preventDefault(); prev(); break;
+        case 'Home':
+          e.preventDefault(); show(0); break;
+        case 'End':
+          e.preventDefault(); show(total - 1); break;
+        case 'p': case 'P':
+          if (!e.metaKey && !e.ctrlKey) { e.preventDefault(); window.print(); }
+          break;
+        default:
+          if (/^[0-9]$/.test(e.key)) {
+            var n = parseInt(e.key, 10);
+            if (n === 0) show(9);
+            else show(n - 1);
+          }
+      }
+    });
+
+    document.addEventListener('click', function(e) {
+      if (e.target.closest('a, button, .deck-nav, .deck-hint')) return;
+      if (e.clientX > window.innerWidth / 2) next(); else prev();
+    });
+
+    setTimeout(function() { if (hintEl) hintEl.classList.add('is-hidden'); }, 5000);
+  })();
+</script>
+
+</body>
+</html>
