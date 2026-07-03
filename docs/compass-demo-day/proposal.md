@@ -83,18 +83,18 @@ Grounded in the repo — **hardening + packaging, not building from scratch**:
 
 Goal: the already-REAL engine, behind a stateless HTTP API any dev or x402 partner can call, fast enough to sit inline.
 
-- [ ] **`POST /verify`** — input `{tx | intent: {tool, amount, recipient, mandate/context}}` → output `{decision: allow|deny|review, reasons[], human_explanation, correlationId}`.
+- [ ] **`POST /verify`** — input the **unsigned tx** (+ `mandate/context`) so the intent is decoded ground truth → output `{decision: allow|deny|review, reasons[], human_explanation, correlationId}`.
 - [ ] **Deterministic only** — caps, allowlist, denylist, `authority_change`/`unlimited_delegate`; **decode-based** (derive flags from the real instruction, not self-reported args), **no effect-simulation, no LLM** → target **<~100ms**.
 - [ ] **Record every call** to the verdict store keyed by `correlationId`, capturing the **intended effect** (so phase 2 has something to compare against).
-- [ ] **MCP sensor adapter** — the proxy auto-calls `/verify` pre-tool-call and drives phase 2 post-execution; raw HTTP stays open for x402 partners / direct integrators.
-- [ ] **Verify phase 2 (outcome verification)** — the post-execution check (see [design](#the-post-execution-verification-step-phase-2)). Automatic on the MCP path; an optional `confirm` call on raw HTTP.
+- [ ] **MCP sensor adapter (no flywheel leak)** — the proxy **routes every `tools/call` verdict through `/verify`**, or if it short-circuits a decision **locally**, **reports it up to the verdict store** — otherwise those decisions leak out of the flywheel/moat. It also **fires `/verify/confirm {correlationId, txSignature}` post-execution**. Raw HTTP stays open for x402 partners / direct integrators.
+- [ ] **`POST /verify/confirm` (phase 2 — OPTIONAL)** — the post-execution outcome check (see [design](#phase-2)); **`/verify` deploys and delivers value without it.** Automatic on the MCP path; an opt-in `confirm` call on raw HTTP.
 
 ## Workstream 1 — Durable verdict store + flywheel (the moat)
 
 Goal: every decision (and its outcome) captured — the labeled dataset the observe path can't produce.
 
 - [ ] **Durable store** — persist **decision + full context** (tool, amount, recipient, mandate/intent, reasons, human_explanation, timestamp, `correlationId`) **AND outcome**. SQLite / Postgres / Vercel KV — fastest to ship.
-- [ ] **Active outcome capture (phase 2)** — the outcome-verify result **auto-labels false-negatives** (mismatch) instead of waiting for a human dispute; overrides still label false-positives.
+- [ ] **Record lifecycle `DECIDED → CONFIRMED_MATCH|MISMATCH`** — `/verify` writes the `DECIDED` record (intended effect); `/verify/confirm` closes it with the outcome (**idempotent**). Active outcome capture **auto-labels false-negatives** (mismatch) instead of waiting for a human dispute; overrides still label false-positives. **No decision leaks** — locally short-circuited proxy decisions get reported up here too.
 - [ ] **This is what the console (Act 3) renders** — Recent Decisions + the live counter.
 
 ## Workstream 2 — Distribution / dev onboarding (both adapters, plug & play)
@@ -124,24 +124,33 @@ Goal: a stranger integrates in minutes — **no custody provisioning** (that dro
 - [ ] **Produced/recorded promo** in the style of the 3-act reference; **record a fallback** regardless.
 - [ ] Rehearse end to end.
 
-## The post-execution verification step (phase 2)
+## The post-execution verification step — `verify → execute → confirm` (optional) {#phase-2}
 
-Closes the loop: confirm the tx that **executed** matches the intent that was **approved** — catching what the pre-flight decision missed (side effects, post-approval divergence). Framed as **phase 2 of the `/verify` flow, tied by `correlationId`** — *not* a separate opt-in developer endpoint (a check the agent must remember to call would re-create an "it didn't notice" gap).
+Closes the loop: confirm the tx that **executed** matches the intent that was **approved** — catching side effects and post-approval divergence. It's **phase 2 of the `/verify` flow, tied by `correlationId`**, driven by the **trusted control plane** (the MCP sensor automatically, or a raw-HTTP dev's own backend) — *never the agent*, so the "it didn't notice" gap can't reopen.
 
-**Flow (deterministic, advisory):**
-1. After executing, the **trusted wrapper** — the MCP sensor automatically, or a raw-HTTP partner's own backend — calls phase 2 with `{correlationId, txSignature}`.
-2. Look up the recorded **intended effect** (from the `/verify` call) by `correlationId`.
-3. Fetch the **confirmed tx** (`getTransaction`) → derive the **actual effect**: real recipient(s), amount(s), balance deltas, **any extra instructions/CPIs** (a hidden `SetAuthority`, an added transfer, an `approve`).
-4. **Deterministic compare** intended vs actual → `{outcome: match | mismatch, discrepancies[], correlationId}`.
-5. **Write the outcome to the verdict store** → turns the outcome field from *passive* (wait for a human dispute) to *active*.
+> **`/verify` deploys on its own — this phase is OPTIONAL.** A dev gets full value from just `POST /verify` (decision in → verdict out) and ships in minutes. `/verify/confirm` is an **opt-in** second step for teams who want the closed outcome-loop + richer flywheel data; it never blocks the quick-deploy path.
 
-**Why it's a step, not an endpoint:** the check must ride the **trusted control plane** (sensor / partner backend), never the possibly-injected agent. The MCP sensor makes it automatic and unskippable; a raw partner opts in via a `confirm` call; a **chain-watcher** (post-MVP) makes it automatic for raw callers too.
+**The flow (raw-HTTP shape; the MCP sensor drives the same two calls automatically):**
+1. **`POST /verify`** — send the **unsigned tx** (so the decided-on intent is decoded ground truth, not self-reported args). Server decodes + decides, **stores the intended effect** keyed by a **server-generated `correlationId`**, returns `{decision, reasons[], human_explanation, correlationId}`.
+2. **Dev executes** — signs + submits, gets a `txSignature`.
+3. **`POST /verify/confirm {correlationId, txSignature}`** — server loads the intent by `correlationId`, calls `getTransaction(sig)`, derives the **actual effect** (recipient, amount via pre/post balances, and **any instruction not in the intended set**), compares → `{outcome: match | mismatch, discrepancies[]}`, and **writes the outcome to the verdict store**.
 
-**Two tiers:**
-- **MVP (detect):** read-back + label. **Demo beat:** "sent exactly 25 to the intended recipient — verified," plus one **caught mismatch** ("executed, but an extra approval slipped in — flagged").
-- **Enforcement-tier (post-MVP, with co-sign):** mismatch → **withhold the agent's NEXT co-signature / revoke the allowance.** Detect becomes **contain** — needs the co-sign spine.
+**State** — `/verify` gains one record; the store's existing `outcome` field closes it. `confirm` is **idempotent** (repeat → cached outcome, no double-count in the flywheel):
 
-> **Note:** the Verdict Store is the **ledger, not the checker** — it *records* the outcome; this step *produces* it. And post-hoc verification **detects, it cannot undo** a finalized tx: its value is the labeled false-negative for the flywheel, blocking the *next* step once co-sign exists, and alerting — not prevention.
+```
+DECIDED (stores intended effect)  ──confirm──►  CONFIRMED_MATCH | CONFIRMED_MISMATCH
+                                  └─ no confirm within TTL ─►  PENDING / EXPIRED
+```
+
+**Confirmation timing (decide):** simplest for devs — `confirm` **waits** (bounded, ~10s) for the tx to confirm, then returns the outcome; on timeout → `{outcome: "unconfirmed"}` to retry. (Alternative: return `{outcome: "pending", retryAfter}` immediately and let them poll.)
+
+**Same endpoint, two drivers:** the **MCP sensor** calls `/verify` + `/verify/confirm` automatically (unskippable); a **raw-HTTP** dev's backend calls both (opt-in — no-confirm records stay `PENDING`; a post-MVP **chain-watcher** reconciles them without a confirm call). Neither relies on the (possibly-injected) agent to call it.
+
+**What it catches:** execution ≠ approval — side effects, an extra `SetAuthority`/`approve`, a diverged recipient/amount. **Not** an injection baked into the approved intent (that's the provenance leg). It **detects, can't undo** — value is the labeled false-negative for the flywheel, blocking the *next* step once co-sign exists, and alerting.
+
+**Enforcement-tier (post-MVP, with co-sign):** mismatch → **withhold the agent's NEXT co-signature / revoke the allowance.** Detect becomes **contain**.
+
+> **Note:** the Verdict Store is the **ledger, not the checker** — it *records* the outcome; this step *produces* it. Prevention stays at the gate; this is detect-and-contain.
 
 ## What each layer catches (so the pitch stays honest)
 
