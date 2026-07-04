@@ -83,3 +83,7 @@ cdp_api_key.json
 
 # Accidental space-named files
 /[ ]
+
+# Launch preview panel needs assets referenced by absolute path
+# to sit next to landing.html; canonical copy lives in public/
+/guardian-mascot.png

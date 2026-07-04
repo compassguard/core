@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Compass · Intent enforcement for autonomous agents</title>
-  <meta name="description" content="Compass verifies agent actions against policy and mandate before money moves, then records every approve, block and escalation." />
-  <link rel="icon" type="image/png" sizes="32x32" href="/compass-icon-32.png" />
-  <link rel="icon" type="image/png" sizes="256x256" href="/compass-icon.png" />
-  <link rel="apple-touch-icon" href="/compass-icon.png" />
+  <title>Barbican · Intent enforcement for autonomous agents</title>
+  <meta name="description" content="Barbican is the fortified gateway between agent intent and financial execution. It verifies every action against the mandate before money moves, then records every approve, block and escalation." />
+  <link rel="icon" type="image/svg+xml" href="/barbican-icon.svg" />
+  <link rel="alternate icon" type="image/png" sizes="32x32" href="/compass-icon-32.png" />
+  <link rel="apple-touch-icon" href="/barbican-icon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet" />
@@ -57,16 +57,20 @@
     a { color: inherit; text-decoration: none; }
     .container { width: min(1120px, calc(100% - 40px)); margin: 0 auto; position: relative; z-index: 1; }
     .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
-    .nav { position: relative; z-index: 5; border-bottom: 1px solid var(--line-soft); background: rgba(244, 240, 230, .74); backdrop-filter: blur(14px); }
+    .nav { position: sticky; top: 0; z-index: 20; border-bottom: 1px solid var(--line-soft); background: rgba(244, 240, 230, .74); backdrop-filter: blur(14px); transition: box-shadow .35s ease, background .35s ease, border-color .35s ease; }
+    .nav.scrolled { box-shadow: 0 8px 24px rgba(13, 31, 23, .08); background: rgba(244, 240, 230, .92); border-bottom-color: rgba(13, 31, 23, .1); }
     .nav-inner { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
     .brand { display: inline-flex; align-items: center; gap: 12px; font-family: Sora, sans-serif; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
-    .gate-mark { width: 42px; height: 42px; border: 2px solid var(--fortress-900); border-bottom-width: 7px; border-radius: 10px 10px 4px 4px; position: relative; background: linear-gradient(180deg, var(--stone-100), var(--stone-200)); box-shadow: inset 0 -10px 0 rgba(13, 31, 23, .06); }
-    .gate-mark::before { content: ""; position: absolute; left: 11px; right: 11px; bottom: 0; height: 23px; border: 2px solid var(--fortress-900); border-bottom: 0; border-radius: 18px 18px 0 0; background: var(--fortress-900); }
-    .gate-mark::after { content: ""; position: absolute; top: -8px; left: 5px; right: 5px; height: 10px; background: linear-gradient(90deg, var(--fortress-900) 0 22%, transparent 22% 39%, var(--fortress-900) 39% 61%, transparent 61% 78%, var(--fortress-900) 78%); }
+    .gate-mark { width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; color: var(--fortress-900); }
+    .gate-mark svg { width: 100%; height: 100%; display: block; }
+    .gate-mark svg path.gate-body { fill: currentColor; }
+    .gate-mark svg .gate-bars { fill: var(--stone-100); }
     .nav-links { display: flex; align-items: center; gap: 24px; color: var(--steel-500); font-size: 13px; font-weight: 600; }
     .nav-links a:hover { color: var(--fortress-900); }
-    .btn, .nav-cta { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; padding: 0 18px; border-radius: 999px; border: 1px solid var(--line); font-weight: 700; font-size: 13px; transition: transform .2s ease, background .2s ease, color .2s ease, border-color .2s ease; }
-    .btn:hover, .nav-cta:hover { transform: translateY(-1px); }
+    .btn, .nav-cta { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; padding: 0 18px; border-radius: 999px; border: 1px solid var(--line); font-weight: 700; font-size: 13px; position: relative; overflow: hidden; transition: transform .32s cubic-bezier(.16, 1, .3, 1), background .3s ease, color .3s ease, border-color .3s ease, box-shadow .3s ease; }
+    .btn::after { content: ""; position: absolute; inset: 0; background: linear-gradient(120deg, transparent 25%, rgba(255, 255, 255, .28) 50%, transparent 75%); transform: translateX(-120%); transition: transform .55s ease; pointer-events: none; }
+    .btn:hover, .nav-cta:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(13, 31, 23, .18); }
+    .btn:hover::after { transform: translateX(120%); }
     .btn-primary, .nav-cta { color: var(--stone-100); background: var(--fortress-900); border-color: var(--fortress-900); }
     .btn-primary:hover, .nav-cta:hover { background: var(--portico-600); border-color: var(--portico-600); }
     .btn-ghost { color: var(--fortress-900); background: rgba(244, 240, 230, .68); }
@@ -82,18 +86,19 @@
     .hero-note { margin-top: 20px; color: var(--steel-500); font-size: 12px; }
     .blueprint-card { position: relative; min-height: 500px; border: 1px solid rgba(219, 210, 195, .22); border-radius: 28px; background: radial-gradient(circle at 55% 20%, rgba(95, 211, 188, .22), transparent 24rem), linear-gradient(145deg, var(--fortress-800), var(--fortress-900)); box-shadow: 0 32px 90px rgba(13, 31, 23, .26); overflow: hidden; }
     .blueprint-card::before { content: ""; position: absolute; inset: 0; background: linear-gradient(rgba(219, 210, 195, .075) 1px, transparent 1px), linear-gradient(90deg, rgba(219, 210, 195, .075) 1px, transparent 1px); background-size: 26px 26px; mask-image: linear-gradient(180deg, black, transparent 88%); }
-    .gate-hero { position: absolute; left: 50%; top: 47%; width: min(68%, 330px); aspect-ratio: 1; transform: translate(-50%, -50%); border: 4px solid var(--stone-200); border-bottom-width: 20px; border-radius: 26px 26px 8px 8px; }
-    .gate-hero::before { content: ""; position: absolute; left: 28%; right: 28%; bottom: 0; height: 58%; border: 4px solid var(--stone-200); border-bottom: 0; border-radius: 999px 999px 0 0; background: rgba(13, 31, 23, .9); box-shadow: inset 15px 0 0 rgba(95, 211, 188, .1), inset -15px 0 0 rgba(176, 138, 78, .12); }
-    .gate-hero::after { content: ""; position: absolute; left: 8%; right: 8%; top: -24px; height: 30px; background: linear-gradient(90deg, var(--stone-200) 0 18%, transparent 18% 32%, var(--stone-200) 32% 50%, transparent 50% 64%, var(--stone-200) 64% 82%, transparent 82%); }
+    .hero-guardian { position: absolute; left: 2%; bottom: 2%; width: min(58%, 340px); aspect-ratio: 1; z-index: 2; transition: transform .5s cubic-bezier(.16, 1, .3, 1); will-change: transform; }
+    .hero-guardian::before { content: ""; position: absolute; left: 14%; right: 14%; bottom: 6%; height: 22px; border-radius: 50%; background: radial-gradient(ellipse at center, rgba(0, 0, 0, .45), transparent 70%); filter: blur(8px); z-index: 0; }
+    .hero-guardian img { position: relative; width: 100%; height: 100%; object-fit: contain; display: block; filter: drop-shadow(0 22px 38px rgba(13, 31, 23, .5)) drop-shadow(0 0 30px rgba(14, 163, 122, .18)); z-index: 1; }
     .annotation { position: absolute; color: rgba(244, 240, 230, .74); font: 600 10px/1.3 "IBM Plex Mono", monospace; letter-spacing: .12em; text-transform: uppercase; }
     .annotation.a { left: 26px; top: 28px; }
     .annotation.b { right: 28px; top: 118px; color: var(--portico-400); }
     .annotation.c { left: 30px; bottom: 28px; color: var(--bronze-500); }
-    .decision-panel { position: absolute; right: 24px; bottom: 24px; width: min(78%, 330px); padding: 18px; border: 1px solid rgba(244, 240, 230, .18); border-radius: 18px; background: rgba(13, 31, 23, .72); backdrop-filter: blur(14px); color: var(--stone-100); }
+    .decision-panel { position: absolute; right: 22px; top: 50%; transform: translateY(-50%); width: min(48%, 260px); padding: 18px; border: 1px solid rgba(244, 240, 230, .18); border-radius: 18px; background: rgba(13, 31, 23, .72); backdrop-filter: blur(14px); color: var(--stone-100); z-index: 2; transition: transform .5s cubic-bezier(.16, 1, .3, 1); will-change: transform; }
     .panel-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 0; border-bottom: 1px solid rgba(244, 240, 230, .12); font-size: 13px; }
     .panel-row:last-child { border-bottom: 0; }
     .panel-label { color: rgba(244, 240, 230, .62); }
-    .seal { display: inline-flex; align-items: center; justify-content: center; width: 76px; height: 76px; border-radius: 50%; border: 2px solid var(--bronze-500); color: var(--bronze-500); font: 700 10px/1 "IBM Plex Mono", monospace; letter-spacing: .13em; text-align: center; text-transform: uppercase; transform: rotate(-8deg); }
+    .seal { display: inline-flex; align-items: center; justify-content: center; width: 76px; height: 76px; border-radius: 50%; border: 2px solid var(--bronze-500); color: var(--bronze-500); font: 700 10px/1 "IBM Plex Mono", monospace; letter-spacing: .13em; text-align: center; text-transform: uppercase; transform: rotate(-8deg); animation: seal-breathe 4.5s ease-in-out infinite; }
+    @keyframes seal-breathe { 0%, 100% { transform: rotate(-8deg) scale(1); box-shadow: 0 0 0 0 rgba(176, 138, 78, .25); } 50% { transform: rotate(-5deg) scale(1.04); box-shadow: 0 0 0 8px rgba(176, 138, 78, 0); } }
     section { padding: 96px 0; position: relative; z-index: 1; }
     .section-head { max-width: 700px; margin-bottom: 42px; }
     h2 { margin-top: 12px; max-width: 720px; font-size: clamp(28px, 3.5vw, 46px); line-height: 1.05; color: var(--fortress-900); }
@@ -103,21 +108,31 @@
     .stat .k, .feature .n { font: 700 11px/1.3 "IBM Plex Mono", monospace; color: var(--bronze-500); letter-spacing: .12em; text-transform: uppercase; }
     .stat .v { margin-top: 22px; font-family: Sora, sans-serif; font-weight: 600; color: var(--fortress-900); }
     .features { grid-template-columns: repeat(3, 1fr); }
-    .feature { min-height: 260px; transition: background .2s ease, transform .2s ease; }
-    .feature:hover { background: rgba(219, 210, 195, .58); transform: translateY(-2px); }
+    .feature { min-height: 260px; transition: background .32s ease, transform .38s cubic-bezier(.16, 1, .3, 1), box-shadow .38s ease, border-color .3s ease; }
+    .feature:hover { background: rgba(219, 210, 195, .7); transform: translateY(-4px); box-shadow: 0 22px 44px rgba(13, 31, 23, .1); border-color: rgba(14, 163, 122, .32); }
+    .feature .n { transition: color .3s ease, letter-spacing .3s ease; }
+    .feature:hover .n { color: var(--portico-600); letter-spacing: .16em; }
     .feature h3 { margin-top: 30px; font-size: 20px; line-height: 1.2; color: var(--fortress-900); }
     .feature p { margin-top: 12px; color: rgba(20, 35, 29, .7); }
     .feature ul { margin: 22px 0 0; padding: 0; list-style: none; }
     .feature li { padding: 8px 0; border-top: 1px solid var(--line-soft); color: var(--steel-500); font: 600 12px "IBM Plex Mono", monospace; }
+    .console-first { padding: 34px 0 28px; }
+    .console-terminal { max-width: 960px; margin: 0 auto; box-shadow: 0 30px 80px rgba(13, 31, 23, .24); }
     .flow { display: grid; grid-template-columns: .95fr 1.05fr; gap: 28px; align-items: stretch; }
+    .flow.steps-only { display: block; }
     .terminal, .steps { border: 1px solid var(--line); border-radius: var(--radius); background: rgba(244, 240, 230, .66); overflow: hidden; }
     .terminal { padding: 22px; background: var(--fortress-900); color: var(--stone-100); }
     .terminal-top { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid rgba(244, 240, 230, .14); }
     .tdot { width: 8px; height: 8px; border-radius: 50%; background: rgba(244, 240, 230, .28); }
-    .tdot.on { background: var(--portico-400); box-shadow: 0 0 18px rgba(95, 211, 188, .7); }
+    .tdot.on { background: var(--portico-400); box-shadow: 0 0 14px rgba(95, 211, 188, .55); animation: tdot-pulse 2.4s ease-in-out infinite; }
+    @keyframes tdot-pulse { 0%, 100% { box-shadow: 0 0 10px rgba(95, 211, 188, .45); transform: scale(1); } 50% { box-shadow: 0 0 22px rgba(95, 211, 188, .95); transform: scale(1.15); } }
     .tlabel { margin-left: auto; color: rgba(244, 240, 230, .52); font: 700 10px "IBM Plex Mono", monospace; letter-spacing: .12em; text-transform: uppercase; }
-    .code-line { display: flex; gap: 14px; padding: 10px 0; color: rgba(244, 240, 230, .72); font: 500 12px/1.45 "IBM Plex Mono", monospace; }
+    .code-line { display: flex; gap: 14px; padding: 10px 0; color: rgba(244, 240, 230, .72); font: 500 12px/1.45 "IBM Plex Mono", monospace; opacity: 0; transition: opacity .35s ease; }
+    .code-line.is-visible { opacity: 1; }
     .code-line b { color: var(--portico-400); min-width: 72px; }
+    .code-line > span:last-child { position: relative; min-height: 1.45em; }
+    .code-line.is-typing > span:last-child::after { content: "▊"; display: inline-block; margin-left: 3px; color: var(--portico-400); animation: caret-blink 1s steps(2) infinite; }
+    @keyframes caret-blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
     .verdict { color: var(--stone-100); background: var(--blocked); border-radius: 999px; padding: 2px 10px; font-weight: 700; }
     .step { padding: 24px 24px 24px 70px; border-bottom: 1px solid var(--line-soft); position: relative; }
     .step:last-child { border-bottom: 0; }
@@ -131,6 +146,19 @@
     .pill.permit { background: var(--portico-600); border-color: var(--portico-600); color: white; }
     .pill.deny { background: var(--blocked); border-color: var(--blocked); color: white; }
     .pill.confirm { background: rgba(176, 138, 78, .2); border-color: rgba(176, 138, 78, .42); }
+    .guardian-grid { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); gap: 40px; align-items: stretch; }
+    .guardian-portrait { position: relative; padding: 32px 28px 24px; border: 1px solid rgba(219, 210, 195, .22); border-radius: 28px; background: radial-gradient(circle at 50% 30%, rgba(95, 211, 188, .22), transparent 60%), linear-gradient(150deg, var(--fortress-800), var(--fortress-900)); color: var(--stone-100); overflow: hidden; box-shadow: 0 32px 90px rgba(13, 31, 23, .28); }
+    .guardian-portrait::before { content: ""; position: absolute; inset: 0; background: linear-gradient(rgba(219, 210, 195, .07) 1px, transparent 1px), linear-gradient(90deg, rgba(219, 210, 195, .07) 1px, transparent 1px); background-size: 26px 26px; mask-image: linear-gradient(180deg, black, transparent 92%); pointer-events: none; }
+    .guardian-portrait .annotation { position: static; margin-bottom: 14px; color: var(--portico-400); }
+    .guardian-figure { position: relative; width: 100%; max-width: 340px; margin: 0 auto; aspect-ratio: 1; z-index: 1; }
+    .guardian-figure::before { content: ""; position: absolute; left: 14%; right: 14%; bottom: 6%; height: 22px; border-radius: 50%; background: radial-gradient(ellipse at center, rgba(0, 0, 0, .45), transparent 70%); filter: blur(8px); z-index: 0; }
+    .guardian-figure img { position: relative; width: 100%; height: 100%; object-fit: contain; display: block; filter: drop-shadow(0 22px 38px rgba(13, 31, 23, .55)) drop-shadow(0 0 34px rgba(95, 211, 188, .18)); z-index: 1; }
+    .guardian-caption { position: relative; margin-top: 18px; padding-top: 16px; border-top: 1px solid rgba(244, 240, 230, .14); display: flex; justify-content: space-between; color: rgba(244, 240, 230, .58); font: 600 10px "IBM Plex Mono", monospace; letter-spacing: .16em; text-transform: uppercase; }
+    .guardian-traits { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(2, 1fr); border-top: 1px solid var(--line); border-left: 1px solid var(--line); align-self: stretch; }
+    .guardian-traits li { padding: 26px 24px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: rgba(244, 240, 230, .48); min-height: 148px; }
+    .guardian-traits li .idx { display: block; color: var(--bronze-500); font: 700 11px "IBM Plex Mono", monospace; letter-spacing: .14em; margin-bottom: 12px; text-transform: uppercase; }
+    .guardian-traits li strong { display: block; font-family: Sora, sans-serif; font-weight: 600; color: var(--fortress-900); font-size: 19px; margin-bottom: 6px; letter-spacing: -.02em; }
+    .guardian-traits li p { color: rgba(20, 35, 29, .7); font-size: 13px; line-height: 1.5; margin: 0; }
     .cta { padding-bottom: 70px; }
     .cta-box { padding: clamp(34px, 6vw, 72px); border-radius: 28px; color: var(--stone-100); background: radial-gradient(circle at 82% 18%, rgba(95, 211, 188, .18), transparent 30rem), var(--fortress-900); overflow: hidden; position: relative; }
     .cta-box::before { content: ""; position: absolute; inset: 0; background: linear-gradient(rgba(244, 240, 230, .055) 1px, transparent 1px), linear-gradient(90deg, rgba(244, 240, 230, .055) 1px, transparent 1px); background-size: 32px 32px; }
@@ -139,14 +167,19 @@
     .cta-box p { margin-top: 14px; max-width: 560px; color: rgba(244, 240, 230, .72); }
     footer { padding: 34px 0 52px; color: var(--steel-500); position: relative; z-index: 1; }
     .footer-inner { display: flex; justify-content: space-between; gap: 20px; border-top: 1px solid var(--line); padding-top: 22px; font-size: 13px; }
-    .reveal { opacity: 0; transform: translateY(14px); transition: opacity .7s ease, transform .7s ease; }
+    .reveal { opacity: 0; transform: translateY(28px) scale(.985); transition: opacity .9s cubic-bezier(.16, 1, .3, 1), transform .9s cubic-bezier(.16, 1, .3, 1); }
     .reveal.in { opacity: 1; transform: none; }
-    .reveal.d1 { transition-delay: .07s; }
-    .reveal.d2 { transition-delay: .14s; }
-    .reveal.d3 { transition-delay: .21s; }
-    @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } *, *::before, *::after { animation: none !important; scroll-behavior: auto !important; } }
+    .reveal.d1 { transition-delay: .08s; }
+    .reveal.d2 { transition-delay: .16s; }
+    .reveal.d3 { transition-delay: .24s; }
+    .reveal.d4 { transition-delay: .32s; }
+    .reveal.d5 { transition-delay: .40s; }
+    @keyframes guardian-float { 0%, 100% { transform: translateY(0) rotate(-.4deg); } 50% { transform: translateY(-10px) rotate(.4deg); } }
+    @keyframes guardian-glow { 0%, 100% { filter: drop-shadow(0 22px 38px rgba(13, 31, 23, .5)) drop-shadow(0 0 22px rgba(14, 163, 122, .16)); } 50% { filter: drop-shadow(0 28px 44px rgba(13, 31, 23, .58)) drop-shadow(0 0 38px rgba(14, 163, 122, .32)); } }
+    .hero-guardian img, .guardian-figure img { animation: guardian-float 6.5s ease-in-out infinite, guardian-glow 4.8s ease-in-out infinite; will-change: transform, filter; }
+    @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } .hero-guardian img, .guardian-figure img, .tdot.on, .seal { animation: none !important; } *, *::before, *::after { animation: none !important; scroll-behavior: auto !important; } }
     @media (max-width: 920px) {
-      .hero-grid, .flow { grid-template-columns: 1fr; }
+      .hero-grid, .flow, .guardian-grid { grid-template-columns: 1fr; }
       .blueprint-card { min-height: 440px; }
       .strip { grid-template-columns: repeat(2, 1fr); }
       .features { grid-template-columns: 1fr; }
@@ -159,6 +192,7 @@
       section { padding: 72px 0; }
       .strip { grid-template-columns: 1fr; }
       .rule { grid-template-columns: 1fr; }
+      .guardian-traits { grid-template-columns: 1fr; }
       .footer-inner { flex-direction: column; }
     }
   </style>
@@ -166,35 +200,49 @@
 <body>
   <nav class="nav" aria-label="Main navigation">
     <div class="container nav-inner">
-      <a class="brand" href="#top" aria-label="Compass home"><span class="gate-mark" aria-hidden="true"></span><span>Compass</span></a>
+      <a class="brand" href="#top" aria-label="Barbican home"><span class="gate-mark" aria-hidden="true"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path class="gate-body" fill-rule="evenodd" d="M4 12h6V6h6v6h6V6h8v6h8V6h6v6h6V6h6v6h4v48H4V12Zm18 48V34a10 10 0 0 1 20 0v26H22Z"/><g class="gate-bars"><rect x="30" y="34" width="4" height="24"/><rect x="22" y="42" width="20" height="2"/><rect x="22" y="50" width="20" height="2"/></g></svg></span><span>Barbican</span></a>
       <div class="nav-links">
         <a href="#gateway">Gateway</a>
         <a href="#flow">Flow</a>
         <a href="#policy">Policy</a>
+        <a href="#guardian">Guardian</a>
         <a href="/launch" class="nav-cta">Open guard</a>
       </div>
     </div>
   </nav>
 
   <main id="top">
+    <section class="console-first" aria-label="Live Barbican decision console">
+      <div class="container">
+        <div class="terminal console-terminal reveal" aria-label="Barbican guardrail log example">
+          <div class="terminal-top"><span class="tdot"></span><span class="tdot"></span><span class="tdot on"></span><span class="tlabel">barbican / preflight.log</span></div>
+          <div class="code-line"><b>agent</b><span>requests transfer: 4.8 SOL to 9Fk...q7</span></div>
+          <div class="code-line"><b>mandate</b><span>daily cap is 2 SOL; counterparty not approved</span></div>
+          <div class="code-line"><b>policy</b><span>amount exceeds limit; authority required</span></div>
+          <div class="code-line"><b>decision</b><span class="verdict">escalate before signer</span></div>
+          <div class="code-line"><b>audit</b><span>sealed receipt: BRB-2026-07-03-1842</span></div>
+        </div>
+      </div>
+    </section>
+
     <section class="hero">
       <div class="container hero-grid">
         <div>
-          <div class="eyebrow reveal">Mandate first execution</div>
-          <h1 class="reveal d1">Only authorized agent actions <span>pass the gate.</span></h1>
-          <p class="hero-copy reveal d2">Compass sits between autonomous agents and financial execution. It checks every payment, tool call and transaction against policy before anything reaches the signer.</p>
+          <h1 class="reveal">Only authorized agent actions <span>pass the gate.</span></h1>
+          <p class="hero-copy reveal d2">Barbican is the fortified gateway between autonomous agents and financial execution. It verifies every payment, tool call and transaction against the mandate before anything reaches the signer.</p>
           <div class="hero-actions reveal d3">
-            <a href="/launch" class="btn btn-primary">Open Compass</a>
+            <a href="/launch" class="btn btn-primary">Open Barbican</a>
             <a href="#flow" class="btn btn-ghost">See the flow</a>
           </div>
           <p class="hero-note mono reveal d3">Approve / block / escalate. Every decision recorded.</p>
         </div>
 
-        <div class="blueprint-card reveal d1" aria-label="Blueprint gate decision diagram">
+        <div class="blueprint-card reveal d1" aria-label="Blueprint blueprint with Guardian mascot and decision panel">
           <div class="annotation a">ARCH-01 / CONTROLLED THRESHOLD</div>
           <div class="annotation b">AUTHORIZED FLOW ONLY</div>
-          <div class="annotation c">AUDIT SEAL READY</div>
-          <div class="gate-hero" aria-hidden="true"></div>
+          <div class="hero-guardian">
+            <img src="/guardian-mascot.png" alt="The Guardian, Barbican's sentry mascot standing at the gate" loading="eager" decoding="async" />
+          </div>
           <div class="decision-panel">
             <div class="panel-row"><span class="panel-label mono">agent</span><strong>treasury-agent-04</strong></div>
             <div class="panel-row"><span class="panel-label mono">action</span><strong>swap 2 SOL</strong></div>
@@ -209,7 +257,7 @@
       <div class="container strip">
         <div class="stat reveal"><div class="k">Gate</div><div class="v">Agent actions enter one controlled boundary.</div></div>
         <div class="stat reveal d1"><div class="k">Mandate</div><div class="v">Policies define what is allowed before signing.</div></div>
-        <div class="stat reveal d2"><div class="k">Verdict</div><div class="v">Compass approves, blocks or escalates with reasons.</div></div>
+        <div class="stat reveal d2"><div class="k">Verdict</div><div class="v">Barbican approves, blocks or escalates with reasons.</div></div>
         <div class="stat reveal d3"><div class="k">Evidence</div><div class="v">Every decision leaves an audit trail.</div></div>
       </div>
     </section>
@@ -219,11 +267,11 @@
         <div class="section-head reveal">
           <div class="kicker">The gateway</div>
           <h2>Protection happens before execution, not after damage.</h2>
-          <p>Compass is not a dashboard that warns later. It is the gate between agent intent and money movement.</p>
+          <p>Barbican is not a dashboard that warns later. It is the gate between agent intent and money movement.</p>
         </div>
         <div class="features">
           <article class="feature reveal d1"><div class="n">Mandate</div><h3>Define what the agent may do.</h3><p>Limits, destinations, tools, tokens, timing and approval requirements become the operating charter.</p><ul><li>spend caps</li><li>allowlists</li><li>slippage rules</li></ul></article>
-          <article class="feature reveal d2"><div class="n">Evaluation</div><h3>Inspect the proposed action.</h3><p>Compass decodes the request, checks policy and classifies risk before the signer is involved.</p><ul><li>transfer</li><li>swap</li><li>tool call</li></ul></article>
+          <article class="feature reveal d2"><div class="n">Evaluation</div><h3>Inspect the proposed action.</h3><p>Barbican decodes the request, checks policy and classifies risk before the signer is involved.</p><ul><li>transfer</li><li>swap</li><li>tool call</li></ul></article>
           <article class="feature reveal d3"><div class="n">Record</div><h3>Leave a traceable decision.</h3><p>Approvals, blocks and escalations are written with context so teams can review what happened.</p><ul><li>decision reason</li><li>policy match</li><li>audit log</li></ul></article>
         </div>
       </div>
@@ -236,20 +284,12 @@
           <h2>If it does not match the mandate, it does not move.</h2>
           <p>The product is the threshold: action in, policy context, verified decision, recorded outcome.</p>
         </div>
-        <div class="flow">
-          <div class="terminal reveal" aria-label="Compass guardrail log example">
-            <div class="terminal-top"><span class="tdot"></span><span class="tdot"></span><span class="tdot on"></span><span class="tlabel">compass / gate.log</span></div>
-            <div class="code-line"><b>agent</b><span>transfer 4.8 SOL to 9Fk...q7</span></div>
-            <div class="code-line"><b>mandate</b><span>daily cap: 2 SOL</span></div>
-            <div class="code-line"><b>risk</b><span>new counterparty, no prior approval</span></div>
-            <div class="code-line"><b>decision</b><span class="verdict">escalate</span></div>
-            <div class="code-line"><b>audit</b><span>receipt: CMP-2026-07-03-1842</span></div>
-          </div>
-          <div class="steps reveal d1">
-            <div class="step" data-step="01"><strong>Agent requests action</strong><span>The wallet is not contacted directly. Compass receives the proposed operation first.</span></div>
-            <div class="step" data-step="02"><strong>Compass evaluates mandate</strong><span>Policy, context, limits and risk decide whether the action is authorized.</span></div>
-            <div class="step" data-step="03"><strong>Approve, block or escalate</strong><span>Safe actions continue. Violations stop. Ambiguous actions require authority.</span></div>
-            <div class="step" data-step="04"><strong>Audit log records evidence</strong><span>Every decision keeps the reason, inputs and outcome for later review.</span></div>
+        <div class="flow steps-only">
+          <div class="steps">
+            <div class="step reveal d1" data-step="01"><strong>Agent requests action</strong><span>The wallet is not contacted directly. Barbican receives the proposed operation first.</span></div>
+            <div class="step reveal d2" data-step="02"><strong>Barbican evaluates mandate</strong><span>Policy, context, limits and risk decide whether the action is authorized.</span></div>
+            <div class="step reveal d3" data-step="03"><strong>Approve, block or escalate</strong><span>Safe actions continue. Violations stop. Ambiguous actions require authority.</span></div>
+            <div class="step reveal d4" data-step="04"><strong>Audit log records evidence</strong><span>Every decision keeps the reason, inputs and outcome for later review.</span></div>
           </div>
         </div>
       </div>
@@ -260,14 +300,39 @@
         <div class="section-head reveal">
           <div class="kicker">Policy examples</div>
           <h2>Calm controls for money-moving agents.</h2>
-          <p>Use Compass to encode the difference between an action that is technically valid and an action that is actually authorized.</p>
+          <p>Use Barbican to encode the difference between an action that is technically valid and an action that is actually authorized.</p>
         </div>
-        <div class="policy reveal">
-          <div class="rule"><div>Destination wallet is outside the mandate <em>counterparty</em></div><span class="pill confirm">ESCALATE</span></div>
-          <div class="rule"><div>Swap output token is not approved <em>token</em></div><span class="pill deny">BLOCK</span></div>
-          <div class="rule"><div>Amount is within daily agent limit <em>limit</em></div><span class="pill permit">APPROVE</span></div>
-          <div class="rule"><div>Slippage exceeds policy threshold <em>execution</em></div><span class="pill deny">BLOCK</span></div>
-          <div class="rule"><div>Recurring condition matches active mandate <em>automation</em></div><span class="pill permit">APPROVE</span></div>
+        <div class="policy">
+          <div class="rule reveal d1"><div>Destination wallet is outside the mandate <em>counterparty</em></div><span class="pill confirm">ESCALATE</span></div>
+          <div class="rule reveal d2"><div>Swap output token is not approved <em>token</em></div><span class="pill deny">BLOCK</span></div>
+          <div class="rule reveal d3"><div>Amount is within daily agent limit <em>limit</em></div><span class="pill permit">APPROVE</span></div>
+          <div class="rule reveal d4"><div>Slippage exceeds policy threshold <em>execution</em></div><span class="pill deny">BLOCK</span></div>
+          <div class="rule reveal d5"><div>Recurring condition matches active mandate <em>automation</em></div><span class="pill permit">APPROVE</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="guardian">
+      <div class="container">
+        <div class="section-head reveal">
+          <div class="kicker">The Guardian</div>
+          <h2>Meet the sentry that stands at the gate.</h2>
+          <p>Barbican is embodied by The Guardian: a small autonomous sentry with one job. It reads the mandate, inspects each request, and opens the portcullis only for actions that belong.</p>
+        </div>
+        <div class="guardian-grid">
+          <div class="guardian-portrait reveal">
+            <div class="annotation mono">SENTRY // MK-01</div>
+            <div class="guardian-figure">
+              <img src="/guardian-mascot.png" alt="The Guardian mascot" loading="lazy" decoding="async" />
+            </div>
+            <div class="guardian-caption"><span>Guardian</span><span>Barbican / on duty</span></div>
+          </div>
+          <ul class="guardian-traits">
+            <li class="reveal d1"><span class="idx">01 · Calm</span><strong>Judgement, not alarm.</strong><p>The Guardian decides quietly. No fearmongering, no drama, no false alerts.</p></li>
+            <li class="reveal d2"><span class="idx">02 · Rigorous</span><strong>Mandate first.</strong><p>Every request is checked against policy, limits and context before it moves.</p></li>
+            <li class="reveal d3"><span class="idx">03 · Loyal</span><strong>Protects the agent.</strong><p>Watches over the agent it is charged with across wallets, tools and rails.</p></li>
+            <li class="reveal d4"><span class="idx">04 · Verifiable</span><strong>Leaves evidence.</strong><p>Each verdict is sealed into the audit log with the reason it was made.</p></li>
+          </ul>
         </div>
       </div>
     </section>
@@ -275,17 +340,17 @@
     <section class="cta">
       <div class="container">
         <div class="cta-box reveal">
-          <div class="kicker">Compass execution guard</div>
+          <div class="kicker">Barbican execution guard</div>
           <h2>Put a governed gateway in front of autonomous execution.</h2>
           <p>Protect agents before they move funds. Verify intent, enforce policy and keep the evidence.</p>
-          <div class="hero-actions"><a href="/launch" class="btn btn-primary">Open Compass</a><a href="#gateway" class="btn btn-ghost">Review guardrails</a></div>
+          <div class="hero-actions"><a href="/launch" class="btn btn-primary">Open Barbican</a><a href="#gateway" class="btn btn-ghost">Review guardrails</a></div>
         </div>
       </div>
     </section>
   </main>
 
   <footer>
-    <div class="container footer-inner"><span>© 2026 Compass · Intent enforcement for autonomous agents.</span><a href="/launch">Launch app</a></div>
+    <div class="container footer-inner"><span>© 2026 Barbican · Intent enforcement for autonomous agents.</span><a href="/launch">Launch app</a></div>
   </footer>
 
   <script>
@@ -296,8 +361,96 @@
           io.unobserve(e.target);
         }
       }
-    }, { threshold: 0.14, rootMargin: '0px 0px -40px 0px' });
+    }, { threshold: 0.12, rootMargin: '0px 0px -60px 0px' });
     document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
+
+    const nav = document.querySelector('.nav');
+    let scrollTicking = false;
+    const onScroll = () => {
+      if (scrollTicking) return;
+      scrollTicking = true;
+      requestAnimationFrame(() => {
+        nav.classList.toggle('scrolled', window.scrollY > 12);
+        scrollTicking = false;
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+
+    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const terminal = document.querySelector('.terminal');
+    if (terminal && !reduceMotion) {
+      const lines = Array.from(terminal.querySelectorAll('.code-line')).map((line) => {
+        const value = line.querySelector('span:last-child');
+        return { line, value, text: value.textContent, html: value.innerHTML };
+      });
+
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const typeInto = async (node, text) => {
+        node.textContent = '';
+        for (let i = 0; i < text.length; i++) {
+          node.textContent += text[i];
+          await sleep(text[i] === ' ' ? 22 : 30 + Math.random() * 40);
+        }
+      };
+
+      let running = false;
+      const runLoop = async () => {
+        if (running) return;
+        running = true;
+        while (true) {
+          for (const l of lines) {
+            l.line.classList.remove('is-visible', 'is-typing');
+            l.value.innerHTML = l.html;
+          }
+          await sleep(700);
+          for (const l of lines) {
+            l.line.classList.add('is-visible', 'is-typing');
+            await typeInto(l.value, l.text);
+            l.value.innerHTML = l.html;
+            l.line.classList.remove('is-typing');
+            await sleep(340);
+          }
+          await sleep(4200);
+          for (const l of lines) {
+            l.line.style.transition = 'opacity .5s ease';
+            l.line.classList.remove('is-visible');
+          }
+          await sleep(650);
+          for (const l of lines) l.line.style.transition = '';
+        }
+      };
+
+      const startObserver = new IntersectionObserver((entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            runLoop();
+            startObserver.disconnect();
+          }
+        }
+      }, { threshold: 0.3 });
+      startObserver.observe(terminal);
+    } else if (terminal) {
+      terminal.querySelectorAll('.code-line').forEach((l) => l.classList.add('is-visible'));
+    }
+
+    const heroCard = document.querySelector('.blueprint-card');
+    if (heroCard && !reduceMotion) {
+      const guardian = heroCard.querySelector('.hero-guardian');
+      const panel = heroCard.querySelector('.decision-panel');
+      heroCard.addEventListener('mousemove', (e) => {
+        const r = heroCard.getBoundingClientRect();
+        const dx = (e.clientX - r.left) / r.width - .5;
+        const dy = (e.clientY - r.top) / r.height - .5;
+        if (guardian) guardian.style.transform = `translate3d(${dx * -12}px, ${dy * -8}px, 0)`;
+        if (panel) panel.style.transform = `translate3d(${dx * 10}px, calc(-50% + ${dy * 6}px), 0)`;
+      });
+      heroCard.addEventListener('mouseleave', () => {
+        if (guardian) guardian.style.transform = '';
+        if (panel) panel.style.transform = 'translateY(-50%)';
+      });
+    }
   </script>
 </body>
 </html>
