@@ -222,4 +222,38 @@ describe("createHostedApp", () => {
 
 		expect(response.status).toBe(400);
 	});
+
+	it("returns unknown_correlation from /v1/verify/confirm for an unseen id", async () => {
+		const app = createHostedApp(createDependencies());
+
+		const response = await app.request("/v1/verify/confirm", {
+			method: "POST",
+			headers: {
+				Authorization: "Bearer hosted-secret",
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ correlationId: "never-seen", txSignature: "sig123" }),
+		});
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({
+			outcome: "unknown_correlation",
+			discrepancies: [],
+		});
+	});
+
+	it("400s a /v1/verify/confirm body missing txSignature", async () => {
+		const app = createHostedApp(createDependencies());
+
+		const response = await app.request("/v1/verify/confirm", {
+			method: "POST",
+			headers: {
+				Authorization: "Bearer hosted-secret",
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ correlationId: "c1" }),
+		});
+
+		expect(response.status).toBe(400);
+	});
 });

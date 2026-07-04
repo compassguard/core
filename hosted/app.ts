@@ -10,6 +10,9 @@ import { createPolicyService } from "./policies/policyService";
 import { createPolicyRoutes } from "./policies/policyRoutes";
 import { createInMemoryVerdictStore } from "./verdict/verdictStore";
 import { createVerifyService } from "./verify/verifyService";
+import { createVerifyConfirmService } from "./verify/verifyConfirmService";
+import { createBoundedConfirmedTxFetcher } from "./verify/getConfirmedTx";
+import { deriveActualEffectUnavailable } from "./verify/deriveActualEffect.unavailable";
 import { createVerifyRoutes } from "./verify/verifyRoutes";
 import type { HostedAppDependencies } from "./appContracts";
 
@@ -25,12 +28,19 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 	const verdictStore = deps.verdictStore ?? createInMemoryVerdictStore();
 	const verifyService =
 		deps.verifications ?? createVerifyService({ verdictStore });
+	const verifyConfirmService =
+		deps.confirmations ??
+		createVerifyConfirmService({
+			verdictStore,
+			getConfirmedTx: createBoundedConfirmedTxFetcher(),
+			deriveActualEffect: deriveActualEffectUnavailable,
+		});
 
 	app.onError(hostedErrorHandler);
 	app.route("/health", createHealthRoutes(deps.health));
 	app.use("/v1/*", hostedAuthMiddleware(deps.auth));
 	app.route("/v1", createEvaluationRoutes(evaluationService));
-	app.route("/v1", createVerifyRoutes(verifyService));
+	app.route("/v1", createVerifyRoutes(verifyService, verifyConfirmService));
 	app.route("/v1", createAuditRoutes(auditStore));
 	app.route("/v1", createPolicyRoutes(policyService));
 
