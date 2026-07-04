@@ -87,6 +87,8 @@
     .hero-note { margin-top: 20px; color: var(--steel-500); font-size: 12px; }
     .blueprint-card { position: relative; min-height: 500px; border: 1px solid rgba(219, 210, 195, .22); border-radius: 28px; background: radial-gradient(circle at 55% 20%, rgba(95, 211, 188, .22), transparent 24rem), linear-gradient(145deg, var(--fortress-800), var(--fortress-900)); box-shadow: 0 32px 90px rgba(13, 31, 23, .26); overflow: hidden; }
     .blueprint-card::before { content: ""; position: absolute; inset: 0; background: linear-gradient(rgba(219, 210, 195, .075) 1px, transparent 1px), linear-gradient(90deg, rgba(219, 210, 195, .075) 1px, transparent 1px); background-size: 26px 26px; mask-image: linear-gradient(180deg, black, transparent 88%); }
+    .hero-console-card { display: flex; align-items: center; padding: 56px 28px 32px; }
+    .hero-console-card .terminal { width: 100%; position: relative; z-index: 1; box-shadow: 0 30px 80px rgba(13, 31, 23, .32); }
     .hero-guardian { position: absolute; left: 2%; bottom: 2%; width: min(58%, 340px); aspect-ratio: 1; z-index: 2; transition: transform .5s cubic-bezier(.16, 1, .3, 1); will-change: transform; }
     .hero-guardian::before { content: ""; position: absolute; left: 14%; right: 14%; bottom: 6%; height: 22px; border-radius: 50%; background: radial-gradient(ellipse at center, rgba(0, 0, 0, .45), transparent 70%); filter: blur(8px); z-index: 0; }
     .hero-guardian img { position: relative; width: 100%; height: 100%; object-fit: contain; display: block; filter: drop-shadow(0 22px 38px rgba(13, 31, 23, .5)) drop-shadow(0 0 30px rgba(14, 163, 122, .18)); z-index: 1; }
@@ -229,31 +231,17 @@
           <p class="hero-note mono reveal d3">Approve / block / escalate. Every decision recorded.</p>
         </div>
 
-        <div class="blueprint-card reveal d1" aria-label="Blueprint blueprint with Guardian mascot and decision panel">
+        <div class="blueprint-card hero-console-card reveal d1" aria-label="Live Compass decision console">
           <div class="annotation a">ARCH-01 / CONTROLLED THRESHOLD</div>
           <div class="annotation b">AUTHORIZED FLOW ONLY</div>
-          <div class="hero-guardian">
-            <img src="/banner-main.png" alt="Compass guardian giving a thumbs up" loading="eager" decoding="async" />
+          <div class="terminal" aria-label="Compass guardrail log example">
+            <div class="terminal-top"><span class="tdot"></span><span class="tdot"></span><span class="tdot on"></span><span class="tlabel">compass / preflight.log</span></div>
+            <div class="code-line"><b>agent</b><span>requests transfer: 4.8 SOL to 9Fk...q7</span></div>
+            <div class="code-line"><b>mandate</b><span>daily cap is 2 SOL; counterparty not approved</span></div>
+            <div class="code-line"><b>policy</b><span>amount exceeds limit; authority required</span></div>
+            <div class="code-line"><b>decision</b><span class="verdict">escalate before signer</span></div>
+            <div class="code-line"><b>audit</b><span>sealed receipt: BRB-2026-07-03-1842</span></div>
           </div>
-          <div class="decision-panel">
-            <div class="panel-row"><span class="panel-label mono">agent</span><strong>treasury-agent-04</strong></div>
-            <div class="panel-row"><span class="panel-label mono">action</span><strong>swap 2 SOL</strong></div>
-            <div class="panel-row"><span class="panel-label mono">mandate</span><strong>outside cap</strong></div>
-            <div class="panel-row"><span class="seal">requires<br>review</span><strong>Escalate</strong></div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="console-first" aria-label="Live Compass decision console">
-      <div class="container">
-        <div class="terminal console-terminal reveal" aria-label="Compass guardrail log example">
-          <div class="terminal-top"><span class="tdot"></span><span class="tdot"></span><span class="tdot on"></span><span class="tlabel">compass / preflight.log</span></div>
-          <div class="code-line"><b>agent</b><span>requests transfer: 4.8 SOL to 9Fk...q7</span></div>
-          <div class="code-line"><b>mandate</b><span>daily cap is 2 SOL; counterparty not approved</span></div>
-          <div class="code-line"><b>policy</b><span>amount exceeds limit; authority required</span></div>
-          <div class="code-line"><b>decision</b><span class="verdict">escalate before signer</span></div>
-          <div class="code-line"><b>audit</b><span>sealed receipt: BRB-2026-07-03-1842</span></div>
         </div>
       </div>
     </section>
