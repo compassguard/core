@@ -74,6 +74,8 @@
     .btn:hover::after { transform: translateX(120%); }
     .btn-primary, .nav-cta { color: var(--stone-100); background: var(--fortress-900); border-color: var(--fortress-900); }
     .btn-primary:hover, .nav-cta:hover { background: var(--compass-600); border-color: var(--compass-600); }
+    .nav-contact { padding: 0 16px; border: 1px solid var(--bronze-500); border-radius: 999px; color: var(--fortress-900); min-height: 38px; display: inline-flex; align-items: center; }
+    .nav-contact:hover { background: rgba(176, 138, 78, .14); color: var(--fortress-900); }
     .btn-ghost { color: var(--fortress-900); background: rgba(244, 240, 230, .68); }
     .btn-ghost:hover { border-color: var(--bronze-500); background: rgba(219, 210, 195, .6); }
     .hero { padding: 92px 0 78px; }
@@ -190,6 +192,7 @@
     .cta-box .mode-option[aria-pressed="true"] { color: var(--stone-100); }
     .cta-box .agent-prompt { border-color: rgba(95, 211, 188, .28); background: rgba(244, 240, 230, .08); }
     .cta-box .agent-prompt code { color: var(--stone-100); }
+    .contact-cta { min-height: 58px; padding: 0 30px; border: 2px solid var(--bronze-500); font-size: 15px; box-shadow: 0 0 0 1px rgba(244, 240, 230, .12), 0 18px 36px rgba(13, 31, 23, .28); }
     footer { padding: 34px 0 52px; color: var(--steel-500); position: relative; z-index: 1; }
     .footer-inner { display: flex; justify-content: space-between; gap: 20px; border-top: 1px solid var(--line); padding-top: 22px; font-size: 13px; }
     .reveal { opacity: 0; transform: translateY(28px) scale(.985); transition: opacity .9s cubic-bezier(.16, 1, .3, 1), transform .9s cubic-bezier(.16, 1, .3, 1); }
@@ -232,6 +235,7 @@
         <a href="#gateway">Gateway</a>
         <a href="#policy">Policy</a>
         <a href="#guardian">Guardian</a>
+        <a href="https://t.me/Satoshi0101" target="_blank" rel="noopener noreferrer" class="nav-contact">Contact us</a>
         <a href="/launch" class="nav-cta">Open guard</a>
       </div>
     </div>
@@ -339,7 +343,7 @@
           <div class="kicker">Compass execution guard</div>
           <h2>Put a governed gateway in front of autonomous execution.</h2>
           <p>Protect agents before they move funds. Verify intent, enforce policy and keep the evidence.</p>
-          <div class="hero-actions"><a href="https://t.me/Satoshi0101" target="_blank" rel="noopener noreferrer" class="btn btn-primary">Contact us</a></div>
+          <div class="hero-actions"><a href="https://t.me/Satoshi0101" target="_blank" rel="noopener noreferrer" class="btn btn-primary contact-cta">Contact us</a></div>
         </div>
       </div>
     </section>
