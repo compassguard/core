@@ -210,7 +210,6 @@
       <a class="brand" href="#top" aria-label="Compass home"><img class="brand-logo" src="/compass-brand-logo.png" alt="" /><span>Compass</span></a>
       <div class="nav-links">
         <a href="#gateway">Gateway</a>
-        <a href="#flow">Flow</a>
         <a href="#policy">Policy</a>
         <a href="#guardian">Guardian</a>
         <a href="/launch" class="nav-cta">Open guard</a>
@@ -226,7 +225,7 @@
           <p class="hero-copy reveal d2">Compass is the fortified gateway between autonomous agents and financial execution. It verifies every payment, tool call and transaction against the mandate before anything reaches the signer.</p>
           <div class="hero-actions reveal d3">
             <a href="/launch" class="btn btn-primary">Open Compass</a>
-            <a href="#flow" class="btn btn-ghost">See the flow</a>
+            <a href="#guardian" class="btn btn-ghost">Meet the Guardian</a>
           </div>
           <p class="hero-note mono reveal d3">Approve / block / escalate. Every decision recorded.</p>
         </div>
@@ -242,56 +241,6 @@
             <div class="code-line"><b>decision</b><span class="verdict">escalate before signer</span></div>
             <div class="code-line"><b>audit</b><span>sealed receipt: BRB-2026-07-03-1842</span></div>
           </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="gateway">
-      <div class="container">
-        <div class="section-head reveal">
-          <div class="kicker">The gateway</div>
-          <h2>Protection happens before execution, not after damage.</h2>
-          <p>Compass is not a dashboard that warns later. It is the gate between agent intent and money movement.</p>
-        </div>
-        <div class="features">
-          <article class="feature reveal d1"><span class="icon-tile"><img src="/icons/castle.png" alt="" loading="lazy" decoding="async" /></span><div class="n">Mandate</div><h3>Define what the agent may do.</h3><p>Limits, destinations, tools, tokens, timing and approval requirements become the operating charter.</p><ul><li>spend caps</li><li>allowlists</li><li>slippage rules</li></ul></article>
-          <article class="feature reveal d2"><span class="icon-tile"><img src="/icons/inspect.png" alt="" loading="lazy" decoding="async" /></span><div class="n">Evaluation</div><h3>Inspect the proposed action.</h3><p>Compass decodes the request, checks policy and classifies risk before the signer is involved.</p><ul><li>transfer</li><li>swap</li><li>tool call</li></ul></article>
-          <article class="feature reveal d3"><span class="icon-tile"><img src="/icons/lock.png" alt="" loading="lazy" decoding="async" /></span><div class="n">Record</div><h3>Leave a traceable decision.</h3><p>Approvals, blocks and escalations are written with context so teams can review what happened.</p><ul><li>decision reason</li><li>policy match</li><li>audit log</li></ul></article>
-        </div>
-      </div>
-    </section>
-
-    <section id="flow">
-      <div class="container">
-        <div class="section-head reveal">
-          <div class="kicker">Decision flow</div>
-          <h2>If it does not match the mandate, it does not move.</h2>
-          <p>The product is the threshold: action in, policy context, verified decision, recorded outcome.</p>
-        </div>
-        <div class="flow steps-only">
-          <div class="steps">
-            <div class="step reveal d1" data-step="01"><strong>Agent requests action</strong><span>The wallet is not contacted directly. Compass receives the proposed operation first.</span></div>
-            <div class="step reveal d2" data-step="02"><strong>Compass evaluates mandate</strong><span>Policy, context, limits and risk decide whether the action is authorized.</span></div>
-            <div class="step reveal d3" data-step="03"><strong>Approve, block or escalate</strong><span>Safe actions continue. Violations stop. Ambiguous actions require authority.</span></div>
-            <div class="step reveal d4" data-step="04"><strong>Audit log records evidence</strong><span>Every decision keeps the reason, inputs and outcome for later review.</span></div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="policy">
-      <div class="container">
-        <div class="section-head reveal">
-          <div class="kicker">Policy examples</div>
-          <h2>Calm controls for money-moving agents.</h2>
-          <p>Use Compass to encode the difference between an action that is technically valid and an action that is actually authorized.</p>
-        </div>
-        <div class="policy">
-          <div class="rule reveal d1"><div>Destination wallet is outside the mandate <em>counterparty</em></div><span class="pill confirm">ESCALATE</span></div>
-          <div class="rule reveal d2"><div>Swap output token is not approved <em>token</em></div><span class="pill deny">BLOCK</span></div>
-          <div class="rule reveal d3"><div>Amount is within daily agent limit <em>limit</em></div><span class="pill permit">APPROVE</span></div>
-          <div class="rule reveal d4"><div>Slippage exceeds policy threshold <em>execution</em></div><span class="pill deny">BLOCK</span></div>
-          <div class="rule reveal d5"><div>Recurring condition matches active mandate <em>automation</em></div><span class="pill permit">APPROVE</span></div>
         </div>
       </div>
     </section>
@@ -317,6 +266,38 @@
             <li class="reveal d3"><span class="icon-tile"><img src="/icons/handshake.png" alt="" loading="lazy" decoding="async" /></span><span class="idx">03 · Loyal</span><strong>Protects the agent.</strong><p>Watches over the agent it is charged with across wallets, tools and rails.</p></li>
             <li class="reveal d4"><span class="icon-tile"><img src="/icons/refresh.png" alt="" loading="lazy" decoding="async" /></span><span class="idx">04 · Verifiable</span><strong>Leaves evidence.</strong><p>Each verdict is sealed into the audit log with the reason it was made.</p></li>
           </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="gateway">
+      <div class="container">
+        <div class="section-head reveal">
+          <div class="kicker">The gateway</div>
+          <h2>Protection happens before execution, not after damage.</h2>
+          <p>Compass is not a dashboard that warns later. It is the gate between agent intent and money movement.</p>
+        </div>
+        <div class="features">
+          <article class="feature reveal d1"><span class="icon-tile"><img src="/icons/castle.png" alt="" loading="lazy" decoding="async" /></span><div class="n">Mandate</div><h3>Define what the agent may do.</h3><p>Limits, destinations, tools, tokens, timing and approval requirements become the operating charter.</p><ul><li>spend caps</li><li>allowlists</li><li>slippage rules</li></ul></article>
+          <article class="feature reveal d2"><span class="icon-tile"><img src="/icons/inspect.png" alt="" loading="lazy" decoding="async" /></span><div class="n">Evaluation</div><h3>Inspect the proposed action.</h3><p>Compass decodes the request, checks policy and classifies risk before the signer is involved.</p><ul><li>transfer</li><li>swap</li><li>tool call</li></ul></article>
+          <article class="feature reveal d3"><span class="icon-tile"><img src="/icons/lock.png" alt="" loading="lazy" decoding="async" /></span><div class="n">Record</div><h3>Leave a traceable decision.</h3><p>Approvals, blocks and escalations are written with context so teams can review what happened.</p><ul><li>decision reason</li><li>policy match</li><li>audit log</li></ul></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="policy">
+      <div class="container">
+        <div class="section-head reveal">
+          <div class="kicker">Policy examples</div>
+          <h2>Calm controls for money-moving agents.</h2>
+          <p>Use Compass to encode the difference between an action that is technically valid and an action that is actually authorized.</p>
+        </div>
+        <div class="policy">
+          <div class="rule reveal d1"><div>Destination wallet is outside the mandate <em>counterparty</em></div><span class="pill confirm">ESCALATE</span></div>
+          <div class="rule reveal d2"><div>Swap output token is not approved <em>token</em></div><span class="pill deny">BLOCK</span></div>
+          <div class="rule reveal d3"><div>Amount is within daily agent limit <em>limit</em></div><span class="pill permit">APPROVE</span></div>
+          <div class="rule reveal d4"><div>Slippage exceeds policy threshold <em>execution</em></div><span class="pill deny">BLOCK</span></div>
+          <div class="rule reveal d5"><div>Recurring condition matches active mandate <em>automation</em></div><span class="pill permit">APPROVE</span></div>
         </div>
       </div>
     </section>
