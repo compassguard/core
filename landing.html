@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Portico · Intent enforcement for autonomous agents</title>
-  <meta name="description" content="Portico is the fortified gateway between agent intent and financial execution. It verifies every action against the mandate before money moves, then records every approve, block and escalation." />
-  <link rel="icon" type="image/svg+xml" href="/portico-icon.svg" />
+  <title>Compass · Intent enforcement for autonomous agents</title>
+  <meta name="description" content="Compass is the fortified gateway between agent intent and financial execution. It verifies every action against the mandate before money moves, then records every approve, block and escalation." />
+  <link rel="icon" type="image/svg+xml" href="/compass-gate-icon.svg" />
   <link rel="alternate icon" type="image/png" sizes="32x32" href="/compass-icon-32.png" />
-  <link rel="apple-touch-icon" href="/portico-icon.svg" />
+  <link rel="apple-touch-icon" href="/compass-gate-icon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet" />
@@ -17,8 +17,8 @@
     :root {
       --fortress-900: #0D1F17;
       --fortress-800: #12382E;
-      --portico-600: #0EA37A;
-      --portico-400: #5FD3BC;
+      --compass-600: #0EA37A;
+      --compass-400: #5FD3BC;
       --stone-200: #DBD2C3;
       --stone-100: #F4F0E6;
       --bronze-500: #B08A4E;
@@ -72,15 +72,15 @@
     .btn:hover, .nav-cta:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(13, 31, 23, .18); }
     .btn:hover::after { transform: translateX(120%); }
     .btn-primary, .nav-cta { color: var(--stone-100); background: var(--fortress-900); border-color: var(--fortress-900); }
-    .btn-primary:hover, .nav-cta:hover { background: var(--portico-600); border-color: var(--portico-600); }
+    .btn-primary:hover, .nav-cta:hover { background: var(--compass-600); border-color: var(--compass-600); }
     .btn-ghost { color: var(--fortress-900); background: rgba(244, 240, 230, .68); }
     .btn-ghost:hover { border-color: var(--bronze-500); background: rgba(219, 210, 195, .6); }
     .hero { padding: 92px 0 78px; }
     .hero-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, .86fr); align-items: center; gap: 64px; }
-    .eyebrow, .kicker { font-family: "IBM Plex Mono", monospace; color: var(--portico-600); font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+    .eyebrow, .kicker { font-family: "IBM Plex Mono", monospace; color: var(--compass-600); font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
     h1, h2, h3 { font-family: Sora, Inter, sans-serif; letter-spacing: -.035em; }
     h1 { margin-top: 18px; max-width: 690px; font-size: clamp(40px, 6.4vw, 82px); line-height: .95; color: var(--fortress-900); }
-    h1 span { color: var(--portico-600); }
+    h1 span { color: var(--compass-600); }
     .hero-copy { margin-top: 24px; max-width: 610px; color: rgba(20, 35, 29, .76); font-size: clamp(16px, 1.5vw, 19px); }
     .hero-actions { margin-top: 34px; display: flex; flex-wrap: wrap; gap: 12px; }
     .hero-note { margin-top: 20px; color: var(--steel-500); font-size: 12px; }
@@ -91,7 +91,7 @@
     .hero-guardian img { position: relative; width: 100%; height: 100%; object-fit: contain; display: block; filter: drop-shadow(0 22px 38px rgba(13, 31, 23, .5)) drop-shadow(0 0 30px rgba(14, 163, 122, .18)); z-index: 1; }
     .annotation { position: absolute; color: rgba(244, 240, 230, .74); font: 600 10px/1.3 "IBM Plex Mono", monospace; letter-spacing: .12em; text-transform: uppercase; }
     .annotation.a { left: 26px; top: 28px; }
-    .annotation.b { right: 28px; top: 118px; color: var(--portico-400); }
+    .annotation.b { right: 28px; top: 118px; color: var(--compass-400); }
     .annotation.c { left: 30px; bottom: 28px; color: var(--bronze-500); }
     .decision-panel { position: absolute; right: 22px; top: 50%; transform: translateY(-50%); width: min(48%, 260px); padding: 18px; border: 1px solid rgba(244, 240, 230, .18); border-radius: 18px; background: rgba(13, 31, 23, .72); backdrop-filter: blur(14px); color: var(--stone-100); z-index: 2; transition: transform .5s cubic-bezier(.16, 1, .3, 1); will-change: transform; }
     .panel-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 0; border-bottom: 1px solid rgba(244, 240, 230, .12); font-size: 13px; }
@@ -111,7 +111,7 @@
     .feature { min-height: 260px; transition: background .32s ease, transform .38s cubic-bezier(.16, 1, .3, 1), box-shadow .38s ease, border-color .3s ease; }
     .feature:hover { background: rgba(219, 210, 195, .7); transform: translateY(-4px); box-shadow: 0 22px 44px rgba(13, 31, 23, .1); border-color: rgba(14, 163, 122, .32); }
     .feature .n { transition: color .3s ease, letter-spacing .3s ease; }
-    .feature:hover .n { color: var(--portico-600); letter-spacing: .16em; }
+    .feature:hover .n { color: var(--compass-600); letter-spacing: .16em; }
     .feature h3 { margin-top: 30px; font-size: 20px; line-height: 1.2; color: var(--fortress-900); }
     .feature p { margin-top: 12px; color: rgba(20, 35, 29, .7); }
     .feature ul { margin: 22px 0 0; padding: 0; list-style: none; }
@@ -124,14 +124,14 @@
     .terminal { padding: 22px; background: var(--fortress-900); color: var(--stone-100); }
     .terminal-top { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid rgba(244, 240, 230, .14); }
     .tdot { width: 8px; height: 8px; border-radius: 50%; background: rgba(244, 240, 230, .28); }
-    .tdot.on { background: var(--portico-400); box-shadow: 0 0 14px rgba(95, 211, 188, .55); animation: tdot-pulse 2.4s ease-in-out infinite; }
+    .tdot.on { background: var(--compass-400); box-shadow: 0 0 14px rgba(95, 211, 188, .55); animation: tdot-pulse 2.4s ease-in-out infinite; }
     @keyframes tdot-pulse { 0%, 100% { box-shadow: 0 0 10px rgba(95, 211, 188, .45); transform: scale(1); } 50% { box-shadow: 0 0 22px rgba(95, 211, 188, .95); transform: scale(1.15); } }
     .tlabel { margin-left: auto; color: rgba(244, 240, 230, .52); font: 700 10px "IBM Plex Mono", monospace; letter-spacing: .12em; text-transform: uppercase; }
     .code-line { display: flex; gap: 14px; padding: 10px 0; color: rgba(244, 240, 230, .72); font: 500 12px/1.45 "IBM Plex Mono", monospace; opacity: 0; transition: opacity .35s ease; }
     .code-line.is-visible { opacity: 1; }
-    .code-line b { color: var(--portico-400); min-width: 72px; }
+    .code-line b { color: var(--compass-400); min-width: 72px; }
     .code-line > span:last-child { position: relative; min-height: 1.45em; }
-    .code-line.is-typing > span:last-child::after { content: "▊"; display: inline-block; margin-left: 3px; color: var(--portico-400); animation: caret-blink 1s steps(2) infinite; }
+    .code-line.is-typing > span:last-child::after { content: "▊"; display: inline-block; margin-left: 3px; color: var(--compass-400); animation: caret-blink 1s steps(2) infinite; }
     @keyframes caret-blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
     .verdict { color: var(--stone-100); background: var(--blocked); border-radius: 999px; padding: 2px 10px; font-weight: 700; }
     .step { padding: 24px 24px 24px 70px; border-bottom: 1px solid var(--line-soft); position: relative; }
@@ -143,13 +143,13 @@
     .rule { display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center; padding: 20px 22px; border-bottom: 1px solid var(--line); }
     .rule em { color: var(--steel-500); font-style: normal; font: 600 12px "IBM Plex Mono", monospace; margin-left: 10px; }
     .pill { border-radius: 999px; padding: 6px 10px; color: var(--fortress-900); border: 1px solid var(--line); font: 700 10px "IBM Plex Mono", monospace; letter-spacing: .12em; }
-    .pill.permit { background: var(--portico-600); border-color: var(--portico-600); color: white; }
+    .pill.permit { background: var(--compass-600); border-color: var(--compass-600); color: white; }
     .pill.deny { background: var(--blocked); border-color: var(--blocked); color: white; }
     .pill.confirm { background: rgba(176, 138, 78, .2); border-color: rgba(176, 138, 78, .42); }
     .guardian-grid { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); gap: 40px; align-items: stretch; }
     .guardian-portrait { position: relative; padding: 32px 28px 24px; border: 1px solid rgba(219, 210, 195, .22); border-radius: 28px; background: radial-gradient(circle at 50% 30%, rgba(95, 211, 188, .22), transparent 60%), linear-gradient(150deg, var(--fortress-800), var(--fortress-900)); color: var(--stone-100); overflow: hidden; box-shadow: 0 32px 90px rgba(13, 31, 23, .28); }
     .guardian-portrait::before { content: ""; position: absolute; inset: 0; background: linear-gradient(rgba(219, 210, 195, .07) 1px, transparent 1px), linear-gradient(90deg, rgba(219, 210, 195, .07) 1px, transparent 1px); background-size: 26px 26px; mask-image: linear-gradient(180deg, black, transparent 92%); pointer-events: none; }
-    .guardian-portrait .annotation { position: static; margin-bottom: 14px; color: var(--portico-400); }
+    .guardian-portrait .annotation { position: static; margin-bottom: 14px; color: var(--compass-400); }
     .guardian-figure { position: relative; width: 100%; max-width: 340px; margin: 0 auto; aspect-ratio: 1; z-index: 1; }
     .guardian-figure::before { content: ""; position: absolute; left: 14%; right: 14%; bottom: 6%; height: 22px; border-radius: 50%; background: radial-gradient(ellipse at center, rgba(0, 0, 0, .45), transparent 70%); filter: blur(8px); z-index: 0; }
     .guardian-figure img { position: relative; width: 100%; height: 100%; object-fit: contain; display: block; filter: drop-shadow(0 22px 38px rgba(13, 31, 23, .55)) drop-shadow(0 0 34px rgba(95, 211, 188, .18)); z-index: 1; }
@@ -200,7 +200,7 @@
 <body>
   <nav class="nav" aria-label="Main navigation">
     <div class="container nav-inner">
-      <a class="brand" href="#top" aria-label="Portico home"><span class="gate-mark" aria-hidden="true"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path class="gate-body" fill-rule="evenodd" d="M4 12h6V6h6v6h6V6h8v6h8V6h6v6h6V6h6v6h4v48H4V12Zm18 48V34a10 10 0 0 1 20 0v26H22Z"/><g class="gate-bars"><rect x="30" y="34" width="4" height="24"/><rect x="22" y="42" width="20" height="2"/><rect x="22" y="50" width="20" height="2"/></g></svg></span><span>Portico</span></a>
+      <a class="brand" href="#top" aria-label="Compass home"><span class="gate-mark" aria-hidden="true"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path class="gate-body" fill-rule="evenodd" d="M4 12h6V6h6v6h6V6h8v6h8V6h6v6h6V6h6v6h4v48H4V12Zm18 48V34a10 10 0 0 1 20 0v26H22Z"/><g class="gate-bars"><rect x="30" y="34" width="4" height="24"/><rect x="22" y="42" width="20" height="2"/><rect x="22" y="50" width="20" height="2"/></g></svg></span><span>Compass</span></a>
       <div class="nav-links">
         <a href="#gateway">Gateway</a>
         <a href="#flow">Flow</a>
@@ -216,9 +216,9 @@
       <div class="container hero-grid">
         <div>
           <h1 class="reveal">Only authorized agent actions <span>pass the gate.</span></h1>
-          <p class="hero-copy reveal d2">Portico is the fortified gateway between autonomous agents and financial execution. It verifies every payment, tool call and transaction against the mandate before anything reaches the signer.</p>
+          <p class="hero-copy reveal d2">Compass is the fortified gateway between autonomous agents and financial execution. It verifies every payment, tool call and transaction against the mandate before anything reaches the signer.</p>
           <div class="hero-actions reveal d3">
-            <a href="/launch" class="btn btn-primary">Open Portico</a>
+            <a href="/launch" class="btn btn-primary">Open Compass</a>
             <a href="#flow" class="btn btn-ghost">See the flow</a>
           </div>
           <p class="hero-note mono reveal d3">Approve / block / escalate. Every decision recorded.</p>
@@ -228,7 +228,7 @@
           <div class="annotation a">ARCH-01 / CONTROLLED THRESHOLD</div>
           <div class="annotation b">AUTHORIZED FLOW ONLY</div>
           <div class="hero-guardian">
-            <img src="/banner-main.png" alt="Portico guardian giving a thumbs up" loading="eager" decoding="async" />
+            <img src="/banner-main.png" alt="Compass guardian giving a thumbs up" loading="eager" decoding="async" />
           </div>
           <div class="decision-panel">
             <div class="panel-row"><span class="panel-label mono">agent</span><strong>treasury-agent-04</strong></div>
@@ -240,10 +240,10 @@
       </div>
     </section>
 
-    <section class="console-first" aria-label="Live Portico decision console">
+    <section class="console-first" aria-label="Live Compass decision console">
       <div class="container">
-        <div class="terminal console-terminal reveal" aria-label="Portico guardrail log example">
-          <div class="terminal-top"><span class="tdot"></span><span class="tdot"></span><span class="tdot on"></span><span class="tlabel">portico / preflight.log</span></div>
+        <div class="terminal console-terminal reveal" aria-label="Compass guardrail log example">
+          <div class="terminal-top"><span class="tdot"></span><span class="tdot"></span><span class="tdot on"></span><span class="tlabel">compass / preflight.log</span></div>
           <div class="code-line"><b>agent</b><span>requests transfer: 4.8 SOL to 9Fk...q7</span></div>
           <div class="code-line"><b>mandate</b><span>daily cap is 2 SOL; counterparty not approved</span></div>
           <div class="code-line"><b>policy</b><span>amount exceeds limit; authority required</span></div>
@@ -257,7 +257,7 @@
       <div class="container strip">
         <div class="stat reveal"><div class="k">Gate</div><div class="v">Agent actions enter one controlled boundary.</div></div>
         <div class="stat reveal d1"><div class="k">Mandate</div><div class="v">Policies define what is allowed before signing.</div></div>
-        <div class="stat reveal d2"><div class="k">Verdict</div><div class="v">Portico approves, blocks or escalates with reasons.</div></div>
+        <div class="stat reveal d2"><div class="k">Verdict</div><div class="v">Compass approves, blocks or escalates with reasons.</div></div>
         <div class="stat reveal d3"><div class="k">Evidence</div><div class="v">Every decision leaves an audit trail.</div></div>
       </div>
     </section>
@@ -267,11 +267,11 @@
         <div class="section-head reveal">
           <div class="kicker">The gateway</div>
           <h2>Protection happens before execution, not after damage.</h2>
-          <p>Portico is not a dashboard that warns later. It is the gate between agent intent and money movement.</p>
+          <p>Compass is not a dashboard that warns later. It is the gate between agent intent and money movement.</p>
         </div>
         <div class="features">
           <article class="feature reveal d1"><div class="n">Mandate</div><h3>Define what the agent may do.</h3><p>Limits, destinations, tools, tokens, timing and approval requirements become the operating charter.</p><ul><li>spend caps</li><li>allowlists</li><li>slippage rules</li></ul></article>
-          <article class="feature reveal d2"><div class="n">Evaluation</div><h3>Inspect the proposed action.</h3><p>Portico decodes the request, checks policy and classifies risk before the signer is involved.</p><ul><li>transfer</li><li>swap</li><li>tool call</li></ul></article>
+          <article class="feature reveal d2"><div class="n">Evaluation</div><h3>Inspect the proposed action.</h3><p>Compass decodes the request, checks policy and classifies risk before the signer is involved.</p><ul><li>transfer</li><li>swap</li><li>tool call</li></ul></article>
           <article class="feature reveal d3"><div class="n">Record</div><h3>Leave a traceable decision.</h3><p>Approvals, blocks and escalations are written with context so teams can review what happened.</p><ul><li>decision reason</li><li>policy match</li><li>audit log</li></ul></article>
         </div>
       </div>
@@ -286,8 +286,8 @@
         </div>
         <div class="flow steps-only">
           <div class="steps">
-            <div class="step reveal d1" data-step="01"><strong>Agent requests action</strong><span>The wallet is not contacted directly. Portico receives the proposed operation first.</span></div>
-            <div class="step reveal d2" data-step="02"><strong>Portico evaluates mandate</strong><span>Policy, context, limits and risk decide whether the action is authorized.</span></div>
+            <div class="step reveal d1" data-step="01"><strong>Agent requests action</strong><span>The wallet is not contacted directly. Compass receives the proposed operation first.</span></div>
+            <div class="step reveal d2" data-step="02"><strong>Compass evaluates mandate</strong><span>Policy, context, limits and risk decide whether the action is authorized.</span></div>
             <div class="step reveal d3" data-step="03"><strong>Approve, block or escalate</strong><span>Safe actions continue. Violations stop. Ambiguous actions require authority.</span></div>
             <div class="step reveal d4" data-step="04"><strong>Audit log records evidence</strong><span>Every decision keeps the reason, inputs and outcome for later review.</span></div>
           </div>
@@ -300,7 +300,7 @@
         <div class="section-head reveal">
           <div class="kicker">Policy examples</div>
           <h2>Calm controls for money-moving agents.</h2>
-          <p>Use Portico to encode the difference between an action that is technically valid and an action that is actually authorized.</p>
+          <p>Use Compass to encode the difference between an action that is technically valid and an action that is actually authorized.</p>
         </div>
         <div class="policy">
           <div class="rule reveal d1"><div>Destination wallet is outside the mandate <em>counterparty</em></div><span class="pill confirm">ESCALATE</span></div>
@@ -317,7 +317,7 @@
         <div class="section-head reveal">
           <div class="kicker">The Guardian</div>
           <h2>Meet the sentry that stands at the gate.</h2>
-          <p>Portico is embodied by The Guardian: a small autonomous sentry with one job. It reads the mandate, inspects each request, and opens the portcullis only for actions that belong.</p>
+          <p>Compass is embodied by The Guardian: a small autonomous sentry with one job. It reads the mandate, inspects each request, and opens the portcullis only for actions that belong.</p>
         </div>
         <div class="guardian-grid">
           <div class="guardian-portrait reveal">
@@ -325,7 +325,7 @@
             <div class="guardian-figure">
               <img src="/guardian-mascot.png" alt="The Guardian mascot" loading="lazy" decoding="async" />
             </div>
-            <div class="guardian-caption"><span>Guardian</span><span>Portico / on duty</span></div>
+            <div class="guardian-caption"><span>Guardian</span><span>Compass / on duty</span></div>
           </div>
           <ul class="guardian-traits">
             <li class="reveal d1"><span class="idx">01 · Calm</span><strong>Judgement, not alarm.</strong><p>The Guardian decides quietly. No fearmongering, no drama, no false alerts.</p></li>
@@ -340,17 +340,17 @@
     <section class="cta">
       <div class="container">
         <div class="cta-box reveal">
-          <div class="kicker">Portico execution guard</div>
+          <div class="kicker">Compass execution guard</div>
           <h2>Put a governed gateway in front of autonomous execution.</h2>
           <p>Protect agents before they move funds. Verify intent, enforce policy and keep the evidence.</p>
-          <div class="hero-actions"><a href="/launch" class="btn btn-primary">Open Portico</a><a href="#gateway" class="btn btn-ghost">Review guardrails</a></div>
+          <div class="hero-actions"><a href="/launch" class="btn btn-primary">Open Compass</a><a href="#gateway" class="btn btn-ghost">Review guardrails</a></div>
         </div>
       </div>
     </section>
   </main>
 
   <footer>
-    <div class="container footer-inner"><span>© 2026 Portico · Intent enforcement for autonomous agents.</span><a href="/launch">Launch app</a></div>
+    <div class="container footer-inner"><span>© 2026 Compass · Intent enforcement for autonomous agents.</span><a href="/launch">Launch app</a></div>
   </footer>
 
   <script>
