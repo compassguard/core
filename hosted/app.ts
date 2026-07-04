@@ -8,6 +8,9 @@ import { hostedAuthMiddleware } from "./http/hostedAuthMiddleware";
 import { hostedErrorHandler } from "./http/hostedErrorMiddleware";
 import { createPolicyService } from "./policies/policyService";
 import { createPolicyRoutes } from "./policies/policyRoutes";
+import { createInMemoryVerdictStore } from "./verdict/verdictStore";
+import { createVerifyService } from "./verify/verifyService";
+import { createVerifyRoutes } from "./verify/verifyRoutes";
 import type { HostedAppDependencies } from "./appContracts";
 
 export function createHostedApp(deps: HostedAppDependencies): Hono {
@@ -19,11 +22,15 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 		createEvaluationService({
 			writeAudit: auditStore.writeAudit,
 		});
+	const verdictStore = deps.verdictStore ?? createInMemoryVerdictStore();
+	const verifyService =
+		deps.verifications ?? createVerifyService({ verdictStore });
 
 	app.onError(hostedErrorHandler);
 	app.route("/health", createHealthRoutes(deps.health));
 	app.use("/v1/*", hostedAuthMiddleware(deps.auth));
 	app.route("/v1", createEvaluationRoutes(evaluationService));
+	app.route("/v1", createVerifyRoutes(verifyService));
 	app.route("/v1", createAuditRoutes(auditStore));
 	app.route("/v1", createPolicyRoutes(policyService));
 

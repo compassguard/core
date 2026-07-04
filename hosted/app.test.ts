@@ -170,4 +170,56 @@ describe("createHostedApp", () => {
 			}),
 		});
 	});
+
+	it("returns a deterministic verdict through POST /v1/verify", async () => {
+		const app = createHostedApp(createDependencies());
+
+		const response = await app.request("/v1/verify", {
+			method: "POST",
+			headers: {
+				Authorization: "Bearer hosted-secret",
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				toolName: "transfer_sol",
+				intent: { kind: "transfer" },
+				arguments: { recipient: "Stranger", amountUsd: 999 },
+			}),
+		});
+
+		expect(response.status).toBe(200);
+		const body = await response.json();
+		expect(body).toMatchObject({
+			decision: "review",
+			correlationId: expect.any(String),
+			humanExplanation: expect.any(String),
+		});
+	});
+
+	it("rejects a /v1/verify request without auth", async () => {
+		const app = createHostedApp(createDependencies());
+
+		const response = await app.request("/v1/verify", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ toolName: "transfer_sol" }),
+		});
+
+		expect(response.status).toBe(401);
+	});
+
+	it("400s a malformed /v1/verify body", async () => {
+		const app = createHostedApp(createDependencies());
+
+		const response = await app.request("/v1/verify", {
+			method: "POST",
+			headers: {
+				Authorization: "Bearer hosted-secret",
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ intent: { kind: "transfer" } }), // missing toolName
+		});
+
+		expect(response.status).toBe(400);
+	});
 });
