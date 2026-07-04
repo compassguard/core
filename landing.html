@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Barbican · Intent enforcement for autonomous agents</title>
-  <meta name="description" content="Barbican is the fortified gateway between agent intent and financial execution. It verifies every action against the mandate before money moves, then records every approve, block and escalation." />
-  <link rel="icon" type="image/svg+xml" href="/barbican-icon.svg" />
+  <title>Portico · Intent enforcement for autonomous agents</title>
+  <meta name="description" content="Portico is the fortified gateway between agent intent and financial execution. It verifies every action against the mandate before money moves, then records every approve, block and escalation." />
+  <link rel="icon" type="image/svg+xml" href="/portico-icon.svg" />
   <link rel="alternate icon" type="image/png" sizes="32x32" href="/compass-icon-32.png" />
-  <link rel="apple-touch-icon" href="/barbican-icon.svg" />
+  <link rel="apple-touch-icon" href="/portico-icon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet" />
@@ -200,7 +200,7 @@
 <body>
   <nav class="nav" aria-label="Main navigation">
     <div class="container nav-inner">
-      <a class="brand" href="#top" aria-label="Barbican home"><span class="gate-mark" aria-hidden="true"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path class="gate-body" fill-rule="evenodd" d="M4 12h6V6h6v6h6V6h8v6h8V6h6v6h6V6h6v6h4v48H4V12Zm18 48V34a10 10 0 0 1 20 0v26H22Z"/><g class="gate-bars"><rect x="30" y="34" width="4" height="24"/><rect x="22" y="42" width="20" height="2"/><rect x="22" y="50" width="20" height="2"/></g></svg></span><span>Barbican</span></a>
+      <a class="brand" href="#top" aria-label="Portico home"><span class="gate-mark" aria-hidden="true"><svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path class="gate-body" fill-rule="evenodd" d="M4 12h6V6h6v6h6V6h8v6h8V6h6v6h6V6h6v6h4v48H4V12Zm18 48V34a10 10 0 0 1 20 0v26H22Z"/><g class="gate-bars"><rect x="30" y="34" width="4" height="24"/><rect x="22" y="42" width="20" height="2"/><rect x="22" y="50" width="20" height="2"/></g></svg></span><span>Portico</span></a>
       <div class="nav-links">
         <a href="#gateway">Gateway</a>
         <a href="#flow">Flow</a>
@@ -216,9 +216,9 @@
       <div class="container hero-grid">
         <div>
           <h1 class="reveal">Only authorized agent actions <span>pass the gate.</span></h1>
-          <p class="hero-copy reveal d2">Barbican is the fortified gateway between autonomous agents and financial execution. It verifies every payment, tool call and transaction against the mandate before anything reaches the signer.</p>
+          <p class="hero-copy reveal d2">Portico is the fortified gateway between autonomous agents and financial execution. It verifies every payment, tool call and transaction against the mandate before anything reaches the signer.</p>
           <div class="hero-actions reveal d3">
-            <a href="/launch" class="btn btn-primary">Open Barbican</a>
+            <a href="/launch" class="btn btn-primary">Open Portico</a>
             <a href="#flow" class="btn btn-ghost">See the flow</a>
           </div>
           <p class="hero-note mono reveal d3">Approve / block / escalate. Every decision recorded.</p>
@@ -228,7 +228,7 @@
           <div class="annotation a">ARCH-01 / CONTROLLED THRESHOLD</div>
           <div class="annotation b">AUTHORIZED FLOW ONLY</div>
           <div class="hero-guardian">
-            <img src="/banner-main.png" alt="Barbican guardian giving a thumbs up" loading="eager" decoding="async" />
+            <img src="/banner-main.png" alt="Portico guardian giving a thumbs up" loading="eager" decoding="async" />
           </div>
           <div class="decision-panel">
             <div class="panel-row"><span class="panel-label mono">agent</span><strong>treasury-agent-04</strong></div>
@@ -240,10 +240,10 @@
       </div>
     </section>
 
-    <section class="console-first" aria-label="Live Barbican decision console">
+    <section class="console-first" aria-label="Live Portico decision console">
       <div class="container">
-        <div class="terminal console-terminal reveal" aria-label="Barbican guardrail log example">
-          <div class="terminal-top"><span class="tdot"></span><span class="tdot"></span><span class="tdot on"></span><span class="tlabel">barbican / preflight.log</span></div>
+        <div class="terminal console-terminal reveal" aria-label="Portico guardrail log example">
+          <div class="terminal-top"><span class="tdot"></span><span class="tdot"></span><span class="tdot on"></span><span class="tlabel">portico / preflight.log</span></div>
           <div class="code-line"><b>agent</b><span>requests transfer: 4.8 SOL to 9Fk...q7</span></div>
           <div class="code-line"><b>mandate</b><span>daily cap is 2 SOL; counterparty not approved</span></div>
           <div class="code-line"><b>policy</b><span>amount exceeds limit; authority required</span></div>
@@ -257,7 +257,7 @@
       <div class="container strip">
         <div class="stat reveal"><div class="k">Gate</div><div class="v">Agent actions enter one controlled boundary.</div></div>
         <div class="stat reveal d1"><div class="k">Mandate</div><div class="v">Policies define what is allowed before signing.</div></div>
-        <div class="stat reveal d2"><div class="k">Verdict</div><div class="v">Barbican approves, blocks or escalates with reasons.</div></div>
+        <div class="stat reveal d2"><div class="k">Verdict</div><div class="v">Portico approves, blocks or escalates with reasons.</div></div>
         <div class="stat reveal d3"><div class="k">Evidence</div><div class="v">Every decision leaves an audit trail.</div></div>
       </div>
     </section>
@@ -267,11 +267,11 @@
         <div class="section-head reveal">
           <div class="kicker">The gateway</div>
           <h2>Protection happens before execution, not after damage.</h2>
-          <p>Barbican is not a dashboard that warns later. It is the gate between agent intent and money movement.</p>
+          <p>Portico is not a dashboard that warns later. It is the gate between agent intent and money movement.</p>
         </div>
         <div class="features">
           <article class="feature reveal d1"><div class="n">Mandate</div><h3>Define what the agent may do.</h3><p>Limits, destinations, tools, tokens, timing and approval requirements become the operating charter.</p><ul><li>spend caps</li><li>allowlists</li><li>slippage rules</li></ul></article>
-          <article class="feature reveal d2"><div class="n">Evaluation</div><h3>Inspect the proposed action.</h3><p>Barbican decodes the request, checks policy and classifies risk before the signer is involved.</p><ul><li>transfer</li><li>swap</li><li>tool call</li></ul></article>
+          <article class="feature reveal d2"><div class="n">Evaluation</div><h3>Inspect the proposed action.</h3><p>Portico decodes the request, checks policy and classifies risk before the signer is involved.</p><ul><li>transfer</li><li>swap</li><li>tool call</li></ul></article>
           <article class="feature reveal d3"><div class="n">Record</div><h3>Leave a traceable decision.</h3><p>Approvals, blocks and escalations are written with context so teams can review what happened.</p><ul><li>decision reason</li><li>policy match</li><li>audit log</li></ul></article>
         </div>
       </div>
@@ -286,8 +286,8 @@
         </div>
         <div class="flow steps-only">
           <div class="steps">
-            <div class="step reveal d1" data-step="01"><strong>Agent requests action</strong><span>The wallet is not contacted directly. Barbican receives the proposed operation first.</span></div>
-            <div class="step reveal d2" data-step="02"><strong>Barbican evaluates mandate</strong><span>Policy, context, limits and risk decide whether the action is authorized.</span></div>
+            <div class="step reveal d1" data-step="01"><strong>Agent requests action</strong><span>The wallet is not contacted directly. Portico receives the proposed operation first.</span></div>
+            <div class="step reveal d2" data-step="02"><strong>Portico evaluates mandate</strong><span>Policy, context, limits and risk decide whether the action is authorized.</span></div>
             <div class="step reveal d3" data-step="03"><strong>Approve, block or escalate</strong><span>Safe actions continue. Violations stop. Ambiguous actions require authority.</span></div>
             <div class="step reveal d4" data-step="04"><strong>Audit log records evidence</strong><span>Every decision keeps the reason, inputs and outcome for later review.</span></div>
           </div>
@@ -300,7 +300,7 @@
         <div class="section-head reveal">
           <div class="kicker">Policy examples</div>
           <h2>Calm controls for money-moving agents.</h2>
-          <p>Use Barbican to encode the difference between an action that is technically valid and an action that is actually authorized.</p>
+          <p>Use Portico to encode the difference between an action that is technically valid and an action that is actually authorized.</p>
         </div>
         <div class="policy">
           <div class="rule reveal d1"><div>Destination wallet is outside the mandate <em>counterparty</em></div><span class="pill confirm">ESCALATE</span></div>
@@ -317,7 +317,7 @@
         <div class="section-head reveal">
           <div class="kicker">The Guardian</div>
           <h2>Meet the sentry that stands at the gate.</h2>
-          <p>Barbican is embodied by The Guardian: a small autonomous sentry with one job. It reads the mandate, inspects each request, and opens the portcullis only for actions that belong.</p>
+          <p>Portico is embodied by The Guardian: a small autonomous sentry with one job. It reads the mandate, inspects each request, and opens the portcullis only for actions that belong.</p>
         </div>
         <div class="guardian-grid">
           <div class="guardian-portrait reveal">
@@ -325,7 +325,7 @@
             <div class="guardian-figure">
               <img src="/guardian-mascot.png" alt="The Guardian mascot" loading="lazy" decoding="async" />
             </div>
-            <div class="guardian-caption"><span>Guardian</span><span>Barbican / on duty</span></div>
+            <div class="guardian-caption"><span>Guardian</span><span>Portico / on duty</span></div>
           </div>
           <ul class="guardian-traits">
             <li class="reveal d1"><span class="idx">01 · Calm</span><strong>Judgement, not alarm.</strong><p>The Guardian decides quietly. No fearmongering, no drama, no false alerts.</p></li>
@@ -340,17 +340,17 @@
     <section class="cta">
       <div class="container">
         <div class="cta-box reveal">
-          <div class="kicker">Barbican execution guard</div>
+          <div class="kicker">Portico execution guard</div>
           <h2>Put a governed gateway in front of autonomous execution.</h2>
           <p>Protect agents before they move funds. Verify intent, enforce policy and keep the evidence.</p>
-          <div class="hero-actions"><a href="/launch" class="btn btn-primary">Open Barbican</a><a href="#gateway" class="btn btn-ghost">Review guardrails</a></div>
+          <div class="hero-actions"><a href="/launch" class="btn btn-primary">Open Portico</a><a href="#gateway" class="btn btn-ghost">Review guardrails</a></div>
         </div>
       </div>
     </section>
   </main>
 
   <footer>
-    <div class="container footer-inner"><span>© 2026 Barbican · Intent enforcement for autonomous agents.</span><a href="/launch">Launch app</a></div>
+    <div class="container footer-inner"><span>© 2026 Portico · Intent enforcement for autonomous agents.</span><a href="/launch">Launch app</a></div>
   </footer>
 
   <script>
