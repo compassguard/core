@@ -26,6 +26,14 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 			writeAudit: auditStore.writeAudit,
 		});
 	const verdictStore = deps.verdictStore ?? createVerdictStoreFromEnv();
+	// #15: verifyService and verifyConfirmService MUST share one verdict store, or /verify and
+	// /verify/confirm see different state. Injecting exactly one service would leave the other on
+	// the fallback store — a split-brain lease. Fail loudly on that inconsistent partial injection.
+	if ((deps.verifications === undefined) !== (deps.confirmations === undefined)) {
+		throw new Error(
+			"createHostedApp: inject BOTH verifications and confirmations, or neither — they must share a single verdict store.",
+		);
+	}
 	const verifyService =
 		deps.verifications ?? createVerifyService({ verdictStore });
 	const verifyConfirmService =

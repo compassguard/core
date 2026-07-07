@@ -256,4 +256,13 @@ describe("createHostedApp", () => {
 
 		expect(response.status).toBe(400);
 	});
+
+	it("throws on inconsistent partial injection of only one verify service (#15)", () => {
+		const partial = {
+			...createDependencies(),
+			verifications: { verifyAction: vi.fn() },
+		} as HostedAppDependencies;
+
+		expect(() => createHostedApp(partial)).toThrow(/share a single verdict store/);
+	});
 });
