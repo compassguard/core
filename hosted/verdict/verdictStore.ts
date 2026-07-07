@@ -51,6 +51,7 @@ export type VerdictStore = {
 		id: string,
 		outcome: ConfirmOutcome,
 		discrepancies: Discrepancy[],
+		txSignature?: string,
 	): Promise<VerdictRecord | undefined>;
 	list(limit?: number): Promise<VerdictRecord[]>;
 };
@@ -132,6 +133,7 @@ export function createInMemoryVerdictStore(
 			id: string,
 			outcome: ConfirmOutcome,
 			discrepancies: Discrepancy[],
+			txSignature?: string,
 		): Promise<VerdictRecord | undefined> {
 			const record = records.get(id);
 			if (!record) {
@@ -150,6 +152,9 @@ export function createInMemoryVerdictStore(
 				status: outcome === "match" ? "CONFIRMED_MATCH" : "CONFIRMED_MISMATCH",
 				discrepancies,
 				confirmedAt: isoNow(),
+				// Persist the confirming tx link (#14a); only overwrite when provided so a
+				// caller omitting it never clobbers an already-set signature.
+				txSignature: txSignature ?? rest.txSignature,
 			};
 			records.set(id, closed);
 			return closed;
@@ -157,7 +162,7 @@ export function createInMemoryVerdictStore(
 
 		async list(limit?: number): Promise<VerdictRecord[]> {
 			const all = [...records.values()];
-			return limit === undefined ? all : all.slice(-limit);
+			return limit === undefined ? all : limit <= 0 ? [] : all.slice(-limit);
 		},
 	};
 }

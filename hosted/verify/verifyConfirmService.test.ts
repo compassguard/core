@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { DeriveActualEffect, IntendedEffect } from "@shared/verdictContracts";
-import { createInMemoryVerdictStore, type DecidedInput } from "../verdict/verdictStore";
+import {
+	createInMemoryVerdictStore,
+	type DecidedInput,
+	type VerdictStore,
+} from "../verdict/verdictStore";
 import type { ConfirmedTx } from "./getConfirmedTx";
 import { createVerifyConfirmService } from "./verifyConfirmService";
 
@@ -140,5 +144,81 @@ describe("createVerifyConfirmService", () => {
 
 		const res = await svc.verifyConfirm({ correlationId: "c1", txSignature: "sig" });
 		expect(res.outcome).toBe("pending");
+	});
+
+	it("returns execution_failed and closes CONFIRMED_MISMATCH for a confirmed-but-failed tx (#4)", async () => {
+		const store = createInMemoryVerdictStore();
+		await store.putDecided(decided("c1"));
+		const failedTx = { meta: { err: "InstructionError" } } as unknown as ConfirmedTx;
+		const svc = createVerifyConfirmService({
+			verdictStore: store,
+			getConfirmedTx: async () => failedTx,
+			deriveActualEffect: matchDecoder,
+		});
+
+		const res = await svc.verifyConfirm({ correlationId: "c1", txSignature: "sig" });
+		expect(res.outcome).toBe("execution_failed");
+		expect(res.discrepancies).toEqual([]);
+		const stored = await store.getByCorrelationId("c1");
+		expect(stored?.status).toBe("CONFIRMED_MISMATCH");
+		expect(stored?.txSignature).toBe("sig");
+	});
+
+	it("returns error (never a fabricated mismatch) when an already_closed record is missing (#5)", async () => {
+		// A store whose claim says already_closed but has no record — the exact absence the
+		// old `?? "mismatch"` fabricated a verdict for. outcomeFromRecord fails closed to error.
+		const store: VerdictStore = {
+			putDecided: async () => {},
+			getByCorrelationId: async () => undefined,
+			claim: async () => "already_closed",
+			release: async () => {},
+			closeOutcome: async () => undefined,
+			list: async () => [],
+		};
+		const svc = createVerifyConfirmService({
+			verdictStore: store,
+			getConfirmedTx: gotTx,
+			deriveActualEffect: matchDecoder,
+		});
+
+		const res = await svc.verifyConfirm({ correlationId: "c1", txSignature: "sig" });
+		expect(res.outcome).toBe("error");
+		expect(res.discrepancies).toEqual([]);
+	});
+
+	it("derives the success response from the record the store persisted (#6)", async () => {
+		const store = createInMemoryVerdictStore();
+		await store.putDecided(decided("c1"));
+		const divergent: DeriveActualEffect = () => ({
+			unavailable: false,
+			recipient: "RcpT111",
+			lamports: 25_000_000,
+			extraInstructions: ["SetAuthority"],
+		});
+		const svc = createVerifyConfirmService({
+			verdictStore: store,
+			getConfirmedTx: gotTx,
+			deriveActualEffect: divergent,
+		});
+
+		const res = await svc.verifyConfirm({ correlationId: "c1", txSignature: "sig" });
+		const stored = await store.getByCorrelationId("c1");
+		expect(stored?.status).toBe("CONFIRMED_MISMATCH");
+		expect(res.outcome).toBe("mismatch");
+		// The HTTP response cannot diverge from what the store persisted.
+		expect(res.discrepancies).toEqual(stored?.discrepancies);
+	});
+
+	it("persists the confirming txSignature on the closed record (#14a)", async () => {
+		const store = createInMemoryVerdictStore();
+		await store.putDecided(decided("c1"));
+		const svc = createVerifyConfirmService({
+			verdictStore: store,
+			getConfirmedTx: gotTx,
+			deriveActualEffect: matchDecoder,
+		});
+
+		await svc.verifyConfirm({ correlationId: "c1", txSignature: "sig-xyz" });
+		expect((await store.getByCorrelationId("c1"))?.txSignature).toBe("sig-xyz");
 	});
 });

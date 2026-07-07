@@ -44,17 +44,27 @@ export function createBoundedConfirmedTxFetcher(
 	return async (txSignature) => {
 		const deadline = now() + maxWaitMs;
 		for (;;) {
+			// Bound the total wall-clock (D10/F13): never begin a fetch past the deadline,
+			// and cap each fetch by the remaining budget so a call started just before the
+			// deadline cannot overshoot by a full perCallTimeoutMs.
+			const remaining = deadline - now();
+			if (remaining <= 0) {
+				return null;
+			}
 			let tx: ConfirmedTx | null = null;
 			try {
-				tx = await withTimeout(fetchOnce(txSignature), perCallTimeoutMs, sleep);
+				tx = await withTimeout(
+					fetchOnce(txSignature),
+					Math.min(perCallTimeoutMs, remaining),
+					sleep,
+				);
 			} catch {
 				tx = null; // hung/throwing RPC → not-yet-confirmed (F50)
 			}
-			if (tx && !tx.meta?.err) {
+			// Any confirmed tx short-circuits the poll (D9-v2), even a failed one (meta.err):
+			// a finalized signature is terminal. The confirm service inspects meta.err.
+			if (tx) {
 				return tx;
-			}
-			if (now() >= deadline) {
-				return null;
 			}
 			await sleep(pollIntervalMs);
 		}

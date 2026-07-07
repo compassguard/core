@@ -1,9 +1,4 @@
 {
-  "functions": {
-    "app/api/hosted/[...route]/route.ts": {
-      "maxDuration": 15
-    }
-  },
   "rewrites": [
     {
       "source": "/health",

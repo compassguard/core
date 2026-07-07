@@ -98,6 +98,16 @@ describe("createInMemoryVerdictStore", () => {
 		expect(await store.claim("c1")).toBe("already_closed");
 	});
 
+	it("closeOutcome persists a provided txSignature on the closed record (#14a)", async () => {
+		const store = createInMemoryVerdictStore();
+		await store.putDecided(decided("c1"));
+		await store.claim("c1");
+
+		const closed = await store.closeOutcome("c1", "match", [], "sig-abc");
+		expect(closed?.txSignature).toBe("sig-abc");
+		expect((await store.getByCorrelationId("c1"))?.txSignature).toBe("sig-abc");
+	});
+
 	it("list returns stored records", async () => {
 		const store = createInMemoryVerdictStore();
 		await store.putDecided(decided("c1"));
@@ -105,5 +115,14 @@ describe("createInMemoryVerdictStore", () => {
 
 		expect(await store.list()).toHaveLength(2);
 		expect(await store.list(1)).toHaveLength(1);
+	});
+
+	it("list(limit <= 0) returns no records, never every record (#13)", async () => {
+		const store = createInMemoryVerdictStore();
+		await store.putDecided(decided("c1"));
+		await store.putDecided(decided("c2"));
+
+		expect(await store.list(0)).toHaveLength(0);
+		expect(await store.list(-1)).toHaveLength(0);
 	});
 });

@@ -11,7 +11,9 @@ export type VerifyConfirmOutcome =
 	| "unconfirmed"
 	| "unknown_correlation"
 	| "pending"
-	| "unverified_no_decoder";
+	| "unverified_no_decoder"
+	| "execution_failed"
+	| "error";
 
 export type VerifyConfirmResponse = {
 	correlationId: string;

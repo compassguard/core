@@ -1,9 +1,14 @@
-import type { DeriveActualEffect } from "@shared/verdictContracts";
+import type {
+	ActualEffect,
+	DeriveActualEffect,
+	Discrepancy,
+} from "@shared/verdictContracts";
 
-import type { VerdictStore } from "../verdict/verdictStore";
+import type { VerdictRecord, VerdictStore } from "../verdict/verdictStore";
 import { compareEffects } from "./compareEffects";
 import type { GetConfirmedTx } from "./getConfirmedTx";
 import type {
+	VerifyConfirmOutcome,
 	VerifyConfirmRequest,
 	VerifyConfirmResponse,
 	VerifyConfirmService,
@@ -14,6 +19,30 @@ export type VerifyConfirmServiceDependencies = {
 	getConfirmedTx: GetConfirmedTx;
 	deriveActualEffect: DeriveActualEffect;
 };
+
+/**
+ * Map a (possibly absent) verdict record to its API outcome + discrepancies (D19).
+ * Pure and lease-independent, so workstream A's simplified getByCorrelationId-based
+ * confirm can reuse it verbatim once the claim-switch is deleted. Fail-closed: a
+ * missing record OR any non-terminal status yields `error`, never a fabricated verdict.
+ */
+function outcomeFromRecord(record: VerdictRecord | undefined): {
+	outcome: VerifyConfirmOutcome;
+	discrepancies: Discrepancy[];
+} {
+	if (record?.status === "CONFIRMED_MATCH") {
+		return { outcome: "match", discrepancies: record.discrepancies ?? [] };
+	}
+	if (record?.status === "CONFIRMED_MISMATCH") {
+		return { outcome: "mismatch", discrepancies: record.discrepancies ?? [] };
+	}
+	return { outcome: "error", discrepancies: [] };
+}
+
+/** Narrow the ActualEffect union to its unavailable variant (D13, clears TS2345). */
+function isEffectUnavailable(e: ActualEffect): e is { unavailable: true } {
+	return e.unavailable === true;
+}
 
 /**
  * Phase-2 outcome verification (D16-v3). Every exit disposes the claimed record —
@@ -37,12 +66,11 @@ export function createVerifyConfirmService(
 				return { correlationId, outcome: "unknown_correlation", discrepancies: [] };
 			}
 			if (claim === "already_closed") {
-				const record = await verdictStore.getByCorrelationId(correlationId);
 				return {
 					correlationId,
-					outcome:
-						record?.status === "CONFIRMED_MATCH" ? "match" : "mismatch",
-					discrepancies: record?.discrepancies ?? [],
+					...outcomeFromRecord(
+						await verdictStore.getByCorrelationId(correlationId),
+					),
 				};
 			}
 			if (claim === "in_progress") {
@@ -66,9 +94,25 @@ export function createVerifyConfirmService(
 					await verdictStore.release(correlationId);
 					return { correlationId, outcome: "unconfirmed", discrepancies: [] };
 				}
+				if (tx.meta?.err) {
+					// Confirmed but FAILED on-chain (D5-v2/D9-v2): the intended action did not
+					// execute. Terminal close (fail-closed), NOT release, NOT re-poll. The record
+					// closes CONFIRMED_MISMATCH; this detecting call returns the precise signal.
+					await verdictStore.closeOutcome(
+						correlationId,
+						"mismatch",
+						[],
+						request.txSignature,
+					);
+					return {
+						correlationId,
+						outcome: "execution_failed",
+						discrepancies: [],
+					};
+				}
 
 				const actual = deriveActualEffect(tx, record.intendedEffect);
-				if (actual.unavailable) {
+				if (isEffectUnavailable(actual)) {
 					await verdictStore.release(correlationId);
 					return {
 						correlationId,
@@ -81,8 +125,15 @@ export function createVerifyConfirmService(
 					record.intendedEffect,
 					actual,
 				);
-				await verdictStore.closeOutcome(correlationId, outcome, discrepancies);
-				return { correlationId, outcome, discrepancies };
+				// Derive the response from the record the store returns (D7/D8): the HTTP
+				// outcome can never diverge from what was persisted, and txSignature is stored.
+				const closed = await verdictStore.closeOutcome(
+					correlationId,
+					outcome,
+					discrepancies,
+					request.txSignature,
+				);
+				return { correlationId, ...outcomeFromRecord(closed) };
 			} catch (error) {
 				await verdictStore.release(correlationId);
 				throw error;
