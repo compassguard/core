@@ -41,7 +41,7 @@
           }
         },
         {
-          "name": "Transfer within limits → CONFIRM (missing amount)",
+          "name": "Transfer within limits → REVIEW (missing amount)",
           "request": {
             "method": "POST",
             "url": { "raw": "{{baseUrl}}/v1/evaluate", "host": ["{{baseUrl}}"], "path": ["v1", "evaluate"] },
@@ -56,7 +56,7 @@
           }
         },
         {
-          "name": "Swap with valid params → CONFIRM (needs LLM judge)",
+          "name": "Swap with valid params → REVIEW (needs LLM judge)",
           "request": {
             "method": "POST",
             "url": { "raw": "{{baseUrl}}/v1/evaluate", "host": ["{{baseUrl}}"], "path": ["v1", "evaluate"] },
@@ -145,7 +145,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"idempotencyKey\": \"audit_write_001\",\n  \"userId\": \"user_test\",\n  \"entry\": {\n    \"correlationId\": \"corr_audit_001\",\n    \"toolName\": \"transfer_sol\",\n    \"decision\": \"confirm\",\n    \"riskLevel\": \"medium\",\n    \"reasons\": [\"TRANSFER_MISSING_AMOUNT\"],\n    \"auditRef\": \"aud_audit_001\"\n  }\n}"
+              "raw": "{\n  \"idempotencyKey\": \"audit_write_001\",\n  \"userId\": \"user_test\",\n  \"entry\": {\n    \"correlationId\": \"corr_audit_001\",\n    \"toolName\": \"transfer_sol\",\n    \"decision\": \"review\",\n    \"riskLevel\": \"medium\",\n    \"reasons\": [\"TRANSFER_MISSING_AMOUNT\"],\n    \"auditRef\": \"aud_audit_001\"\n  }\n}"
             }
           }
         },

@@ -4,6 +4,7 @@ import {
 } from "@back/guardrail/execution/executionGateway";
 import { getPostHogClient, getInstallationDistinctId } from "@back/posthog/posthogClient";
 import { COMPASS_DECISIONS } from "@shared/executionGatewayContracts";
+import { collapseToHostedDecision, hostedRiskLevelFor } from "./hostedDecision";
 import {
 	callLlmJudge,
 	clampLlmDecision,
@@ -16,10 +17,8 @@ import {
 import { sanitizeLlmJudgeInput } from "../llm/llmDecisionSanitizer";
 import { evaluateAction as evaluatePolicyAction } from "../policy/policyEngine";
 import { loadDefaultPolicy } from "../policy/loadPolicy";
-import type {
-	PolicyEvaluation,
-	PolicyEvaluationContext,
-} from "@shared/policyContracts";
+import { derivePolicyContext } from "../policy/policyContext";
+import type { PolicyEvaluation } from "@shared/policyContracts";
 import type { AuditWriteRequest } from "../audit/auditContracts";
 import {
 	HOSTED_RISK_LEVELS,
@@ -153,7 +152,7 @@ async function buildDecisionResponse(input: {
 			? "allow"
 			: llmDecision?.decision === "DENY"
 				? "deny"
-				: "confirm";
+				: "review";
 
 		return {
 			correlationId: request.correlationId,
@@ -163,7 +162,7 @@ async function buildDecisionResponse(input: {
 				"ROUTER_UNKNOWN",
 				...(llmDecision?.reasonCodes ?? []),
 			],
-			suggestedAction: decision === "confirm"
+			suggestedAction: decision === "review"
 				? "LLM judge could not classify with certainty; request user confirmation."
 				: undefined,
 			auditRef: "pending-audit",
@@ -216,58 +215,11 @@ async function buildDecisionResponse(input: {
 
 	return {
 		correlationId: request.correlationId,
-		decision: mapHostedDecision(clampedDecision.decision),
-		riskLevel: mapRiskLevel(clampedDecision.decision),
+		decision: collapseToHostedDecision(clampedDecision.decision),
+		riskLevel: hostedRiskLevelFor(clampedDecision.decision),
 		reasons,
 		suggestedAction: buildSuggestedAction(clampedDecision.decision),
 		auditRef: "pending-audit",
-	};
-}
-
-function derivePolicyContext(
-	actionKind: "transfer" | "swap",
-	argumentsValue: Record<string, unknown> | undefined,
-): PolicyEvaluationContext {
-	const args = argumentsValue ?? {};
-
-	if (actionKind === "transfer") {
-		return {
-			amount_usd: readNumber(args, ["amountUsd", "amount_usd", "usdAmount"]),
-			recipient_address: readString(args, [
-				"recipient",
-				"recipientAddress",
-				"destination",
-				"address",
-			]),
-			recipient_known: readBoolean(args, ["recipientKnown", "recipient_known"]),
-			flags: {
-				suspicious_recipient: readBoolean(args, [
-					"suspiciousRecipient",
-					"suspicious_recipient",
-				]),
-				unknown_program: readBoolean(args, ["unknownProgram", "unknown_program"]),
-				unlimited_delegate: readBoolean(args, [
-					"unlimitedDelegate",
-					"unlimited_delegate",
-				]),
-				authority_change: readBoolean(args, [
-					"authorityChange",
-					"authority_change",
-				]),
-			},
-		};
-	}
-
-	return {
-		amount_usd: readNumber(args, ["amountUsd", "amount_usd", "usdAmount"]),
-		token_mint: readString(args, [
-			"tokenMint",
-			"outputTokenMint",
-			"toTokenMint",
-		]),
-		token_known: readBoolean(args, ["tokenKnown", "token_known"]),
-		protocol: readString(args, ["protocol"]),
-		slippage_bps: readNumber(args, ["slippageBps", "slippage_bps"]),
 	};
 }
 
@@ -291,32 +243,6 @@ function buildAuditWriteRequest(
 	};
 }
 
-function mapHostedDecision(
-	decision: PolicyEvaluation["decision"],
-): EvaluateActionResponse["decision"] {
-	switch (decision) {
-		case COMPASS_DECISIONS.ALLOW:
-			return "allow";
-		case COMPASS_DECISIONS.DENY:
-			return "deny";
-		default:
-			return "confirm";
-	}
-}
-
-function mapRiskLevel(
-	decision: PolicyEvaluation["decision"],
-): HostedRiskLevel {
-	switch (decision) {
-		case COMPASS_DECISIONS.ALLOW:
-			return HOSTED_RISK_LEVELS.LOW;
-		case COMPASS_DECISIONS.DENY:
-			return HOSTED_RISK_LEVELS.HIGH;
-		default:
-			return HOSTED_RISK_LEVELS.MEDIUM;
-	}
-}
-
 function buildSuggestedAction(
 	decision: PolicyEvaluation["decision"],
 ): string | undefined {
@@ -329,46 +255,4 @@ function buildSuggestedAction(
 	}
 
 	return "Request explicit user confirmation before execution.";
-}
-
-function readString(
-	record: Record<string, unknown>,
-	keys: string[],
-): string | undefined {
-	for (const key of keys) {
-		const value = record[key];
-		if (typeof value === "string" && value.trim().length > 0) {
-			return value;
-		}
-	}
-
-	return undefined;
-}
-
-function readNumber(
-	record: Record<string, unknown>,
-	keys: string[],
-): number | undefined {
-	for (const key of keys) {
-		const value = record[key];
-		if (typeof value === "number" && Number.isFinite(value)) {
-			return value;
-		}
-	}
-
-	return undefined;
-}
-
-function readBoolean(
-	record: Record<string, unknown>,
-	keys: string[],
-): boolean | undefined {
-	for (const key of keys) {
-		const value = record[key];
-		if (typeof value === "boolean") {
-			return value;
-		}
-	}
-
-	return undefined;
 }

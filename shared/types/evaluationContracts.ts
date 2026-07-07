@@ -1,7 +1,7 @@
 export const HOSTED_DECISIONS = {
 	ALLOW: "allow",
 	DENY: "deny",
-	CONFIRM: "confirm",
+	REVIEW: "review",
 } as const;
 
 export type HostedDecision =

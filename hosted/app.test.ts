@@ -17,7 +17,7 @@ function createDependencies(): HostedAppDependencies {
 		evaluations: {
 			evaluateAction: vi.fn().mockResolvedValue({
 				correlationId: "corr_route_1",
-				decision: "confirm",
+				decision: "review",
 				riskLevel: "medium",
 				reasons: ["TRANSFER_UNKNOWN_RECIPIENT"],
 				suggestedAction: "Request explicit user confirmation before execution.",
@@ -73,7 +73,7 @@ describe("createHostedApp", () => {
 
 		expect(response.status).toBe(200);
 		expect(await response.json()).toMatchObject({
-			decision: "confirm",
+			decision: "review",
 			auditRef: "aud_route_1",
 		});
 	});
@@ -115,7 +115,7 @@ describe("createHostedApp", () => {
 					correlationId: "corr_audit_1",
 					auditRef: "aud_audit_1",
 					toolName: "transfer_sol",
-					decision: "confirm",
+					decision: "review",
 					riskLevel: "medium",
 					reasons: ["TRANSFER_UNKNOWN_RECIPIENT"],
 					occurredAt: "2026-06-17T12:00:01.000Z",
@@ -142,7 +142,7 @@ describe("createHostedApp", () => {
 					correlationId: "corr_audit_1",
 					auditRef: "aud_audit_1",
 					toolName: "transfer_sol",
-					decision: "confirm",
+					decision: "review",
 					riskLevel: "medium",
 					reasons: ["TRANSFER_UNKNOWN_RECIPIENT"],
 					occurredAt: "2026-06-17T12:00:01.000Z",
@@ -169,5 +169,91 @@ describe("createHostedApp", () => {
 				swaps: expect.any(Object),
 			}),
 		});
+	});
+
+	it("returns a deterministic verdict through POST /v1/verify", async () => {
+		const app = createHostedApp(createDependencies());
+
+		const response = await app.request("/v1/verify", {
+			method: "POST",
+			headers: {
+				Authorization: "Bearer hosted-secret",
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				toolName: "transfer_sol",
+				intent: { kind: "transfer" },
+				arguments: { recipient: "Stranger", amountUsd: 999 },
+			}),
+		});
+
+		expect(response.status).toBe(200);
+		const body = await response.json();
+		expect(body).toMatchObject({
+			decision: "review",
+			correlationId: expect.any(String),
+			humanExplanation: expect.any(String),
+		});
+	});
+
+	it("rejects a /v1/verify request without auth", async () => {
+		const app = createHostedApp(createDependencies());
+
+		const response = await app.request("/v1/verify", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ toolName: "transfer_sol" }),
+		});
+
+		expect(response.status).toBe(401);
+	});
+
+	it("400s a malformed /v1/verify body", async () => {
+		const app = createHostedApp(createDependencies());
+
+		const response = await app.request("/v1/verify", {
+			method: "POST",
+			headers: {
+				Authorization: "Bearer hosted-secret",
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ intent: { kind: "transfer" } }), // missing toolName
+		});
+
+		expect(response.status).toBe(400);
+	});
+
+	it("returns unknown_correlation from /v1/verify/confirm for an unseen id", async () => {
+		const app = createHostedApp(createDependencies());
+
+		const response = await app.request("/v1/verify/confirm", {
+			method: "POST",
+			headers: {
+				Authorization: "Bearer hosted-secret",
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ correlationId: "never-seen", txSignature: "sig123" }),
+		});
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({
+			outcome: "unknown_correlation",
+			discrepancies: [],
+		});
+	});
+
+	it("400s a /v1/verify/confirm body missing txSignature", async () => {
+		const app = createHostedApp(createDependencies());
+
+		const response = await app.request("/v1/verify/confirm", {
+			method: "POST",
+			headers: {
+				Authorization: "Bearer hosted-secret",
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ correlationId: "c1" }),
+		});
+
+		expect(response.status).toBe(400);
 	});
 });

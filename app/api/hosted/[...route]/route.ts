@@ -5,6 +5,11 @@ import type { Hono } from "hono";
 
 const HOSTED_PREFIX = "/api/hosted";
 
+// Next.js segment config (D14/#9): the confirm poll's bounded wait can approach the
+// wall-clock budget, so raise this route's serverless timeout above the 10s default.
+// Applied per-route here because the vercel.json functions glob did not match this path.
+export const maxDuration = 15;
+
 // ponytail: webpack inlines process.env.X at build time. Using Function
 // constructor to bypass static analysis so the env var is read at runtime.
 const getEnv = new Function("key", "return process.env[key]") as (key: string) => string | undefined;

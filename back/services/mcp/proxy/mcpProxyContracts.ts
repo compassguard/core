@@ -79,7 +79,7 @@ export type HostedEvaluationRequestInput = ProxiedMcpToolCall & {
 export type ProxyDecision = {
 	/** Whether the call is allowed, denied, or requires explicit approval. */
 	outcome: "allow" | "deny" | "require_approval";
-	/** Hosted allow/deny/confirm decision when the hosted backend was consulted. */
+	/** Hosted allow/deny/review decision when the hosted backend was consulted. */
 	hostedDecision?: HostedDecision;
 	/** Human-readable reason for the decision. */
 	reason: string;
