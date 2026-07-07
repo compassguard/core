@@ -141,5 +141,29 @@ export function describeVerdictStoreContract(name: string, makeStore: MakeStore)
 			expect(await store.list(0)).toHaveLength(0);
 			expect(await store.list(-1)).toHaveLength(0);
 		});
+
+		it("re-putDecided of a closed record resets it to a fresh DECIDED (full-replace)", async () => {
+			const store = await makeStore();
+			await store.putDecided(decided("c1"));
+			await store.claim("c1");
+			await store.closeOutcome(
+				"c1",
+				"mismatch",
+				[{ field: "recipient", actual: "y" }],
+				"sig-1",
+			);
+
+			await store.putDecided(decided("c1"));
+			const record = await store.getByCorrelationId("c1");
+			expect(record?.status).toBe("DECIDED");
+			expect(record?.discrepancies).toBeUndefined();
+			expect(record?.confirmedAt).toBeUndefined();
+			expect(record?.txSignature).toBeUndefined();
+		});
+
+		it("closeOutcome on an unknown id returns undefined", async () => {
+			const store = await makeStore();
+			expect(await store.closeOutcome("nope", "match", [])).toBeUndefined();
+		});
 	});
 }
