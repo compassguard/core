@@ -108,6 +108,10 @@ export function createVerifyService(
 					humanExplanation,
 					intendedEffect,
 					decidedAt: requestedAt,
+					// Attribution: forward who/which-session so verdicts are not stored anonymous
+					// (the /verify request validates these; dropping them was a silent boundary drop).
+					userId: request.userId,
+					sessionId: request.sessionId,
 				});
 			} catch (error) {
 				captureException(error);

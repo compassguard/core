@@ -164,5 +164,23 @@ export function describeVerdictStoreContract(name: string, makeStore: MakeStore)
 			const store = await makeStore();
 			expect(await store.closeOutcome("nope", "match", [])).toBeUndefined();
 		});
+
+		it("persists userId/sessionId attribution and round-trips it", async () => {
+			const store = await makeStore();
+			await store.putDecided({ ...decided("c1"), userId: "user-42", sessionId: "sess-7" });
+
+			const record = await store.getByCorrelationId("c1");
+			expect(record?.userId).toBe("user-42");
+			expect(record?.sessionId).toBe("sess-7");
+		});
+
+		it("leaves attribution absent when the request carried neither", async () => {
+			const store = await makeStore();
+			await store.putDecided(decided("c1"));
+
+			const record = await store.getByCorrelationId("c1");
+			expect(record?.userId).toBeUndefined();
+			expect(record?.sessionId).toBeUndefined();
+		});
 	});
 }

@@ -33,11 +33,21 @@ const CREATE_TABLE = `CREATE TABLE IF NOT EXISTS verdicts (
 	human_explanation text NOT NULL,
 	intended_effect jsonb NOT NULL,
 	decided_at text NOT NULL,
+	user_id text,
+	session_id text,
 	tx_signature text,
 	discrepancies jsonb,
 	confirmed_at text,
 	claimed_at double precision
 )`;
+
+// Forward-compat migrations for a table created before a column existed (idempotent; a no-op
+// on a freshly-created table, an ADD on a pre-existing one — so a live `verdicts` table gains
+// attribution columns with no manual migration).
+const MIGRATIONS = [
+	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS user_id text`,
+	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS session_id text`,
+];
 
 /**
  * Durable verdict store over a single `verdicts` table (D4-v5/D5-v5). Every lifecycle
@@ -74,6 +84,7 @@ export function createPgVerdictStore(
 			if (probe[0]?.t == null) throw error; // genuinely absent → real failure
 			// else: a concurrent creator won → the table exists, proceed
 		}
+		for (const migration of MIGRATIONS) await sql(migration, []);
 	}
 
 	async function run(text: string, params: unknown[]): Promise<Record<string, unknown>[]> {
@@ -88,8 +99,8 @@ export function createPgVerdictStore(
 			// DECIDED. Durable persistence makes replay real, so this must be a DB guarantee.
 			await run(
 				`INSERT INTO verdicts
-					(correlation_id, status, decision, reasons, human_explanation, intended_effect, decided_at)
-				VALUES ($1, 'DECIDED', $2, $3::jsonb, $4, $5::jsonb, $6)
+					(correlation_id, status, decision, reasons, human_explanation, intended_effect, decided_at, user_id, session_id)
+				VALUES ($1, 'DECIDED', $2, $3::jsonb, $4, $5::jsonb, $6, $7, $8)
 				ON CONFLICT (correlation_id) DO NOTHING`,
 				[
 					input.correlationId,
@@ -98,6 +109,8 @@ export function createPgVerdictStore(
 					input.humanExplanation,
 					JSON.stringify(input.intendedEffect),
 					input.decidedAt,
+					input.userId ?? null,
+					input.sessionId ?? null,
 				],
 			);
 		},
@@ -213,6 +226,8 @@ function rowToRecord(row: Record<string, unknown>): VerdictRecord {
 		status: row.status as VerdictStatus,
 		decidedAt: row.decided_at as string,
 	};
+	if (row.user_id != null) record.userId = row.user_id as string;
+	if (row.session_id != null) record.sessionId = row.session_id as string;
 	if (row.tx_signature != null) record.txSignature = row.tx_signature as string;
 	if (row.discrepancies != null) {
 		record.discrepancies = parseJsonb<Discrepancy[]>(row.discrepancies);

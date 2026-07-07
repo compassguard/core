@@ -17,6 +17,9 @@ export type VerdictRecord = {
 	intendedEffect: IntendedEffect;
 	status: VerdictStatus;
 	decidedAt: string;
+	/** Attribution carried from the /verify request, so a verdict is groupable by who/which session. */
+	userId?: string;
+	sessionId?: string;
 	txSignature?: string;
 	discrepancies?: Discrepancy[];
 	confirmedAt?: string;
@@ -31,6 +34,9 @@ export type DecidedInput = {
 	humanExplanation: string;
 	intendedEffect: IntendedEffect;
 	decidedAt: string;
+	/** Attribution from the /verify request (optional; omitted when the caller sends neither). */
+	userId?: string;
+	sessionId?: string;
 };
 
 /**
