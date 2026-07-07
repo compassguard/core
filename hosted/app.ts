@@ -8,7 +8,7 @@ import { hostedAuthMiddleware } from "./http/hostedAuthMiddleware";
 import { hostedErrorHandler } from "./http/hostedErrorMiddleware";
 import { createPolicyService } from "./policies/policyService";
 import { createPolicyRoutes } from "./policies/policyRoutes";
-import { createInMemoryVerdictStore } from "./verdict/verdictStore";
+import { createVerdictStoreFromEnv } from "./verdict/verdictStoreFromEnv";
 import { createVerifyService } from "./verify/verifyService";
 import { createVerifyConfirmService } from "./verify/verifyConfirmService";
 import { createBoundedConfirmedTxFetcher } from "./verify/getConfirmedTx";
@@ -25,7 +25,7 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 		createEvaluationService({
 			writeAudit: auditStore.writeAudit,
 		});
-	const verdictStore = deps.verdictStore ?? createInMemoryVerdictStore();
+	const verdictStore = deps.verdictStore ?? createVerdictStoreFromEnv();
 	const verifyService =
 		deps.verifications ?? createVerifyService({ verdictStore });
 	const verifyConfirmService =
