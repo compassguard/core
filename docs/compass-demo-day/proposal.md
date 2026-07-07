@@ -95,7 +95,8 @@ Goal: every decision (and its outcome) captured — the labeled dataset the obse
 
 - [ ] **Durable store** — persist **decision + full context** (tool, amount, recipient, mandate/intent, reasons, human_explanation, timestamp, `correlationId`) **AND outcome**. SQLite / Postgres / Vercel KV — fastest to ship.
 - [ ] **Record lifecycle `DECIDED → CONFIRMED_MATCH|MISMATCH`** — `/verify` writes the `DECIDED` record (intended effect); `/verify/confirm` closes it with the outcome (**idempotent**). Active outcome capture **auto-labels false-negatives** (mismatch) instead of waiting for a human dispute; overrides still label false-positives. **No decision leaks** — locally short-circuited proxy decisions get reported up here too.
-- [ ] **This is what the console (Act 3) renders** — Recent Decisions + the live counter.
+- [ ] **Metrics surface (MVP — build with the console)** — `GET /v1/verdicts` + a counts endpoint (allowed / denied / review / mismatch) over the verdict store, and a **per-decision telemetry event** on `/verify` (today only exceptions are captured). These are what the console reads; they're also the raw "backend with metrics" a dev can query without the UI.
+- [ ] **This is what the console (Act 3) renders** — Recent Decisions + the live counter, backed by the metrics surface above.
 
 ## Workstream 2 — Distribution / dev onboarding (both adapters, plug & play)
 
@@ -195,10 +196,10 @@ The `/verify` build (branch `feat/verify-endpoint`) deliberately shipped **trans
 ### Tier 1 — before real devs integrate (blocks the dev-onboarding milestone)
 
 - [ ] **Durable verdict store** (WS1 swap) — the in-memory `Map` doesn't survive Vercel invocations; hosted confirm, metrics, console, and flywheel are all gated on this. `VerdictStore` interface is swap-ready (one new impl file: KV/Postgres).
-- [ ] **Decode integration, both ends** — swap the confirm-side stub for the real `deriveActualEffect` (one line), AND add the `tx` input to `/verify` so flags + **native intended amounts** come from decoded ground truth. Until the second half lands, the amount-compare dimension of confirm is inert and flags are self-reported. Then decide: keep `derivePolicyContext` as an explicit args-only fallback, or retire it.
+- [ ] **Decode integration, both ends** *(pre-demo if the decode module lands in time — WS0 ambition; this registry entry is the fallback slot per the exit-criteria decode-slip rule)* — swap the confirm-side stub for the real `deriveActualEffect` (one line), AND add the `tx` input to `/verify` so flags + **native intended amounts** come from decoded ground truth. Until the second half lands, the amount-compare dimension of confirm is inert and flags are self-reported. Then decide: keep `derivePolicyContext` as an explicit args-only fallback, or retire it.
 - [ ] **API versioning discipline** — write the policy (additive-only within `/v1`: new fields/enum values OK, renames/removals ⇒ `/v2`) + a response-shape contract test in CI. The `confirm→review` rename was a breaking `/v1` change that nothing flagged; adopt the rule **before** the first external consumer exists.
 - [ ] **Auth + rate limiting** — per-dev API keys with rotation (today: one shared static key), and per-key rate limits on `/verify/confirm` (it holds a handler ~8s while polling RPC — an unmetered cost/DoS vector).
-- [ ] **Metrics surface** — `GET /v1/verdicts` + counts route (the store's `list()` has no route today) and a per-decision telemetry event on `/verify` (today only exceptions are captured).
+- [ ] **Metrics surface** — *moved into WS1 as MVP work (built with the console); this entry stays only as the checkbox backstop if the console is cut from the demo* — `GET /v1/verdicts` + counts route and the per-decision telemetry event on `/verify`.
 
 ### Tier 2 — debt demolition (each ≤1 day; the "clean architecture" pass)
 
@@ -227,7 +228,7 @@ The line we do **not** cross: **Compass never holds a key that can move funds on
 
 ## Exit criteria (MVP demo-ready)
 
-- [ ] **`POST /verify` live** — fast deterministic verdicts on the 3 scenarios (**balance → allow**, **transfer → review/approve**, **off-mandate/over-cap/authority-change → deny**) with human-readable reasons, flags derived from decoded ground truth.
+- [ ] **`POST /verify` live** — fast deterministic verdicts on the 3 scenarios (**balance → allow**, **transfer → review/approve**, **off-mandate/over-cap/authority-change → deny**) with human-readable reasons, flags derived from decoded ground truth. **Decode-slip fallback (decided in advance, not at rehearsal):** if the decode module isn't demo-ready, this criterion relaxes to **args-based advisory** — the endpoint ships as-is (already live-tested), the pitch says "flags are caller-supplied in the MVP; decoded ground truth is landing," and decode moves to the hardening registry's Tier 1. Decode slipping does **not** block the demo.
 - [ ] **Both adapters work** — `mcp add compass` (full pre+post loop) *and* a raw `POST /verify` call (pre-check).
 - [ ] **Phase-2 outcome verify** confirms a legit tx matched intent, and **catches one seeded mismatch** (MCP path).
 - [ ] **Durable verdict store** persisting decision + context + outcome; the **console renders** it accumulating.
