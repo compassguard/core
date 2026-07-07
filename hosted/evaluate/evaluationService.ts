@@ -4,10 +4,7 @@ import {
 } from "@back/guardrail/execution/executionGateway";
 import { getPostHogClient, getInstallationDistinctId } from "@back/posthog/posthogClient";
 import { COMPASS_DECISIONS } from "@shared/executionGatewayContracts";
-import {
-	collapseToHostedDecision,
-	hostedRiskLevelFor,
-} from "@shared/evaluationContracts";
+import { collapseToHostedDecision, hostedRiskLevelFor } from "./hostedDecision";
 import {
 	callLlmJudge,
 	clampLlmDecision,

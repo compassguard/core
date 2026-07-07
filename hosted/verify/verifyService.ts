@@ -5,13 +5,13 @@ import {
 	createActionCandidate,
 } from "@back/guardrail/execution/executionGateway";
 import { getPostHogClient } from "@back/posthog/posthogClient";
-import {
-	collapseToHostedDecision,
-	hostedRiskLevelFor,
-} from "@shared/evaluationContracts";
 import type { PolicyEvaluationContext } from "@shared/policyContracts";
 import type { IntendedEffect } from "@shared/verdictContracts";
 
+import {
+	collapseToHostedDecision,
+	hostedRiskLevelFor,
+} from "../evaluate/hostedDecision";
 import { derivePolicyContext } from "../policy/policyContext";
 import { evaluateAction } from "../policy/policyEngine";
 import { loadDefaultPolicy } from "../policy/loadPolicy";
