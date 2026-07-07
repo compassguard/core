@@ -81,7 +81,11 @@ export function validateEvaluateActionResponse(
 		};
 	}
 
-	if (!isHostedDecision(value.decision)) {
+	// #3 legacy compat window: a pre-rename hosted server may still return "confirm"; accept it
+	// and normalize forward to "review" so a version-skewed client never fail-closes on the
+	// decision value. Remove once every deployed hosted server returns "review".
+	const decision = value.decision === "confirm" ? "review" : value.decision;
+	if (!isHostedDecision(decision)) {
 		return {
 			ok: false,
 			error: createHostedClientError(
@@ -142,7 +146,7 @@ export function validateEvaluateActionResponse(
 		ok: true,
 		response: {
 			correlationId: value.correlationId,
-			decision: value.decision,
+			decision,
 			riskLevel: value.riskLevel,
 			reasons: value.reasons,
 			suggestedAction,

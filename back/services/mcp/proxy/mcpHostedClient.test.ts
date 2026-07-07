@@ -57,6 +57,40 @@ describe("mcpHostedClient", () => {
 		});
 	});
 
+	it("accepts a legacy \"confirm\" decision and normalizes it to \"review\" (#3 compat)", async () => {
+		const fetchMock = vi.fn().mockResolvedValue({
+			ok: true,
+			status: 200,
+			json: async () => ({
+				correlationId: "corr_legacy",
+				decision: "confirm", // pre-rename hosted server
+				riskLevel: "medium",
+				reasons: ["TRANSFER_REQUIRES_APPROVAL"],
+				auditRef: "aud_legacy",
+			}),
+		});
+		vi.stubGlobal("fetch", fetchMock);
+
+		const client = createMcpHostedClient({
+			url: "https://hosted.example.com",
+			apiKey: "top-secret",
+			timeoutMs: 750,
+		});
+
+		const response = await client.evaluateAction({
+			correlationId: "corr_legacy",
+			idempotencyKey: "idem_legacy",
+			toolName: "transfer_sol",
+			arguments: { amountSol: 1 },
+			localFindings: [],
+			requestedAt: "2026-06-18T00:00:00.000Z",
+		});
+
+		// NOT fail-closed as MALFORMED; the legacy value is normalized forward.
+		expect(response.decision).toBe("review");
+		expect(response.reasons).toEqual(["TRANSFER_REQUIRES_APPROVAL"]);
+	});
+
 	it("fails closed when the hosted request times out", async () => {
 		vi.useFakeTimers();
 		const fetchMock = vi.fn(
