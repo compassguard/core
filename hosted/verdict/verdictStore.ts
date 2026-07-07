@@ -89,6 +89,9 @@ export function createInMemoryVerdictStore(
 
 	return {
 		async putDecided(input: DecidedInput): Promise<void> {
+			// Existence guard: the first put for an id wins; a replayed put is inert and never
+			// resurrects an already-progressed record (e.g. a CONFIRMED_* one) back to DECIDED.
+			if (records.has(input.correlationId)) return;
 			records.set(input.correlationId, {
 				...input,
 				status: "DECIDED",

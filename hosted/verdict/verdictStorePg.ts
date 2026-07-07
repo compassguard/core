@@ -83,23 +83,14 @@ export function createPgVerdictStore(
 
 	return {
 		async putDecided(input: DecidedInput): Promise<void> {
-			// Full-replace parity: a re-put of a closed record resets it to DECIDED and
-			// clears claimed_at/discrepancies/confirmed_at/tx_signature (seq is preserved).
+			// Existence guard: DB-enforced first-put-wins. A replayed put for an id that already
+			// exists is inert (DO NOTHING) — it never resurrects a progressed/closed record to
+			// DECIDED. Durable persistence makes replay real, so this must be a DB guarantee.
 			await run(
 				`INSERT INTO verdicts
 					(correlation_id, status, decision, reasons, human_explanation, intended_effect, decided_at)
 				VALUES ($1, 'DECIDED', $2, $3::jsonb, $4, $5::jsonb, $6)
-				ON CONFLICT (correlation_id) DO UPDATE SET
-					status = 'DECIDED',
-					decision = EXCLUDED.decision,
-					reasons = EXCLUDED.reasons,
-					human_explanation = EXCLUDED.human_explanation,
-					intended_effect = EXCLUDED.intended_effect,
-					decided_at = EXCLUDED.decided_at,
-					claimed_at = NULL,
-					discrepancies = NULL,
-					confirmed_at = NULL,
-					tx_signature = NULL`,
+				ON CONFLICT (correlation_id) DO NOTHING`,
 				[
 					input.correlationId,
 					input.decision,

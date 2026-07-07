@@ -142,7 +142,7 @@ export function describeVerdictStoreContract(name: string, makeStore: MakeStore)
 			expect(await store.list(-1)).toHaveLength(0);
 		});
 
-		it("re-putDecided of a closed record resets it to a fresh DECIDED (full-replace)", async () => {
+		it("re-putDecided does not resurrect an existing record — replay is inert (existence guard)", async () => {
 			const store = await makeStore();
 			await store.putDecided(decided("c1"));
 			await store.claim("c1");
@@ -153,12 +153,11 @@ export function describeVerdictStoreContract(name: string, makeStore: MakeStore)
 				"sig-1",
 			);
 
-			await store.putDecided(decided("c1"));
+			await store.putDecided(decided("c1")); // replay of an already-closed id — must be inert
 			const record = await store.getByCorrelationId("c1");
-			expect(record?.status).toBe("DECIDED");
-			expect(record?.discrepancies).toBeUndefined();
-			expect(record?.confirmedAt).toBeUndefined();
-			expect(record?.txSignature).toBeUndefined();
+			expect(record?.status).toBe("CONFIRMED_MISMATCH"); // preserved, NOT reset to DECIDED
+			expect(record?.discrepancies).toHaveLength(1);
+			expect(record?.txSignature).toBe("sig-1");
 		});
 
 		it("closeOutcome on an unknown id returns undefined", async () => {
