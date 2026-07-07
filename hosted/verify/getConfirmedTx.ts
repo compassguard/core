@@ -66,7 +66,15 @@ export function createBoundedConfirmedTxFetcher(
 			if (tx) {
 				return tx;
 			}
-			await sleep(pollIntervalMs);
+			// Bound the inter-poll sleep by the remaining budget too (D10-v3/Fv2): a fetch that
+			// returned null just before the deadline must not be followed by a full pollIntervalMs
+			// sleep, or total wall-clock would reach maxWaitMs + pollIntervalMs. If nothing is
+			// left, stop now (not-confirmed) rather than sleep past the deadline.
+			const remainingAfterFetch = deadline - now();
+			if (remainingAfterFetch <= 0) {
+				return null;
+			}
+			await sleep(Math.min(pollIntervalMs, remainingAfterFetch));
 		}
 	};
 }

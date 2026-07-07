@@ -76,19 +76,22 @@ describe("createBoundedConfirmedTxFetcher", () => {
 		expect(calls).toBe(1);
 	});
 
-	it("bounds total wall-clock to maxWaitMs even when a fetch starts just before the deadline (D10)", async () => {
+	it("bounds TOTAL wall-clock to maxWaitMs at the default pollIntervalMs, so the inter-poll sleep never overshoots the deadline (D10-v3/Fv2)", async () => {
 		const clock = fakeClock();
 		const fetch = createBoundedConfirmedTxFetcher({
 			...clock,
-			maxWaitMs: 150,
-			pollIntervalMs: 0, // isolate the per-call bound: only fetch waits move the clock
-			perCallTimeoutMs: 100,
+			maxWaitMs: 2500,
+			// Default pollIntervalMs (1000) — do NOT zero it: the inter-poll sleep after a
+			// null fetch must itself be bounded by the remaining budget, not run a full
+			// interval past the deadline.
+			perCallTimeoutMs: 1000,
 			fetchOnce: async () => null,
 		});
-		// deadline = 150. The second fetch begins at t=100 with only 50 of budget left, so
-		// it is capped at 50 (min(100, remaining)) and ends exactly at the deadline — the old
-		// code let it run a full perCallTimeoutMs (to t=200), overshooting maxWaitMs.
+		// deadline = 2500. Fetch #1 ends at t=1000 (capped 1000), then a bounded 1000ms sleep
+		// to t=2000; fetch #2 is capped at the remaining 500 and ends exactly at t=2500 with 0
+		// budget left. The old unbounded code then slept a full pollIntervalMs (to t=3500),
+		// pushing total wall-clock to maxWaitMs + pollIntervalMs; the fix returns null at 0.
 		expect(await fetch("sig")).toBeNull();
-		expect(clock.now()).toBeLessThanOrEqual(150);
+		expect(clock.now()).toBeLessThanOrEqual(2500);
 	});
 });
