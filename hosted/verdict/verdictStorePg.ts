@@ -200,19 +200,32 @@ export function createPgVerdictStore(
 	};
 }
 
+/**
+ * Normalize a jsonb column to its parsed value. Drivers differ: PGlite returns jsonb
+ * already parsed (object/array), while the porsager `postgres` driver's .unsafe() returns
+ * it as a raw JSON string — verified live against the Supabase pooler. Parsing the string
+ * form keeps a VerdictRecord's reasons/intendedEffect/discrepancies structured regardless
+ * of backing.
+ */
+function parseJsonb<T>(value: unknown): T {
+	return typeof value === "string" ? (JSON.parse(value) as T) : (value as T);
+}
+
 /** Map a stored row to a VerdictRecord; NULL optional columns become absent fields. */
 function rowToRecord(row: Record<string, unknown>): VerdictRecord {
 	const record: VerdictRecord = {
 		correlationId: row.correlation_id as string,
 		decision: row.decision as HostedDecision,
-		reasons: row.reasons as string[],
+		reasons: parseJsonb<string[]>(row.reasons),
 		humanExplanation: row.human_explanation as string,
-		intendedEffect: row.intended_effect as IntendedEffect,
+		intendedEffect: parseJsonb<IntendedEffect>(row.intended_effect),
 		status: row.status as VerdictStatus,
 		decidedAt: row.decided_at as string,
 	};
 	if (row.tx_signature != null) record.txSignature = row.tx_signature as string;
-	if (row.discrepancies != null) record.discrepancies = row.discrepancies as Discrepancy[];
+	if (row.discrepancies != null) {
+		record.discrepancies = parseJsonb<Discrepancy[]>(row.discrepancies);
+	}
 	if (row.confirmed_at != null) record.confirmedAt = row.confirmed_at as string;
 	if (row.claimed_at != null) record.claimedAt = Number(row.claimed_at);
 	return record;

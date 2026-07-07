@@ -14,6 +14,27 @@ function executor(db: PGlite): SqlExecutor {
 	};
 }
 
+/**
+ * Simulates the porsager `postgres` driver, whose .unsafe() returns jsonb columns as raw
+ * JSON strings (unlike PGlite, which parses them) — verified live against the Supabase
+ * pooler. rowToRecord must parse these back, so the full contract runs over this too.
+ */
+function stringifyingJsonbExecutor(db: PGlite): SqlExecutor {
+	const base = executor(db);
+	return async (text, params) => {
+		const rows = await base(text, params);
+		return rows.map((row) => {
+			const out = { ...row };
+			for (const col of ["reasons", "intended_effect", "discrepancies"]) {
+				if (out[col] != null && typeof out[col] !== "string") {
+					out[col] = JSON.stringify(out[col]);
+				}
+			}
+			return out;
+		});
+	};
+}
+
 /** Executor that throws on CREATE TABLE while `failing()` is true (simulates a DDL race loser). */
 function throwingCreateExecutor(db: PGlite, failing: () => boolean): SqlExecutor {
 	const base = executor(db);
@@ -40,6 +61,12 @@ function decided(correlationId: string): DecidedInput {
 // (real Postgres semantics, no network) per test — proving the durable swap is drop-in.
 describeVerdictStoreContract("createPgVerdictStore (PGlite)", (options) =>
 	createPgVerdictStore({ sql: executor(new PGlite()), ...options }),
+);
+
+// Same contract, but jsonb comes back as strings (porsager/Supabase behavior) — guards the
+// rowToRecord parse-back that a PGlite-only suite cannot exercise.
+describeVerdictStoreContract("createPgVerdictStore (jsonb-as-strings — porsager driver sim)", (options) =>
+	createPgVerdictStore({ sql: stringifyingJsonbExecutor(new PGlite()), ...options }),
 );
 
 describe("createPgVerdictStore — durable-specific (cross-instance + schema ensure)", () => {
