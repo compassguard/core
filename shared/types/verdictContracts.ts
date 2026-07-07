@@ -26,7 +26,7 @@ export type ActualEffect =
     };
 
 export type Discrepancy = {
-  field: "recipient" | "amount" | "extra_instruction";
+  field: "recipient" | "amount" | "mint" | "extra_instruction";
   expected?: string;
   actual?: string;
 };
