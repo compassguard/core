@@ -1,4 +1,7 @@
-import { getConnection } from "@back/services/solana/providers/solanaConnection";
+import {
+	getConnection,
+	withThrottle,
+} from "@back/services/solana/providers/solanaConnection";
 import type { VersionedTransactionResponse } from "@solana/web3.js";
 
 export type ConfirmedTx = VersionedTransactionResponse;
@@ -36,10 +39,15 @@ export function createBoundedConfirmedTxFetcher(
 	const fetchOnce =
 		options.fetchOnce ??
 		((txSignature: string) =>
-			getConnection().getTransaction(txSignature, {
-				maxSupportedTransactionVersion: 0,
-				commitment: "confirmed",
-			}));
+			// Route the confirmed-tx fetch through the shared RPC throttle (100ms min
+			// interval) rather than hitting getConnection() directly — the poll fires
+			// repeated getTransaction calls and must not bypass the shared rate limiter.
+			withThrottle(() =>
+				getConnection().getTransaction(txSignature, {
+					maxSupportedTransactionVersion: 0,
+					commitment: "confirmed",
+				}),
+			));
 
 	return async (txSignature) => {
 		const deadline = now() + maxWaitMs;
@@ -56,7 +64,6 @@ export function createBoundedConfirmedTxFetcher(
 				tx = await withTimeout(
 					fetchOnce(txSignature),
 					Math.min(perCallTimeoutMs, remaining),
-					sleep,
 				);
 			} catch {
 				tx = null; // hung/throwing RPC → not-yet-confirmed (F50)
@@ -79,13 +86,17 @@ export function createBoundedConfirmedTxFetcher(
 	};
 }
 
-function withTimeout<T>(
-	promise: Promise<T>,
-	ms: number,
-	sleep: (ms: number) => Promise<void>,
-): Promise<T> {
-	const timeout = sleep(ms).then(() => {
-		throw new Error("rpc call timed out");
+// Real cancellable timer (the codebase's clearTimeout pattern): when the fetch wins the
+// race the timeout is cleared, so no setTimeout lingers keeping the serverless instance
+// warm up to perCallTimeoutMs after the function returns.
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const timeout = new Promise<never>((_, reject) => {
+		timer = setTimeout(() => reject(new Error("rpc call timed out")), ms);
 	});
-	return Promise.race([promise, timeout]) as Promise<T>;
+	return Promise.race([promise, timeout]).finally(() => {
+		if (timer !== undefined) {
+			clearTimeout(timer);
+		}
+	}) as Promise<T>;
 }
