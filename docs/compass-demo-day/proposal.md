@@ -188,6 +188,33 @@ The non-bypassable upgrade: **same engine + a required key.** The MVP is its bra
 - **v2 — program-gated PDA:** the `ActionApproval` PDA endgame — Compass holds **no fund-moving key**, only an attestation; on-chain caps survive a Compass compromise.
 - **Also lands here:** the **deep-verify tier** (judge), **instruction-provenance** (the prompt-injection catch), the **enforcement-tier outcome check** (mismatch → withhold the next co-signature), and the **chain-watcher** for raw-HTTP outcome reconciliation.
 
+## Post-demo hardening & consolidation (architecture debt registry)
+
+The `/verify` build (branch `feat/verify-endpoint`) deliberately shipped **transitional architecture**: two parallel evaluation tracks, two decision stores, an in-memory verdict store, and injected stubs at the decode seam. Each defer was the right call for demo speed — this registry exists so the transition state is **scheduled for demolition, not shipped by default**. Tiered by what it blocks.
+
+### Tier 1 — before real devs integrate (blocks the dev-onboarding milestone)
+
+- [ ] **Durable verdict store** (WS1 swap) — the in-memory `Map` doesn't survive Vercel invocations; hosted confirm, metrics, console, and flywheel are all gated on this. `VerdictStore` interface is swap-ready (one new impl file: KV/Postgres).
+- [ ] **Decode integration, both ends** — swap the confirm-side stub for the real `deriveActualEffect` (one line), AND add the `tx` input to `/verify` so flags + **native intended amounts** come from decoded ground truth. Until the second half lands, the amount-compare dimension of confirm is inert and flags are self-reported. Then decide: keep `derivePolicyContext` as an explicit args-only fallback, or retire it.
+- [ ] **API versioning discipline** — write the policy (additive-only within `/v1`: new fields/enum values OK, renames/removals ⇒ `/v2`) + a response-shape contract test in CI. The `confirm→review` rename was a breaking `/v1` change that nothing flagged; adopt the rule **before** the first external consumer exists.
+- [ ] **Auth + rate limiting** — per-dev API keys with rotation (today: one shared static key), and per-key rate limits on `/verify/confirm` (it holds a handler ~8s while polling RPC — an unmetered cost/DoS vector).
+- [ ] **Metrics surface** — `GET /v1/verdicts` + counts route (the store's `list()` has no route today) and a per-decision telemetry event on `/verify` (today only exceptions are captured).
+
+### Tier 2 — debt demolition (each ≤1 day; the "clean architecture" pass)
+
+- [ ] **Retire `/v1/evaluate` + consolidate stores** — after the MCP proxy switches to `/verify`, the old LLM-inline track has zero consumers: delete the route + `evaluationService` orchestration, fold the audit store into the verdict store (one decision-history source). The LLM router/judge adapters are **repurposed, not deleted** — they become the async deep-verify tier per the [judge-unblinding workstream](../judge-unblinding/proposal.md) (judge reads `review` records from the verdict store, writes back the same schema).
+- [ ] **Record-lifecycle TTL / EXPIRED sweeper** — never-confirmed records stay `DECIDED` forever by design; harmless in memory, **unbounded growth once the store is durable**. Ship with/right after the WS1 swap.
+- [ ] **Module boundaries** — move the outcome-domain files (`compareEffects`, `deriveActualEffect*`, `getConfirmedTx`, `verifyConfirmService`) from `hosted/verify/` into `hosted/verdict/` so the dirs carve at the joint; stop adding runtime functions to `shared/types/` (give shared logic a non-"types" home).
+- [ ] **Proxy hardening** — replace the `"review"` string literal in `mcpProxyDispatcher` with the `HOSTED_DECISIONS.REVIEW` constant (next vocab change becomes a compile error, not a grep hunt); version-bump + republish choreography documented (old published client fails **closed** on unknown decision values — deploy + republish same day).
+- [ ] **Fix the `tsc` gate + CI** — a pre-existing bad import (`mcpProxyDispatcher.test.ts` → `../mcp/mcpProxyContracts`) breaks `tsc --noEmit` repo-wide, so typecheck can't gate anything; fix it, then gate CI on typecheck + vitest + the contract snapshot.
+- [ ] **Honest `/health`** — dependency statuses are hardcoded strings (`llm: "ok"` checks nothing); report real checks (verdict store, RPC reachability) and drop the `llm` dep when `/evaluate` retires.
+
+### Tier 3 — architectural, later
+
+- [ ] **Per-user policies** — engine evaluates everyone against the hardcoded `DEFAULT_POLICY`; the policy route is GET-only. Console's editable policy needs the write path; multi-tenant needs per-key policy (then the on-chain `UserPolicy` load, per the appendix).
+- [ ] **Chain-watcher** — closes `PENDING` records for raw-HTTP callers without an explicit confirm call (completes the flywheel for non-MCP integrators).
+- [ ] **Composition root** — `HostedAppDependencies` is at seven hand-rolled optional overrides; adopt a builder when the console/judge services join.
+
 ## Liability ceiling {#liability-ceiling}
 
 The line we do **not** cross: **Compass never holds a key that can move funds on its own.** The `/verify` MVP holds **no key at all** (advisory). The roadmap co-sign holds a **veto key** (one required signature — can block, can't spend alone). **No** MPC / custodial relay / TEE-custody (→ money-transmitter / PCI-AML weight). Ship a **user recovery path** (2-of-3 or timelock) so we can't freeze either. *(v2 PDA removes even the veto key → attestation-only.)*
@@ -196,7 +223,7 @@ The line we do **not** cross: **Compass never holds a key that can move funds on
 
 **Week 2 (now, Jul 1–7):** WS0 `/verify` + fast deterministic engine (incl. the decode step) + WS1 durable verdict store + MCP-sensor adapter + phase-2 outcome verify.
 **Week 3 (Jul 8–14):** the **policy console** (Act 3) + §01 slide (WS3) + WS4 3-act demo assembly + rehearsal + recorded fallback + **get it in front of ≥1–2 devs.**
-**Roadmap (post-demo):** co-sign spine (Squads v1 → PDA v2), the deep-verify tier, the provenance leg, the chain-watcher.
+**Roadmap (post-demo):** co-sign spine (Squads v1 → PDA v2), the deep-verify tier, the provenance leg, the chain-watcher — **plus the [post-demo hardening & consolidation registry](#post-demo-hardening--consolidation-architecture-debt-registry)** (retire `/v1/evaluate`, store consolidation, versioning discipline, per-dev keys, TTL sweeper).
 
 ## Exit criteria (MVP demo-ready)
 
