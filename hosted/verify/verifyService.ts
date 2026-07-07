@@ -84,6 +84,13 @@ export function createVerifyService(
 				decision,
 				evaluation.reasonCodes,
 			);
+			// SEAM (D4-v2 / R2): native intended dimensions — lamports / tokenAmount /
+			// mint — are populated here once a verify-side decode source (Fran's
+			// decodeTransaction, injection ①) is wired. There is no such source in
+			// verify today (policy context carries only recipient_address + amount_usd),
+			// so they stay undefined and are NOT fabricated from policy context. Until
+			// the decode source lands, the fail-closed compareEffects contract (a
+			// declared-but-unconfirmable dimension is never a silent match) covers the gap.
 			const intendedEffect: IntendedEffect = {
 				actionKind,
 				recipient: context.recipient_address,

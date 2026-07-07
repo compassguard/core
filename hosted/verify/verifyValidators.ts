@@ -30,6 +30,21 @@ export function validateVerifyActionRequest(
 		}
 	}
 
+	// A provided requestedAt must be a parseable ISO-8601 timestamp so decidedAt /
+	// createdAt cannot be backdated or poisoned with a NaN date (D11 / #12). When
+	// omitted it stays undefined and verifyService server-stamps it via isoNow.
+	if (value.requestedAt !== undefined) {
+		if (
+			!isNonEmptyString(value.requestedAt) ||
+			Number.isNaN(Date.parse(value.requestedAt))
+		) {
+			return {
+				ok: false,
+				message: "requestedAt must be an ISO-8601 timestamp.",
+			};
+		}
+	}
+
 	return {
 		ok: true,
 		request: {

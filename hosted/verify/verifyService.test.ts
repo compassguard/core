@@ -54,6 +54,19 @@ describe("createVerifyService", () => {
 		expect(record?.intendedEffect.amountUsd).toBe(999);
 	});
 
+	it("server-stamps decidedAt via isoNow when requestedAt is omitted (D11 / #12)", async () => {
+		const store = createInMemoryVerdictStore();
+		const service = createVerifyService({
+			verdictStore: store,
+			isoNow: () => "2026-07-07T12:00:00.000Z",
+		});
+
+		const res = await service.verifyAction({ toolName: "get_wallet_holdings" });
+
+		const record = await store.getByCorrelationId(res.correlationId);
+		expect(record?.decidedAt).toBe("2026-07-07T12:00:00.000Z");
+	});
+
 	it("returns the verdict even when the DECIDED write fails (stateless verdict)", async () => {
 		const throwingStore = {
 			putDecided: vi.fn().mockRejectedValue(new Error("store down")),
