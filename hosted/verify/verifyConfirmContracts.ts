@@ -13,7 +13,8 @@ export type VerifyConfirmOutcome =
 	| "pending"
 	| "unverified_no_decoder"
 	| "execution_failed"
-	| "error";
+	| "error"
+	| "signature_mismatch";
 
 export type VerifyConfirmResponse = {
 	correlationId: string;

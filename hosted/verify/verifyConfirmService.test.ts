@@ -221,4 +221,25 @@ describe("createVerifyConfirmService", () => {
 		await svc.verifyConfirm({ correlationId: "c1", txSignature: "sig-xyz" });
 		expect((await store.getByCorrelationId("c1"))?.txSignature).toBe("sig-xyz");
 	});
+
+	it("flags signature_mismatch when a closed correlation is re-confirmed with a different signature (#14b)", async () => {
+		const store = createInMemoryVerdictStore();
+		await store.putDecided(decided("c1"));
+		const svc = createVerifyConfirmService({
+			verdictStore: store,
+			getConfirmedTx: gotTx,
+			deriveActualEffect: matchDecoder,
+		});
+
+		const first = await svc.verifyConfirm({ correlationId: "c1", txSignature: "sigA" });
+		expect(first.outcome).toBe("match");
+
+		// same signature → cached verdict (idempotent, unchanged)
+		const sameSig = await svc.verifyConfirm({ correlationId: "c1", txSignature: "sigA" });
+		expect(sameSig.outcome).toBe("match");
+
+		// a DIFFERENT signature for the already-closed correlation → flagged, not a stale match
+		const diffSig = await svc.verifyConfirm({ correlationId: "c1", txSignature: "sigB" });
+		expect(diffSig.outcome).toBe("signature_mismatch");
+	});
 });

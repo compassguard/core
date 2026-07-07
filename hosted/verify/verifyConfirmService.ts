@@ -66,12 +66,22 @@ export function createVerifyConfirmService(
 				return { correlationId, outcome: "unknown_correlation", discrepancies: [] };
 			}
 			if (claim === "already_closed") {
-				return {
-					correlationId,
-					...outcomeFromRecord(
-						await verdictStore.getByCorrelationId(correlationId),
-					),
-				};
+				const record = await verdictStore.getByCorrelationId(correlationId);
+				// #14b: one correlationId = one execution. A repeat confirm carrying a
+				// DIFFERENT signature than the one this record was closed with is not the
+				// transaction we verified — surface it, don't return the cached verdict for
+				// another tx. (Same signature → cached outcome, idempotent, unchanged.)
+				if (
+					record?.txSignature !== undefined &&
+					record.txSignature !== txSignature
+				) {
+					return {
+						correlationId,
+						outcome: "signature_mismatch",
+						discrepancies: [],
+					};
+				}
+				return { correlationId, ...outcomeFromRecord(record) };
 			}
 			if (claim === "in_progress") {
 				return { correlationId, outcome: "pending", discrepancies: [] };
