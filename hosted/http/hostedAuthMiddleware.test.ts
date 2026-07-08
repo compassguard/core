@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { HostedContextVariables } from "@shared/hostedAuthMiddlewareContracts";
 
@@ -28,11 +28,18 @@ async function seedCredentialStore(): Promise<CredentialStore> {
 	return store;
 }
 
-function createApp(credentialStore: CredentialStore) {
+function createApp(
+	credentialStore: CredentialStore,
+	captureException?: (error: unknown) => void,
+) {
 	const app = new Hono<{ Variables: HostedContextVariables }>();
 	app.use(
 		"*",
-		hostedAuthMiddleware({ apiKey: "hosted-secret" }, credentialStore),
+		hostedAuthMiddleware(
+			{ apiKey: "hosted-secret" },
+			credentialStore,
+			captureException,
+		),
 	);
 	app.get("/health", (context) => context.json({ ok: true }, 200));
 	// Echo the credential-derived identity so tests can assert c.get is set/typed.
@@ -104,22 +111,28 @@ describe("hostedAuthMiddleware", () => {
 		expect(await response.json()).toEqual(UNAUTHENTICATED_BODY);
 	});
 
-	it("fails closed with 401 when resolveActive throws (never falls through)", async () => {
+	it("fails closed with 401 and captures the error when resolveActive throws", async () => {
+		const resolveError = new Error("credential store unavailable");
 		const throwingStore = {
 			issue: async () => {},
 			resolveActive: async () => {
-				throw new Error("credential store unavailable");
+				throw resolveError;
 			},
 			revokeByEmail: async () => 0,
 		} satisfies CredentialStore;
-		const app = createApp(throwingStore);
+		const captureException = vi.fn();
+		const app = createApp(throwingStore, captureException);
 
 		const response = await app.request("/v1/protected", {
 			headers: { Authorization: "Bearer cred-key" },
 		});
 
+		// Fail CLOSED: still a 401 (F15) — telemetry is best-effort, never a bypass.
 		expect(response.status).toBe(401);
 		expect(await response.json()).toEqual(UNAUTHENTICATED_BODY);
+		// Best-effort capture (D7): called once with the thrown error, never the raw token.
+		expect(captureException).toHaveBeenCalledTimes(1);
+		expect(captureException).toHaveBeenCalledWith(resolveError);
 	});
 
 	it("skips auth for /health", async () => {

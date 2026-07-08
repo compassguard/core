@@ -1,4 +1,5 @@
 import type { MiddlewareHandler } from "hono";
+import { getPostHogClient } from "@back/posthog/posthogClient";
 import type {
 	HostedAuthConfig,
 	HostedAuthErrorResponse,
@@ -30,7 +31,20 @@ const UNAUTHENTICATED_RESPONSE: HostedAuthErrorResponse = {
 export function hostedAuthMiddleware(
 	config: HostedAuthConfig,
 	credentialStore: CredentialStore,
+	captureException?: (error: unknown) => void,
 ): MiddlewareHandler<{ Variables: HostedContextVariables }> {
+	// Best-effort telemetry on the fail-closed resolve error (D7); only the error is
+	// captured — never the raw token/hash. Mirrors verifyService's DECIDED-write capture.
+	const capture =
+		captureException ??
+		((error: unknown) => {
+			getPostHogClient().captureException(
+				error instanceof Error ? error : new Error(String(error)),
+				undefined,
+				{ event_context: "hosted_auth_credential_resolve_failed" },
+			);
+		});
+
 	return async (context, next) => {
 		if (context.req.path === "/health") {
 			await next();
@@ -59,7 +73,8 @@ export function hostedAuthMiddleware(
 		let identity: CredentialIdentity | undefined;
 		try {
 			identity = await credentialStore.resolveActive(hashApiKey(token));
-		} catch {
+		} catch (error) {
+			capture(error);
 			return context.json(UNAUTHENTICATED_RESPONSE, 401);
 		}
 		if (!identity) {
