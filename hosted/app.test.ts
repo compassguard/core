@@ -3,9 +3,32 @@ import { describe, expect, it, vi } from "vitest";
 import { createHostedApp } from "./app";
 import type { HostedAppDependencies } from "./appContracts";
 import type { EvaluateActionResponse } from "./evaluate/evaluationContracts";
-import { createInMemoryVerdictStore } from "./verdict/verdictStore";
+import {
+	createInMemoryVerdictStore,
+	type VerdictStore,
+} from "./verdict/verdictStore";
+import {
+	createInMemoryCredentialStore,
+	type CredentialStore,
+} from "./credential/credentialStore";
 
-function createDependencies(): HostedAppDependencies {
+type InjectedStores = {
+	verdictStore: VerdictStore;
+	credentialStore: CredentialStore;
+};
+
+function createStores(): InjectedStores {
+	return {
+		verdictStore: createInMemoryVerdictStore(),
+		credentialStore: createInMemoryCredentialStore(),
+	};
+}
+
+// Inject explicit in-memory stores so app construction never falls through to the
+// env-selected factories — tests stay hermetic even when COMPASS_VERDICT_DB_URL is exported.
+function createDependencies(
+	stores: InjectedStores = createStores(),
+): HostedAppDependencies {
 	return {
 		auth: { apiKey: "hosted-secret" },
 		health: {
@@ -25,9 +48,8 @@ function createDependencies(): HostedAppDependencies {
 				auditRef: "aud_route_1",
 			} satisfies EvaluateActionResponse),
 		},
-		// Inject an explicit in-memory store so app construction never falls through to the
-		// env-selected factory — tests stay hermetic even when COMPASS_VERDICT_DB_URL is exported.
-		verdictStore: createInMemoryVerdictStore(),
+		verdictStore: stores.verdictStore,
+		credentialStore: stores.credentialStore,
 	};
 }
 
@@ -268,5 +290,93 @@ describe("createHostedApp", () => {
 		} as HostedAppDependencies;
 
 		expect(() => createHostedApp(partial)).toThrow(/share a single verdict store/);
+	});
+});
+
+describe("createHostedApp — per-email credential flow (end-to-end)", () => {
+	const SIGNUP_EMAIL = "e2e@example.com";
+
+	async function signup(
+		app: ReturnType<typeof createHostedApp>,
+	): Promise<{ email: string; apiKey: string }> {
+		const response = await app.request("/signup", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ email: SIGNUP_EMAIL }),
+		});
+		expect(response.status).toBe(200);
+		return (await response.json()) as { email: string; apiKey: string };
+	}
+
+	function verifyBody(): string {
+		return JSON.stringify({
+			toolName: "transfer_sol",
+			intent: { kind: "transfer" },
+			arguments: { recipient: "Stranger", amountUsd: 999 },
+		});
+	}
+
+	it("mints a credential via public POST /signup (no auth)", async () => {
+		const app = createHostedApp(createDependencies());
+
+		const body = await signup(app);
+
+		expect(body.email).toBe(SIGNUP_EMAIL);
+		expect(typeof body.apiKey).toBe("string");
+		expect(body.apiKey.length).toBeGreaterThan(0);
+	});
+
+	it("authenticates /v1/verify with a signup key and attributes the verdict to the email", async () => {
+		const stores = createStores();
+		const app = createHostedApp(createDependencies(stores));
+
+		const { apiKey } = await signup(app);
+
+		const response = await app.request("/v1/verify", {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${apiKey}`,
+				"Content-Type": "application/json",
+			},
+			body: verifyBody(),
+		});
+
+		expect(response.status).toBe(200);
+		const verified = (await response.json()) as { correlationId: string };
+		const record = await stores.verdictStore.getByCorrelationId(
+			verified.correlationId,
+		);
+		expect(record?.authenticatedEmail).toBe(SIGNUP_EMAIL);
+	});
+
+	it("rejects /v1/verify with no Authorization header", async () => {
+		const app = createHostedApp(createDependencies());
+
+		const response = await app.request("/v1/verify", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: verifyBody(),
+		});
+
+		expect(response.status).toBe(401);
+	});
+
+	it("rejects a revoked credential reusing the same key", async () => {
+		const stores = createStores();
+		const app = createHostedApp(createDependencies(stores));
+
+		const { apiKey } = await signup(app);
+		await stores.credentialStore.revokeByEmail(SIGNUP_EMAIL);
+
+		const response = await app.request("/v1/verify", {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${apiKey}`,
+				"Content-Type": "application/json",
+			},
+			body: verifyBody(),
+		});
+
+		expect(response.status).toBe(401);
 	});
 });

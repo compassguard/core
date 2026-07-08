@@ -31,6 +31,12 @@ export type VerifyActionRequestValidationResult =
 	| { ok: true; request: VerifyActionRequest }
 	| { ok: false; message: string };
 
+/** Server-derived caller context, kept separate from the validated request body (D11). */
+export type VerifyCaller = { authenticatedEmail?: string };
+
 export type VerifyService = {
-	verifyAction(request: VerifyActionRequest): Promise<VerifyActionResponse>;
+	verifyAction(
+		request: VerifyActionRequest,
+		caller?: VerifyCaller,
+	): Promise<VerifyActionResponse>;
 };

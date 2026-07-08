@@ -83,3 +83,6 @@ cdp_api_key.json
 
 # Accidental space-named files
 /[ ]
+
+# Clippy local run state (not shared)
+.clippy/

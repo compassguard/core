@@ -66,6 +66,33 @@ curl localhost:3001/health
 # {"status":"ok","timestamp":"..."}
 ```
 
+### Per-email API credentials
+
+Besides the shared `COMPASS_HOSTED_API_KEY`, each caller can obtain its own email-scoped
+credential. This is **additive** — the shared key still gates `/v1/*` as before.
+
+Mint a key (public, no auth):
+
+```sh
+curl -X POST localhost:3001/signup \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"you@example.com"}'
+# {"email":"you@example.com","apiKey":"compass_..."}
+```
+
+Then use it as a bearer token on any `/v1/*` route:
+
+```sh
+curl -X POST localhost:3001/v1/verify \
+  -H 'Authorization: Bearer compass_...' \
+  -H 'Content-Type: application/json' \
+  -d '{"toolName":"transfer_sol","intent":{"kind":"transfer"}}'
+```
+
+Verdicts written on this path are attributed to the credential's email. Credentials persist
+in the same Supabase referenced by `COMPASS_VERDICT_DB_URL` (in-memory when unset). A revoked
+credential returns `401` on its next request.
+
 ### Run the MCP Server Locally
 
 ```sh
@@ -148,7 +175,8 @@ Copy `.env.example` to `.env.local` and set values for your environment.
 | Variable | Description |
 |----------|-------------|
 | `COMPASS_HOSTED_PORT` | Port for the hosted backend (default: `3001`) |
-| `COMPASS_HOSTED_API_KEY` | API key for local hosted backend auth |
+| `COMPASS_HOSTED_API_KEY` | Shared API key for `/v1/*` auth (additive; per-email credentials also work) |
+| `COMPASS_VERDICT_DB_URL` | Supabase Postgres URL backing both the verdict store and per-email credentials (unset ⇒ in-memory) |
 
 ### Hybrid Guard
 
