@@ -1,11 +1,11 @@
 ---
 name: compass-onboarding
-description: Guides a coding agent through helping a user test Compass — the execution firewall for AI agents on Solana. Use when the user asks you to test, try, set up, or demo Compass, or points you at https://compassguard.xyz/skill-onboard.md. Covers the POST /v1/verify decision API, obtaining a shared API key, reading allow/deny/review verdicts, and optionally wiring the MCP guard into the user's own agent.
+description: Guides a coding agent through helping a user test Compass — the execution firewall for AI agents on Solana. Use when the user asks you to test, try, set up, or demo Compass, or points you at https://compassguard.xyz/skill-onboard.md. Covers minting an API key via POST /signup, the POST /v1/verify decision API, reading allow/deny/review verdicts, and optionally wiring the MCP guard into the user's own agent.
 license: MIT
 compatibility: Any coding agent with a shell (curl) and, for the optional guard step, the Claude Code CLI + Node.js 18+.
 metadata:
   author: Compass
-  version: 1.0.0
+  version: 1.1.0
   homepage: https://compassguard.xyz
 ---
 
@@ -35,13 +35,14 @@ unrelated to exercising the hosted `/v1/verify` API or MCP guard.
 ## Base URL
 
 `https://www.compassguard.xyz` — the apex `compassguard.xyz` 308-redirects here; use the `www` host
-in commands so POSTs don't trip on the redirect.
+in commands so POSTs don't trip on the redirect. `/signup` and `/health` are public; everything
+under `/v1/*` needs a bearer token.
 
 ## Hard rules — do not violate these
 
-1. **Never invent, guess, or hard-code an API key.** The key is a shared bearer secret. If the user
-   hasn't given you one and `COMPASS_HOSTED_API_KEY` isn't set, **stop and ask** (Step 2). A made-up
-   key doesn't fake a verdict — it just returns `401`.
+1. **Never invent, guess, or hard-code an API key.** A made-up key doesn't fake a verdict — it just
+   returns `401`. If the user has no key, **mint one via `POST /signup`** (Step 2) rather than
+   fabricating anything.
 2. **Only use recognized tool names** in `/v1/verify` (Step 3). An unrecognized mutating `toolName`
    (e.g. `solana_transfer`) is **denied by default** — that `deny` is the fail-closed policy working
    as designed, not a bug or a real threat. Don't alarm the user.
@@ -61,28 +62,37 @@ curl -s https://www.compassguard.xyz/health
 Expect `{"ok":true,"service":"compass-hosted-guard","dependencies":{...}}`. If you get this, the
 service is live; if not, stop and troubleshoot connectivity with the user first.
 
-### Step 2 · Get the API key from the user
+### Step 2 · Get a token
 
-`COMPASS_HOSTED_API_KEY` is a **shared bearer secret** — there is no signup endpoint. Ask which
-applies:
+**Default path — self-serve signup (no auth, works for the "I have no key" case):** mint an
+email-scoped API key for the user. Confirm the email with them first, then:
 
-- **Hosted API:** the user gets a token by messaging **[@Satoshi0101](https://t.me/Satoshi0101) on
-  Telegram**. Once they have it:
-  ```sh
-  export COMPASS_HOSTED_API_KEY='<the-token-they-gave-you>'
-  ```
-  If they don't have a token yet, point them to @Satoshi0101 on Telegram — do not fabricate one.
-- **Local backend they run:** the key is *any string they choose*, set identically on server and
-  client:
+```sh
+curl -sX POST https://www.compassguard.xyz/signup \
+  -H "Content-Type: application/json" \
+  -d '{"email":"<their-email>"}'
+# → {"email":"<their-email>","apiKey":"compass_…"}
+
+export COMPASS_HOSTED_API_KEY='compass_…'   # the apiKey from the response
+```
+
+That `compass_…` key is the bearer token for Step 3. Verdicts made with it are **attributed to the
+user's email**, and it can be revoked independently. Signup is open (any well-formed email, no
+verification), so this is the honest way to satisfy "just show me a verdict" — no fabricating.
+
+Other paths, if they apply:
+
+- **Shared key:** the user may already have a shared `COMPASS_HOSTED_API_KEY` (e.g. the one the MCP
+  proxy uses); it works the same way. If they want the shared key, point them to
+  **[@Satoshi0101](https://t.me/Satoshi0101) on Telegram**.
+- **Local backend they run:** signup mints keys against their instance, or they set a shared
+  `COMPASS_HOSTED_API_KEY` (any string) identically on server and client:
   ```sh
   export COMPASS_HOSTED_API_KEY='dev-local-key'
   npm run hosted:dev          # requires Bun (runs `bun hosted/server.ts`); long-running —
                               # start it in the BACKGROUND; guard listens on :3001
   # then use http://localhost:3001 as the base URL instead of the hosted one
   ```
-  Local dev mode is also the honest way to satisfy "just show me a verdict, I have no key": the
-  throwaway key only ever goes to `localhost`, never to the hosted endpoint. Do **not** send a
-  made-up key to `https://www.compassguard.xyz` — it will just `401`.
 
 If no key is available, **stop here** and tell the user you need one — do not attempt authenticated
 calls.
@@ -182,6 +192,7 @@ hosted deploy a valid confirmed tx returns `{"outcome":"unverified_no_decoder"}`
 | Endpoint | Auth | Purpose |
 |---|---|---|
 | `GET /health` | none | Liveness — `{"ok":true,…}` |
+| `POST /signup` | none | Mint an email-scoped API key → `{email, apiKey}` |
 | `POST /v1/verify` | Bearer | Decision on an intended tool call → `allow`/`deny`/`review` |
 | `POST /v1/verify/confirm` | Bearer | Optional phase-2 outcome check by `correlationId` + `txSignature` |
 

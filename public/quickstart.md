@@ -13,7 +13,7 @@ Two ways to use it:
 > New to the repo / setting up from source? See the top-level `README.md`. **This** page is the
 > 60-second dev quickstart against the hosted API.
 
-**Base URL:** `https://www.compassguard.xyz` — health, verify, and confirm are all served here.
+**Base URL:** `https://www.compassguard.xyz` — signup, health, verify, and confirm are all served here.
 
 ```sh
 curl https://www.compassguard.xyz/health
@@ -22,22 +22,37 @@ curl https://www.compassguard.xyz/health
 
 ---
 
-## 1 · Get an API key
+## 1 · Get a token
 
-`COMPASS_HOSTED_API_KEY` is a **shared bearer secret**, not a self-serve token — there is no signup
-endpoint yet. Pick your path:
+The fastest path is **self-serve signup** — no auth required, mints an email-scoped API key:
 
-- **Hosted API (`www.compassguard.xyz`):** message **[@Satoshi0101](https://t.me/Satoshi0101) on
-  Telegram** to get a token, then `export COMPASS_HOSTED_API_KEY=…`.
-- **Local backend:** the key is *any string you choose* — set the **same** value on the server and
-  the client:
+```sh
+curl -sX POST https://www.compassguard.xyz/signup \
+  -H "Content-Type: application/json" \
+  -d '{"email":"you@example.com"}'
+# → {"email":"you@example.com","apiKey":"compass_…"}
+
+export COMPASS_HOSTED_API_KEY='compass_…'   # the apiKey from the response
+```
+
+That `compass_…` key is your bearer token for every `/v1/*` call below. Verdicts you make with it are
+**attributed to your email**, and it can be revoked independently — a revoked key returns `401` on its
+next request.
+
+Other paths:
+
+- **Shared key:** a single `COMPASS_HOSTED_API_KEY` also gates `/v1/*` (this is what the MCP proxy
+  uses). Message **[@Satoshi0101](https://t.me/Satoshi0101) on Telegram** if you need the shared key
+  rather than your own.
+- **Local backend:** run it yourself — signup mints keys against your instance, or set a shared
+  `COMPASS_HOSTED_API_KEY` (any string) on both server and client:
   ```sh
   export COMPASS_HOSTED_API_KEY=dev-local-key
   npm run hosted:dev          # starts the guard on http://localhost:3001
   ```
 
-The server **fails closed**: no key configured, or a wrong/missing bearer token → every `/v1/*`
-request is `401`. (`/health` stays open.)
+The server **fails closed**: a wrong/missing bearer token → every `/v1/*` request is `401`.
+(`/signup` and `/health` stay open.)
 
 ---
 
@@ -129,6 +144,7 @@ curl -sX POST https://www.compassguard.xyz/v1/verify/confirm \
 | Endpoint | Auth | Purpose |
 |---|---|---|
 | `GET /health` | none | Liveness — `{"ok":true,…}` |
+| `POST /signup` | none | Mint an email-scoped API key → `{email, apiKey}` |
 | `POST /v1/verify` | Bearer | Decision on an intended tool call → `allow`/`deny`/`review` |
 | `POST /v1/verify/confirm` | Bearer | Optional phase-2 outcome check by `correlationId` + `txSignature` |
 
