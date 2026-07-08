@@ -10,6 +10,9 @@ import { createPolicyService } from "./policies/policyService";
 import { createPolicyRoutes } from "./policies/policyRoutes";
 import { createVerdictStoreFromEnv } from "./verdict/verdictStoreFromEnv";
 import type { VerdictStore } from "./verdict/verdictStore";
+import { createCredentialStoreFromEnv } from "./credential/credentialStoreFromEnv";
+import { createSignupService } from "./signup/signupService";
+import { createSignupRoutes } from "./signup/signupRoutes";
 import { createVerifyService } from "./verify/verifyService";
 import { createVerifyConfirmService } from "./verify/verifyConfirmService";
 import { createBoundedConfirmedTxFetcher } from "./verify/getConfirmedTx";
@@ -51,9 +54,16 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 			deriveActualEffect: deriveActualEffectUnavailable,
 		});
 
+	// Per-email credential store (D13): env-selected durable Supabase or in-memory fallback,
+	// built once and shared by the /v1 auth middleware and the public signup endpoint.
+	const credentialStore = deps.credentialStore ?? createCredentialStoreFromEnv();
+
 	app.onError(hostedErrorHandler);
 	app.route("/health", createHealthRoutes(deps.health));
-	app.use("/v1/*", hostedAuthMiddleware(deps.auth));
+	// POST /signup is public (outside /v1, like /health): a caller mints an email credential
+	// here, then presents it as a Bearer token to /v1/*.
+	app.route("/", createSignupRoutes(createSignupService({ credentialStore })));
+	app.use("/v1/*", hostedAuthMiddleware(deps.auth, credentialStore));
 	app.route("/v1", createEvaluationRoutes(evaluationService));
 	app.route("/v1", createVerifyRoutes(verifyService, verifyConfirmService));
 	app.route("/v1", createAuditRoutes(auditStore));

@@ -20,6 +20,7 @@ import { buildHumanExplanation } from "./humanExplanation";
 import type {
 	VerifyActionRequest,
 	VerifyActionResponse,
+	VerifyCaller,
 	VerifyService,
 } from "./verifyContracts";
 
@@ -47,6 +48,7 @@ export function createVerifyService(
 	return {
 		async verifyAction(
 			request: VerifyActionRequest,
+			caller?: VerifyCaller,
 		): Promise<VerifyActionResponse> {
 			const correlationId = randomUUID();
 			const requestedAt = request.requestedAt ?? isoNow();
@@ -112,6 +114,9 @@ export function createVerifyService(
 					// (the /verify request validates these; dropping them was a silent boundary drop).
 					userId: request.userId,
 					sessionId: request.sessionId,
+					// Trustworthy credential-derived identity (D11), server-set from the
+					// resolved credential — distinct from the self-reported userId above.
+					authenticatedEmail: caller?.authenticatedEmail,
 				});
 			} catch (error) {
 				captureException(error);

@@ -1,58 +1,131 @@
 import { Hono } from "hono";
 import { describe, expect, it } from "vitest";
 
+import type { HostedContextVariables } from "@shared/hostedAuthMiddlewareContracts";
+
+import { hashApiKey } from "../credential/apiKey";
+import {
+	createInMemoryCredentialStore,
+	type CredentialStore,
+} from "../credential/credentialStore";
 import { hostedAuthMiddleware } from "./hostedAuthMiddleware";
 
-function createApp() {
-	const app = new Hono();
-	app.use("*", hostedAuthMiddleware({ apiKey: "hosted-secret" }));
+const UNAUTHENTICATED_BODY = {
+	error: {
+		code: "UNAUTHENTICATED",
+		message: "Missing or invalid hosted API credentials.",
+	},
+};
+
+/** Seed an in-memory store with one credential: hashApiKey("cred-key") → user@example.com. */
+async function seedCredentialStore(): Promise<CredentialStore> {
+	const store = createInMemoryCredentialStore();
+	await store.issue({
+		email: "user@example.com",
+		tokenHash: hashApiKey("cred-key"),
+		createdAt: "2026-07-08T00:00:00.000Z",
+	});
+	return store;
+}
+
+function createApp(credentialStore: CredentialStore) {
+	const app = new Hono<{ Variables: HostedContextVariables }>();
+	app.use(
+		"*",
+		hostedAuthMiddleware({ apiKey: "hosted-secret" }, credentialStore),
+	);
 	app.get("/health", (context) => context.json({ ok: true }, 200));
-	app.get("/v1/protected", (context) => context.json({ ok: true }, 200));
+	// Echo the credential-derived identity so tests can assert c.get is set/typed.
+	app.get("/v1/protected", (context) =>
+		context.json(
+			{ ok: true, email: context.get("authenticatedEmail") ?? null },
+			200,
+		),
+	);
 	return app;
 }
 
 describe("hostedAuthMiddleware", () => {
-	it("allows requests with a valid bearer token", async () => {
-		const response = await createApp().request("/v1/protected", {
-			headers: {
-				Authorization: "Bearer hosted-secret",
-			},
+	it("allows the shared key (fast path, no identity set)", async () => {
+		const app = createApp(await seedCredentialStore());
+
+		const response = await app.request("/v1/protected", {
+			headers: { Authorization: "Bearer hosted-secret" },
 		});
 
 		expect(response.status).toBe(200);
-		expect(await response.json()).toEqual({ ok: true });
+		expect(await response.json()).toEqual({ ok: true, email: null });
 	});
 
 	it("rejects requests without a bearer token", async () => {
-		const response = await createApp().request("/v1/protected");
+		const app = createApp(await seedCredentialStore());
+
+		const response = await app.request("/v1/protected");
 
 		expect(response.status).toBe(401);
+		expect(await response.json()).toEqual(UNAUTHENTICATED_BODY);
+	});
+
+	it("rejects a token that is neither the shared key nor a credential", async () => {
+		const app = createApp(await seedCredentialStore());
+
+		const response = await app.request("/v1/protected", {
+			headers: { Authorization: "Bearer not-a-known-token" },
+		});
+
+		expect(response.status).toBe(401);
+		expect(await response.json()).toEqual(UNAUTHENTICATED_BODY);
+	});
+
+	it("resolves a valid email credential and exposes the identity downstream", async () => {
+		const app = createApp(await seedCredentialStore());
+
+		const response = await app.request("/v1/protected", {
+			headers: { Authorization: "Bearer cred-key" },
+		});
+
+		expect(response.status).toBe(200);
 		expect(await response.json()).toEqual({
-			error: {
-				code: "UNAUTHENTICATED",
-				message: "Missing or invalid hosted API credentials.",
-			},
+			ok: true,
+			email: "user@example.com",
 		});
 	});
 
-	it("rejects requests with an invalid bearer token", async () => {
-		const response = await createApp().request("/v1/protected", {
-			headers: {
-				Authorization: "Bearer wrong-secret",
-			},
+	it("rejects a revoked credential (fail closed after revokeByEmail)", async () => {
+		const store = await seedCredentialStore();
+		await store.revokeByEmail("user@example.com");
+		const app = createApp(store);
+
+		const response = await app.request("/v1/protected", {
+			headers: { Authorization: "Bearer cred-key" },
 		});
 
 		expect(response.status).toBe(401);
-		expect(await response.json()).toEqual({
-			error: {
-				code: "UNAUTHENTICATED",
-				message: "Missing or invalid hosted API credentials.",
+		expect(await response.json()).toEqual(UNAUTHENTICATED_BODY);
+	});
+
+	it("fails closed with 401 when resolveActive throws (never falls through)", async () => {
+		const throwingStore = {
+			issue: async () => {},
+			resolveActive: async () => {
+				throw new Error("credential store unavailable");
 			},
+			revokeByEmail: async () => 0,
+		} satisfies CredentialStore;
+		const app = createApp(throwingStore);
+
+		const response = await app.request("/v1/protected", {
+			headers: { Authorization: "Bearer cred-key" },
 		});
+
+		expect(response.status).toBe(401);
+		expect(await response.json()).toEqual(UNAUTHENTICATED_BODY);
 	});
 
 	it("skips auth for /health", async () => {
-		const response = await createApp().request("/health");
+		const app = createApp(await seedCredentialStore());
+
+		const response = await app.request("/health");
 
 		expect(response.status).toBe(200);
 		expect(await response.json()).toEqual({ ok: true });

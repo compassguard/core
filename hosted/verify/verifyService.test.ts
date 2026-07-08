@@ -67,6 +67,19 @@ describe("createVerifyService", () => {
 		expect(record?.decidedAt).toBe("2026-07-07T12:00:00.000Z");
 	});
 
+	it("attributes the verdict to the caller's authenticatedEmail (D11)", async () => {
+		const store = createInMemoryVerdictStore();
+		const service = createVerifyService({ verdictStore: store });
+
+		const res = await service.verifyAction(
+			{ toolName: "get_wallet_holdings" },
+			{ authenticatedEmail: "x@y.z" },
+		);
+
+		const record = await store.getByCorrelationId(res.correlationId);
+		expect(record?.authenticatedEmail).toBe("x@y.z");
+	});
+
 	it("returns the verdict even when the DECIDED write fails (stateless verdict)", async () => {
 		const throwingStore = {
 			putDecided: vi.fn().mockRejectedValue(new Error("store down")),
