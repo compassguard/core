@@ -1,91 +1,112 @@
-# Compass Onboarding Skill (for a coding agent)
-
-**You are a coding agent. A user has pointed you at this page to help them test Compass.** Follow
-the steps below in order, run the commands *for* the user in their terminal, read the real output
-back to them, and explain each verdict. Your goal: get the user to a working Compass integration —
-first a live decision from the API, then (optionally) the guard wired into their own agent.
-
-**What Compass is** (so you can explain it): an *execution firewall for AI agents on Solana*. Before
-a mutating Solana action (a transfer or swap) is signed, Compass checks it against a hosted policy
-and returns `allow` / `deny` / `review` with a human-readable reason. It is advisory today — a fast
-safety check an agent can honor — and every call is logged to an audit trail.
-
-**Base URL:** `https://www.compassguard.xyz` (the apex `compassguard.xyz` 308-redirects here; use the
-`www` host in commands so POSTs don't trip on the redirect).
-
 ---
+name: compass-onboarding
+description: Guides a coding agent through helping a user test Compass — the execution firewall for AI agents on Solana. Use when the user asks you to test, try, set up, or demo Compass, or points you at https://compassguard.xyz/skill-onboard.md. Covers the POST /v1/verify decision API, obtaining a shared API key, reading allow/deny/review verdicts, and optionally wiring the MCP guard into the user's own agent.
+license: MIT
+compatibility: Any coding agent with a shell (curl) and, for the optional guard step, the Claude Code CLI + Node.js 18+.
+metadata:
+  author: Compass
+  version: 1.0.0
+  homepage: https://compassguard.xyz
+---
+
+# Compass Onboarding
+
+## Overview
+
+Compass is an **execution firewall for AI agents on Solana**. Before a mutating Solana action (a
+transfer or swap) is signed, Compass checks it against a hosted policy and returns `allow` / `deny` /
+`review` with a human-readable reason. It is advisory today — a fast safety check an agent can honor
+— and every call is logged to an audit trail.
+
+**You are the coding agent following this skill.** Run the commands *for* the user in their terminal,
+read the real output back to them, and explain each verdict. The goal: get the user to a working
+Compass integration — first a live decision from the `/v1/verify` API, then (optionally) the guard
+wired into their own agent. Work through the Procedure in order.
+
+## When to Use
+
+- The user asks you to **test, try, set up, or demo Compass**, or asks "does this transfer pass the
+  guard?"
+- The user **points you at `https://compassguard.xyz/skill-onboard.md`**.
+
+**When NOT to use:** building or modifying Compass itself (that's the repo `README.md`), or any task
+unrelated to exercising the hosted `/v1/verify` API or MCP guard.
+
+## Base URL
+
+`https://www.compassguard.xyz` — the apex `compassguard.xyz` 308-redirects here; use the `www` host
+in commands so POSTs don't trip on the redirect.
 
 ## Hard rules — do not violate these
 
 1. **Never invent, guess, or hard-code an API key.** The key is a shared bearer secret. If the user
-   hasn't given you one and hasn't set `COMPASS_HOSTED_API_KEY`, **STOP and ask them for it** (see
-   Step 2). Do not proceed to authenticated calls without a real key.
-2. **Only use recognized tool names** in `/v1/verify` (see Step 3). An unrecognized mutating
-   `toolName` is **denied by default** — a `deny` you see after using e.g. `solana_transfer` is the
-   fail-closed policy working as designed, *not* a bug or a real threat. Don't alarm the user.
+   hasn't given you one and `COMPASS_HOSTED_API_KEY` isn't set, **stop and ask** (Step 2). A made-up
+   key doesn't fake a verdict — it just returns `401`.
+2. **Only use recognized tool names** in `/v1/verify` (Step 3). An unrecognized mutating `toolName`
+   (e.g. `solana_transfer`) is **denied by default** — that `deny` is the fail-closed policy working
+   as designed, not a bug or a real threat. Don't alarm the user.
 3. **A `401` means the key is missing or wrong**, not that the service is down. `/health` needs no
    auth — use it to prove reachability before blaming the network.
 4. **Report real output.** Run each command and show the user the actual JSON. Never fabricate a
-   verdict or claim success you haven't observed.
+   verdict or claim a success you haven't observed.
 
----
+## Procedure
 
-## Step 1 · Prove the service is reachable (no auth)
+### Step 1 · Prove the service is reachable (no auth)
 
 ```sh
 curl -s https://www.compassguard.xyz/health
 ```
 
-Expect: `{"ok":true,"service":"compass-hosted-guard","dependencies":{...}}`. If you get this, the
-service is live. If not, stop and troubleshoot connectivity with the user before going further.
+Expect `{"ok":true,"service":"compass-hosted-guard","dependencies":{...}}`. If you get this, the
+service is live; if not, stop and troubleshoot connectivity with the user first.
 
-## Step 2 · Get the API key from the user
+### Step 2 · Get the API key from the user
 
-`COMPASS_HOSTED_API_KEY` is a **shared bearer secret** — there is no signup endpoint. Ask the user
-which applies:
+`COMPASS_HOSTED_API_KEY` is a **shared bearer secret** — there is no signup endpoint. Ask which
+applies:
 
-- **Testing against the hosted API:** they must get the key from the Compass deploy owner. Ask them
-  to paste it, then set it in the shell you're driving:
+- **Hosted API:** the user gets the key from the Compass deploy owner, then:
   ```sh
   export COMPASS_HOSTED_API_KEY='<the-key-they-gave-you>'
   ```
-- **Testing a local backend they run:** the key is *any string they choose*, set identically on the
-  server and the client:
+- **Local backend they run:** the key is *any string they choose*, set identically on server and
+  client:
   ```sh
   export COMPASS_HOSTED_API_KEY='dev-local-key'
-  npm run hosted:dev          # long-running — start it in the BACKGROUND; guard listens on :3001
+  npm run hosted:dev          # requires Bun (runs `bun hosted/server.ts`); long-running —
+                              # start it in the BACKGROUND; guard listens on :3001
   # then use http://localhost:3001 as the base URL instead of the hosted one
   ```
-  Local dev mode is also the honest way to satisfy a "just show me a verdict, I have no key" request:
-  the throwaway key is only ever sent to `localhost`, never to the hosted endpoint. Do **not** send a
+  Local dev mode is also the honest way to satisfy "just show me a verdict, I have no key": the
+  throwaway key only ever goes to `localhost`, never to the hosted endpoint. Do **not** send a
   made-up key to `https://www.compassguard.xyz` — it will just `401`.
 
-If no key is available, **stop here** and tell the user you need one to continue — do not attempt
-authenticated calls.
+If no key is available, **stop here** and tell the user you need one — do not attempt authenticated
+calls.
 
-## Step 3 · Get the user their first verdict — `POST /v1/verify`
+### Step 3 · Get the user their first verdict — `POST /v1/verify`
 
-This is the payoff. Send an *intended* tool call and read back the decision. No on-chain state or
-signing is involved — the decision runs on `toolName`, `intent`, and `arguments`.
+The payoff. Send an *intended* tool call and read back the decision. No on-chain state or signing is
+involved — the decision runs on `toolName`, `intent`, and `arguments`.
 
-**Recognized `toolName` values** (anything else mutating → denied by default):
-`transfer`, `transfer_sol`, `guarded_transfer`, `swap`, `orca_swap`, `conditional_buy_sol`.
-**`intent.kind`** is `"transfer"` or `"swap"` and selects the policy path.
+Recognized `toolName` values (anything else mutating → denied by default): `transfer`,
+`transfer_sol`, `guarded_transfer`, `swap`, `orca_swap`, `conditional_buy_sol`. `intent.kind` is
+`"transfer"` or `"swap"` and selects the policy path.
 
-**What the three decisions mean — set the user's expectations before they see one.** Compass is
-advisory today, so it never signs; it returns a *recommendation*:
+**What the three decisions mean — set expectations before the user sees one.** Compass is advisory,
+so it never signs; it returns a *recommendation*:
 
 - **`allow`** — within policy; safe to execute.
 - **`review`** — **held for human approval; the agent should not auto-sign it.** This is what a
-  "blocked" *bad transfer* looks like in the advisory tier — an unknown recipient or an over-cap
-  amount returns `review`, not `deny`. If the user asks to "see a transfer get blocked," a `review`
-  verdict *is* that block; say so plainly.
-- **`deny`** — a hard refusal. On this deploy you'll mainly see it from fail-closed cases:
-  an unrecognized `toolName`, a denylisted recipient, or an `authority_change`/`unlimited_delegate`
-  flag. A `deny` from an unrecognized tool name is the policy working as designed — explain it, don't
-  alarm the user, and don't present it as a verdict about the transfer's merits.
+  "blocked" bad transfer looks like in the advisory tier — an unknown recipient or an over-cap amount
+  returns `review`, not `deny`. If the user asks to "see a transfer get blocked," a `review` verdict
+  *is* that block; say so plainly.
+- **`deny`** — a hard refusal, mainly from fail-closed cases: an unrecognized `toolName`, a
+  denylisted recipient, or an `authority_change` / `unlimited_delegate` flag. Explain it; don't
+  present a `deny`-on-unknown-tool as a judgment about the transfer's merits.
 
-**3a — a transfer to an unknown recipient → `review`:**
+**3a — unknown recipient → `review`:**
 
 ```sh
 curl -sX POST https://www.compassguard.xyz/v1/verify \
@@ -98,7 +119,7 @@ curl -sX POST https://www.compassguard.xyz/v1/verify \
   }'
 ```
 
-Expected response:
+Expected:
 
 ```json
 {
@@ -110,30 +131,17 @@ Expected response:
 }
 ```
 
-**3b — the same call to a *known* recipient under the cap → `allow`:** flip `recipientKnown` to
-`true` (keep `amountUsd` at or below the default **$10** approval-free cap).
+**3b — known recipient under the cap → `allow`:** flip `recipientKnown` to `true` (keep `amountUsd`
+at or below the default **$10** approval-free cap) → `decision: "allow"`, reasons
+`["TRANSFER_WITHIN_LIMIT_KNOWN_RECIPIENT"]`. Raising `amountUsd` above the cap flips it back to
+`review` with `TRANSFER_EXCEEDS_LIMIT`.
 
-```sh
-curl -sX POST https://www.compassguard.xyz/v1/verify \
-  -H "Authorization: Bearer $COMPASS_HOSTED_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "toolName": "transfer",
-    "intent": { "kind": "transfer" },
-    "arguments": { "recipient": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM", "amountUsd": 5, "recipientKnown": true }
-  }'
-# → decision: "allow", reasons: ["TRANSFER_WITHIN_LIMIT_KNOWN_RECIPIENT"]
-```
+Keep a `correlationId` if the user wants the optional confirm step (Step 5).
 
-Explain to the user: `decision` is `allow` / `deny` / `review`; `riskLevel` is `low` / `medium` /
-`high`; `reasons` are machine codes and `humanExplanation` is the sentence to show a person. Raising
-`amountUsd` above the cap flips it to `review` with `TRANSFER_EXCEEDS_LIMIT`. **Keep a
-`correlationId`** if the user wants to try the optional confirm step (Step 5).
-
-## Step 4 · (Optional) Wire the guard into the user's agent
+### Step 4 · (Optional) Wire the guard into the user's agent
 
 If the user runs a Solana MCP server through Claude Code and wants Compass to guard it
-automatically, register the proxy. It wraps one downstream MCP server and checks every tool call
+automatically, register the proxy — it wraps one downstream MCP server and checks every tool call
 flowing through it:
 
 ```sh
@@ -147,13 +155,10 @@ claude mcp add compass \
      --downstream-args-json '["@their-downstream/mcp-server"]'
 ```
 
-Replace `@their-downstream/mcp-server` with the user's actual Solana MCP server. Then confirm:
+Replace `@their-downstream/mcp-server` with the user's actual Solana MCP server, then confirm with
+`claude mcp list` (→ `compass ✓`).
 
-```sh
-claude mcp list          # → compass ✓
-```
-
-## Step 5 · (Optional) Confirm the outcome after a tx lands — `POST /v1/verify/confirm`
+### Step 5 · (Optional) Confirm the outcome after a tx lands — `POST /v1/verify/confirm`
 
 If the user executed a transaction they verified, close the loop with the `correlationId` from
 Step 3 and the on-chain signature:
@@ -168,17 +173,44 @@ curl -sX POST https://www.compassguard.xyz/v1/verify/confirm \
 **Set expectations honestly:** the on-chain effect decoder is still landing, so on the current
 hosted deploy a valid confirmed tx returns `{"outcome":"unverified_no_decoder"}` rather than
 `match`/`mismatch`. That is intentional — Compass returns a sentinel instead of fabricating a match.
-Tell the user this is expected today; `POST /v1/verify` (Step 3) is the fully-live piece.
+`POST /v1/verify` (Step 3) is the fully-live piece.
 
----
+## Quick Reference
 
-## You're done when
+| Endpoint | Auth | Purpose |
+|---|---|---|
+| `GET /health` | none | Liveness — `{"ok":true,…}` |
+| `POST /v1/verify` | Bearer | Decision on an intended tool call → `allow`/`deny`/`review` |
+| `POST /v1/verify/confirm` | Bearer | Optional phase-2 outcome check by `correlationId` + `txSignature` |
+
+| Decision | Risk | Means |
+|---|---|---|
+| `allow` | `low` | Within policy — safe to execute |
+| `review` | `medium` | Held for human approval — the advisory "block" |
+| `deny` | `high` | Hard refusal — fail-closed (unknown tool, denylist, authority/delegate flag) |
+
+Recognized `toolName`: `transfer`, `transfer_sol`, `guarded_transfer`, `swap`, `orca_swap`,
+`conditional_buy_sol`.
+
+## Common Mistakes
+
+- **Using `solana_transfer` (or any unlisted name)** and reporting the resulting `deny` as a caught
+  threat. It's fail-closed on an unknown tool. Use a recognized name.
+- **`amountUsd` above the $10 default cap** while trying to demo an `allow` — it returns `review`
+  (`TRANSFER_EXCEEDS_LIMIT`). Keep the amount ≤ 10 for the allow case.
+- **Omitting `recipientKnown`** — the allowlist check can't run and you get `TRANSFER_MISSING_RECIPIENT`
+  instead of the intended `TRANSFER_UNKNOWN_RECIPIENT`. Pass `recipientKnown: true|false` explicitly.
+- **Calling a `review` "not blocked."** In the advisory tier, `review` *is* the block (hold for
+  approval).
+- **Reading a `401` as an outage.** It means the key is missing or wrong; `/health` proves the
+  service is up.
+
+## You're Done When
 
 - `/health` returned `{"ok":true,…}` (Step 1), **and**
 - the user saw at least one real verdict from `/v1/verify` — ideally both a `review` (3a) and an
   `allow` (3b) — with you explaining what drove each decision.
 
-Wiring the MCP guard (Step 4) and confirm (Step 5) are optional next steps, not required to call the
-test a success.
+Wiring the MCP guard (Step 4) and confirm (Step 5) are optional next steps, not required for success.
 
-**More detail:** the human dev quickstart is at `https://compassguard.xyz/quickstart.md`.
+**Human dev quickstart:** `https://compassguard.xyz/quickstart.md`.
