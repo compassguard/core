@@ -66,10 +66,12 @@ service is live; if not, stop and troubleshoot connectivity with the user first.
 `COMPASS_HOSTED_API_KEY` is a **shared bearer secret** — there is no signup endpoint. Ask which
 applies:
 
-- **Hosted API:** the user gets the key from the Compass deploy owner, then:
+- **Hosted API:** the user gets a token by messaging **[@Satoshi0101](https://t.me/Satoshi0101) on
+  Telegram**. Once they have it:
   ```sh
-  export COMPASS_HOSTED_API_KEY='<the-key-they-gave-you>'
+  export COMPASS_HOSTED_API_KEY='<the-token-they-gave-you>'
   ```
+  If they don't have a token yet, point them to @Satoshi0101 on Telegram — do not fabricate one.
 - **Local backend they run:** the key is *any string they choose*, set identically on server and
   client:
   ```sh

@@ -27,8 +27,8 @@ curl https://www.compassguard.xyz/health
 `COMPASS_HOSTED_API_KEY` is a **shared bearer secret**, not a self-serve token — there is no signup
 endpoint yet. Pick your path:
 
-- **Hosted API (`www.compassguard.xyz`):** ask the deploy owner for the key set on the deployment,
-  then `export COMPASS_HOSTED_API_KEY=…`.
+- **Hosted API (`www.compassguard.xyz`):** message **[@Satoshi0101](https://t.me/Satoshi0101) on
+  Telegram** to get a token, then `export COMPASS_HOSTED_API_KEY=…`.
 - **Local backend:** the key is *any string you choose* — set the **same** value on the server and
   the client:
   ```sh
