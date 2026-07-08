@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createHostedApp } from "./app";
 import type { HostedAppDependencies } from "./appContracts";
 import type { EvaluateActionResponse } from "./evaluate/evaluationContracts";
+import { createInMemoryVerdictStore } from "./verdict/verdictStore";
 
 function createDependencies(): HostedAppDependencies {
 	return {
@@ -24,6 +25,9 @@ function createDependencies(): HostedAppDependencies {
 				auditRef: "aud_route_1",
 			} satisfies EvaluateActionResponse),
 		},
+		// Inject an explicit in-memory store so app construction never falls through to the
+		// env-selected factory — tests stay hermetic even when COMPASS_VERDICT_DB_URL is exported.
+		verdictStore: createInMemoryVerdictStore(),
 	};
 }
 

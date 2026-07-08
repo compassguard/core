@@ -9,6 +9,7 @@ import { hostedErrorHandler } from "./http/hostedErrorMiddleware";
 import { createPolicyService } from "./policies/policyService";
 import { createPolicyRoutes } from "./policies/policyRoutes";
 import { createVerdictStoreFromEnv } from "./verdict/verdictStoreFromEnv";
+import type { VerdictStore } from "./verdict/verdictStore";
 import { createVerifyService } from "./verify/verifyService";
 import { createVerifyConfirmService } from "./verify/verifyConfirmService";
 import { createBoundedConfirmedTxFetcher } from "./verify/getConfirmedTx";
@@ -25,7 +26,6 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 		createEvaluationService({
 			writeAudit: auditStore.writeAudit,
 		});
-	const verdictStore = deps.verdictStore ?? createVerdictStoreFromEnv();
 	// #15: verifyService and verifyConfirmService MUST share one verdict store, or /verify and
 	// /verify/confirm see different state. Injecting exactly one service would leave the other on
 	// the fallback store — a split-brain lease. Fail loudly on that inconsistent partial injection.
@@ -34,12 +34,19 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 			"createHostedApp: inject BOTH verifications and confirmations, or neither — they must share a single verdict store.",
 		);
 	}
+	// Build the fallback verdict store lazily and at most once — only if a verify service is not
+	// injected, and only after the guard above so a rejected partial injection has no side effects
+	// (no stray pooler client, no logging). Both fallback services share the SAME instance (#15).
+	let sharedVerdictStore: VerdictStore | undefined = deps.verdictStore;
+	const resolveVerdictStore = (): VerdictStore =>
+		(sharedVerdictStore ??= createVerdictStoreFromEnv());
 	const verifyService =
-		deps.verifications ?? createVerifyService({ verdictStore });
+		deps.verifications ??
+		createVerifyService({ verdictStore: resolveVerdictStore() });
 	const verifyConfirmService =
 		deps.confirmations ??
 		createVerifyConfirmService({
-			verdictStore,
+			verdictStore: resolveVerdictStore(),
 			getConfirmedTx: createBoundedConfirmedTxFetcher(),
 			deriveActualEffect: deriveActualEffectUnavailable,
 		});
