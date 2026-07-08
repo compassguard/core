@@ -1,14 +1,9 @@
 import {
-	HOSTED_DECISIONS,
-	HOSTED_RISK_LEVELS,
 	LOCAL_FINDING_SEVERITIES,
 	isHostedDecision,
 	isHostedRiskLevel,
 	type EvaluateActionAgentContext,
-	type EvaluateActionRequest,
 	type EvaluateActionRequestValidationResult,
-	type HostedDecision,
-	type HostedRiskLevel,
 	type LocalFinding,
 	type LocalFindingSeverity,
 } from "@shared/evaluationContracts";

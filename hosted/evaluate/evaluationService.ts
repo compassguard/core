@@ -26,7 +26,6 @@ import {
 	type EvaluateActionResponse,
 	type EvaluationService,
 	type EvaluationServiceDependencies,
-	type HostedRiskLevel,
 } from "./evaluationContracts";
 
 const AUDIT_DEGRADED_RESPONSE: EvaluateActionResponse = {
