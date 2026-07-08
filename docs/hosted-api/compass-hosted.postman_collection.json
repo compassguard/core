@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Compass MCP Guard — Hosted Backend",
-    "description": "Functional test collection for the hosted evaluation, audit, policy, and health endpoints.\n\nSet the {{baseUrl}} variable to your deployed URL (e.g. http://localhost:3001 for local, or https://solana-hackathon.vercel.app for prod).\nSet the {{apiKey}} variable to your COMPASS_HOSTED_API_KEY.",
+    "description": "Functional test collection for the hosted evaluation, audit, policy, and health endpoints.\n\nSet the {{baseUrl}} variable to your deployed URL (e.g. http://localhost:3001 for local, or https://www.compassguard.xyz for prod).\nSet the {{apiKey}} variable to your COMPASS_HOSTED_API_KEY.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
