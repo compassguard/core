@@ -10,7 +10,6 @@ export type VerifyConfirmOutcome =
 	| "mismatch"
 	| "unconfirmed"
 	| "unknown_correlation"
-	| "pending"
 	| "unverified_no_decoder"
 	| "execution_failed"
 	| "error"

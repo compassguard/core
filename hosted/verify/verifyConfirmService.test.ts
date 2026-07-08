@@ -4,6 +4,7 @@ import type { DeriveActualEffect, IntendedEffect } from "@shared/verdictContract
 import {
 	createInMemoryVerdictStore,
 	type DecidedInput,
+	type VerdictRecord,
 	type VerdictStore,
 } from "../verdict/verdictStore";
 import type { ConfirmedTx } from "./getConfirmedTx";
@@ -64,7 +65,7 @@ describe("createVerifyConfirmService", () => {
 		expect((await store.getByCorrelationId("c1"))?.status).toBe("DECIDED");
 	});
 
-	it("returns unverified_no_decoder (and releases) when no real decoder is injected", async () => {
+	it("returns unverified_no_decoder and leaves the record retryable (DECIDED) when no real decoder is injected", async () => {
 		const store = createInMemoryVerdictStore();
 		await store.putDecided(decided("c1"));
 		const svc = createVerifyConfirmService({
@@ -132,20 +133,6 @@ describe("createVerifyConfirmService", () => {
 		expect(getConfirmedTx).toHaveBeenCalledOnce(); // no second chain hit
 	});
 
-	it("returns pending when another confirm holds the lease", async () => {
-		const store = createInMemoryVerdictStore();
-		await store.putDecided(decided("c1"));
-		await store.claim("c1"); // simulate a concurrent confirm in flight
-		const svc = createVerifyConfirmService({
-			verdictStore: store,
-			getConfirmedTx: gotTx,
-			deriveActualEffect: matchDecoder,
-		});
-
-		const res = await svc.verifyConfirm({ correlationId: "c1", txSignature: "sig" });
-		expect(res.outcome).toBe("pending");
-	});
-
 	it("returns execution_failed and closes CONFIRMED_MISMATCH for a confirmed-but-failed tx (#4)", async () => {
 		const store = createInMemoryVerdictStore();
 		await store.putDecided(decided("c1"));
@@ -164,17 +151,18 @@ describe("createVerifyConfirmService", () => {
 		expect(stored?.txSignature).toBe("sig");
 	});
 
-	it("returns error (never a fabricated mismatch) when an already_closed record is missing (#5)", async () => {
-		// A store whose claim says already_closed but has no record — the exact absence the
-		// old `?? "mismatch"` fabricated a verdict for. outcomeFromRecord fails closed to error.
-		const store: VerdictStore = {
+	it("returns error (never a fabricated verdict) when closeOutcome resolves undefined — a store inconsistency (#5)", async () => {
+		// Leaseless flow: getByCorrelationId returns a DECIDED record, the tx confirms and the
+		// effect matches, but closeOutcome resolves undefined (a store inconsistency).
+		// outcomeFromRecord(undefined) fails closed to `error` rather than fabricating a verdict.
+		// The mock exposes the four methods the leaseless VerdictStore declares (no claim/release).
+		const decidedRecord: VerdictRecord = { ...decided("c1"), status: "DECIDED" };
+		const store = {
 			putDecided: async () => {},
-			getByCorrelationId: async () => undefined,
-			claim: async () => "already_closed",
-			release: async () => {},
+			getByCorrelationId: async () => decidedRecord,
 			closeOutcome: async () => undefined,
 			list: async () => [],
-		};
+		} as unknown as VerdictStore;
 		const svc = createVerifyConfirmService({
 			verdictStore: store,
 			getConfirmedTx: gotTx,
@@ -241,5 +229,52 @@ describe("createVerifyConfirmService", () => {
 		// a DIFFERENT signature for the already-closed correlation → flagged, not a stale match
 		const diffSig = await svc.verifyConfirm({ correlationId: "c1", txSignature: "sigB" });
 		expect(diffSig.outcome).toBe("signature_mismatch");
+	});
+
+	it("under concurrent DIFFERENT-signature confirms, the close-race loser gets signature_mismatch, not the winner's verdict (#14b under concurrency, D12 guard)", async () => {
+		// One store, two services whose decoders would yield DIVERGENT outcomes. Both read the
+		// DECIDED record before either closes, then race on closeOutcome. The atomic
+		// first-writer-wins close binds the record to exactly one signature; the loser's D12
+		// guard sees a winner bound to another tx and returns signature_mismatch — NOT the
+		// winner's outcome, NOT a fabricated verdict.
+		const store = createInMemoryVerdictStore();
+		await store.putDecided(decided("c1"));
+
+		const mismatchDecoder: DeriveActualEffect = () => ({
+			unavailable: false,
+			recipient: "RcpT111",
+			lamports: 25_000_000,
+			extraInstructions: ["SetAuthority"],
+		});
+		const svcMatch = createVerifyConfirmService({
+			verdictStore: store,
+			getConfirmedTx: gotTx,
+			deriveActualEffect: matchDecoder,
+		});
+		const svcMismatch = createVerifyConfirmService({
+			verdictStore: store,
+			getConfirmedTx: gotTx,
+			deriveActualEffect: mismatchDecoder,
+		});
+
+		const [resA, resB] = await Promise.all([
+			svcMatch.verifyConfirm({ correlationId: "c1", txSignature: "sigA" }),
+			svcMismatch.verifyConfirm({ correlationId: "c1", txSignature: "sigB" }),
+		]);
+
+		// Exactly one response is signature_mismatch (the close-race loser).
+		const mismatches = [resA, resB].filter(
+			(r) => r.outcome === "signature_mismatch",
+		);
+		expect(mismatches).toHaveLength(1);
+
+		// The winner is the other caller: it returns ITS OWN computed outcome, and the stored
+		// record carries the winner's signature (never the loser's).
+		const winner =
+			resA.outcome !== "signature_mismatch"
+				? { res: resA, sig: "sigA", expected: "match" as const }
+				: { res: resB, sig: "sigB", expected: "mismatch" as const };
+		expect(winner.res.outcome).toBe(winner.expected);
+		expect((await store.getByCorrelationId("c1"))?.txSignature).toBe(winner.sig);
 	});
 });

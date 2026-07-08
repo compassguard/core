@@ -80,18 +80,6 @@ describe("createPgVerdictStore — durable-specific (cross-instance + schema ens
 		expect((await b.getByCorrelationId("c1"))?.status).toBe("DECIDED");
 	});
 
-	it("cross-instance: exactly one claim wins across two stores over one database", async () => {
-		const db = new PGlite();
-		const sql = executor(db);
-		const opts = { now: () => 1000, leaseTtlMs: 20_000 };
-		const a = createPgVerdictStore({ sql, ...opts });
-		const b = createPgVerdictStore({ sql, ...opts });
-
-		await a.putDecided(decided("c1"));
-		expect(await a.claim("c1")).toBe("claimed");
-		expect(await b.claim("c1")).toBe("in_progress");
-	});
-
 	it("cross-instance: closeOutcome is idempotent and preserves the first signature across stores", async () => {
 		const db = new PGlite();
 		const sql = executor(db);
@@ -99,7 +87,6 @@ describe("createPgVerdictStore — durable-specific (cross-instance + schema ens
 		const b = createPgVerdictStore({ sql });
 
 		await a.putDecided(decided("c1"));
-		await a.claim("c1");
 		const closedA = await a.closeOutcome(
 			"c1",
 			"mismatch",

@@ -21,7 +21,7 @@ describe("createVerdictStoreFromEnv", () => {
 
 	it("treats a blank/whitespace URL as unset (falls back to in-memory)", async () => {
 		const store = createVerdictStoreFromEnv(() => "   ");
-		expect(await store.claim("nope")).toBe("unknown");
+		expect(await store.getByCorrelationId("nope")).toBeUndefined();
 	});
 
 	it("throws an actionable error when COMPASS_VERDICT_DB_URL is malformed", () => {
