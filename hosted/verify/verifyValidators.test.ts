@@ -46,3 +46,53 @@ describe("validateVerifyActionRequest — requestedAt (D11 / #12)", () => {
 		expect(result.request.requestedAt).toBeUndefined();
 	});
 });
+
+describe("validateVerifyActionRequest — attribution (userId / sessionId)", () => {
+	it("rejects a non-string userId instead of silently dropping it", () => {
+		const result = validateVerifyActionRequest({
+			toolName: "transfer_sol",
+			userId: 12345,
+		});
+
+		expect(result.ok).toBe(false);
+		if (result.ok === false) {
+			expect(result.message).toBe("userId must be a non-empty string when provided.");
+		}
+	});
+
+	it("rejects an empty-string sessionId instead of silently dropping it", () => {
+		const result = validateVerifyActionRequest({
+			toolName: "transfer_sol",
+			sessionId: "   ",
+		});
+
+		expect(result.ok).toBe(false);
+		if (result.ok === false) {
+			expect(result.message).toBe(
+				"sessionId must be a non-empty string when provided.",
+			);
+		}
+	});
+
+	it("accepts valid userId / sessionId and preserves them", () => {
+		const result = validateVerifyActionRequest({
+			toolName: "transfer_sol",
+			userId: "user_1",
+			sessionId: "sess_1",
+		});
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.request.userId).toBe("user_1");
+		expect(result.request.sessionId).toBe("sess_1");
+	});
+
+	it("accepts omitted attribution and leaves both undefined", () => {
+		const result = validateVerifyActionRequest({ toolName: "transfer_sol" });
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(result.request.userId).toBeUndefined();
+		expect(result.request.sessionId).toBeUndefined();
+	});
+});

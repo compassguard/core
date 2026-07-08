@@ -45,6 +45,23 @@ export function validateVerifyActionRequest(
 		}
 	}
 
+	// Attribution, when provided, must be a non-empty string. A present-but-malformed value
+	// (e.g. a number from a JS caller) would otherwise be silently coerced to undefined below,
+	// dropping who/which-session at the boundary — the exact silent-drop defect the durable
+	// attribution work exists to fix. Reject it, mirroring the requestedAt handling above.
+	if (value.userId !== undefined && !isNonEmptyString(value.userId)) {
+		return {
+			ok: false,
+			message: "userId must be a non-empty string when provided.",
+		};
+	}
+	if (value.sessionId !== undefined && !isNonEmptyString(value.sessionId)) {
+		return {
+			ok: false,
+			message: "sessionId must be a non-empty string when provided.",
+		};
+	}
+
 	return {
 		ok: true,
 		request: {

@@ -12,10 +12,11 @@ import type {
 } from "./verdictStore";
 
 /**
- * Minimal parameterized-SQL seam (D3). A row is a plain column→value map; jsonb
- * columns arrive already parsed (both committed backings — PGlite in tests, the
- * porsager `postgres` driver in prod — parse jsonb on read). This module imports NO
- * driver package: prod injects a Supabase-pooler executor, tests a PGlite one.
+ * Minimal parameterized-SQL seam (D3). A row is a plain column→value map. jsonb columns are
+ * NOT uniformly parsed across backings — PGlite returns them already parsed, but the porsager
+ * `postgres` driver's .unsafe() returns them as raw JSON strings (verified live against the
+ * Supabase pooler), so rowToRecord normalizes each jsonb column via parseJsonb. This module
+ * imports NO driver package: prod injects a Supabase-pooler executor, tests a PGlite one.
  */
 export type SqlExecutor = (
 	text: string,

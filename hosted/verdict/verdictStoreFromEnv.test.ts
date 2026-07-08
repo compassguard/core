@@ -23,4 +23,12 @@ describe("createVerdictStoreFromEnv", () => {
 		const store = createVerdictStoreFromEnv(() => "   ");
 		expect(await store.claim("nope")).toBe("unknown");
 	});
+
+	it("throws an actionable error when COMPASS_VERDICT_DB_URL is malformed", () => {
+		// A malformed URL makes postgres() throw synchronously; the factory must rethrow with a
+		// message naming the env var rather than surfacing a bare driver TypeError on every route.
+		expect(() => createVerdictStoreFromEnv(() => "not a valid url")).toThrow(
+			/COMPASS_VERDICT_DB_URL is not a valid Postgres connection string/,
+		);
+	});
 });
