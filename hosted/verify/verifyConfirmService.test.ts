@@ -155,8 +155,7 @@ describe("createVerifyConfirmService", () => {
 		// Leaseless flow: getByCorrelationId returns a DECIDED record, the tx confirms and the
 		// effect matches, but closeOutcome resolves undefined (a store inconsistency).
 		// outcomeFromRecord(undefined) fails closed to `error` rather than fabricating a verdict.
-		// The mock exposes only the four methods the leaseless service depends on (no
-		// claim/release); the cast bridges the still-six-method VerdictStore type until U2 shrinks it.
+		// The mock exposes the four methods the leaseless VerdictStore declares (no claim/release).
 		const decidedRecord: VerdictRecord = { ...decided("c1"), status: "DECIDED" };
 		const store = {
 			putDecided: async () => {},
