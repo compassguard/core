@@ -30,7 +30,17 @@ export function createSqlExecutorFromEnv(
 
 	if (!cachedClient || cachedUrl !== url) {
 		try {
-			cachedClient = postgres(url, { prepare: false, max: 1, idle_timeout: 20 });
+			// Supabase's pooler rejects non-SSL connections ("SSL connection is required"), but the
+			// driver defaults ssl to false when the URL omits sslmode (index.js:443). Default to SSL
+			// so operators don't have to remember ?sslmode=require; respect an explicit sslmode/ssl in
+			// the URL (e.g. sslmode=disable for a local non-SSL Postgres) by leaving it to the driver.
+			const urlDeclaresSsl = /[?&](sslmode|ssl)=/i.test(url);
+			cachedClient = postgres(url, {
+				prepare: false,
+				max: 1,
+				idle_timeout: 20,
+				...(urlDeclaresSsl ? {} : { ssl: "require" }),
+			});
 		} catch (error) {
 			// A malformed URL makes postgres() throw synchronously. Rethrow with an actionable
 			// message so a misconfigured deploy fails loudly and diagnosably, instead of a bare
