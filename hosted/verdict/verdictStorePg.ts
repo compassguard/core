@@ -2,7 +2,6 @@ import type { HostedDecision } from "@shared/evaluationContracts";
 import type { Discrepancy, IntendedEffect } from "@shared/verdictContracts";
 
 import type {
-	ClaimResult,
 	ConfirmOutcome,
 	DecidedInput,
 	VerdictRecord,
@@ -37,8 +36,7 @@ const CREATE_TABLE = `CREATE TABLE IF NOT EXISTS verdicts (
 	session_id text,
 	tx_signature text,
 	discrepancies jsonb,
-	confirmed_at text,
-	claimed_at double precision
+	confirmed_at text
 )`;
 
 // Forward-compat migrations for a table created before a column existed (idempotent; a no-op
@@ -59,9 +57,7 @@ export function createPgVerdictStore(
 	deps: PgVerdictStoreDependencies,
 ): VerdictStore {
 	const { sql } = deps;
-	const now = deps.now ?? (() => Date.now());
 	const isoNow = deps.isoNow ?? (() => new Date().toISOString());
-	const leaseTtlMs = deps.leaseTtlMs ?? 20_000;
 
 	// Schema ensure, memoized on SUCCESS only: a failed ensure clears the memo so the
 	// next operation retries (never poisons a warm serverless container). Race-tolerant:
@@ -120,57 +116,23 @@ export function createPgVerdictStore(
 			return rows[0] ? rowToRecord(rows[0]) : undefined;
 		},
 
-		// Atomic compare-and-set in the storage layer: the conditional UPDATE's row lock
-		// serializes concurrent claims so exactly one wins (DECIDED, or a CONFIRMING lease
-		// gone stale, is (re)claimed). No row → classify the loser via a follow-up read.
-		async claim(id: string): Promise<ClaimResult> {
-			const claimed = await run(
-				`UPDATE verdicts SET status = 'CONFIRMING', claimed_at = $2
-				WHERE correlation_id = $1
-					AND (
-						status = 'DECIDED'
-						OR (status = 'CONFIRMING' AND (claimed_at IS NULL OR $2 - claimed_at >= $3))
-					)
-				RETURNING correlation_id`,
-				[id, now(), leaseTtlMs],
-			);
-			if (claimed.length === 1) return "claimed";
-
-			const rows = await sql(`SELECT status FROM verdicts WHERE correlation_id = $1`, [id]);
-			const status = rows[0]?.status as VerdictStatus | undefined;
-			if (status === undefined) return "unknown";
-			if (status === "CONFIRMED_MATCH" || status === "CONFIRMED_MISMATCH") {
-				return "already_closed";
-			}
-			// CONFIRMING (fresh lease held), or DECIDED (a release/put raced between the two
-			// statements) → conservatively in_progress; the caller retries later.
-			return "in_progress";
-		},
-
-		async release(id: string): Promise<void> {
-			await run(
-				`UPDATE verdicts SET status = 'DECIDED', claimed_at = NULL
-				WHERE correlation_id = $1 AND status = 'CONFIRMING'`,
-				[id],
-			);
-		},
-
 		async closeOutcome(
 			id: string,
 			outcome: ConfirmOutcome,
 			discrepancies: Discrepancy[],
 			txSignature?: string,
 		): Promise<VerdictRecord | undefined> {
-			// Conditional close from DECIDED|CONFIRMING only, so an already-closed record is
+			// Conditional close from a non-terminal row only, so an already-closed record is
 			// never re-written (idempotent). tx_signature is COALESCE'd: a caller omitting it
-			// never clobbers an already-set signature (#14a parity).
+			// never clobbers an already-set signature (#14a parity). 'CONFIRMING' is retained in
+			// the predicate ONLY as legacy-row tolerance — a row written CONFIRMING by pre-deletion
+			// code stays closable by its next confirm; new code never writes CONFIRMING.
 			const closed = await run(
 				`UPDATE verdicts SET
 					status = $2,
 					discrepancies = $3::jsonb,
 					confirmed_at = $4,
-					tx_signature = COALESCE($5, tx_signature),
-					claimed_at = NULL
+					tx_signature = COALESCE($5, tx_signature)
 				WHERE correlation_id = $1 AND status IN ('DECIDED', 'CONFIRMING')
 				RETURNING *`,
 				[
@@ -233,6 +195,5 @@ function rowToRecord(row: Record<string, unknown>): VerdictRecord {
 		record.discrepancies = parseJsonb<Discrepancy[]>(row.discrepancies);
 	}
 	if (row.confirmed_at != null) record.confirmedAt = row.confirmed_at as string;
-	if (row.claimed_at != null) record.claimedAt = Number(row.claimed_at);
 	return record;
 }
