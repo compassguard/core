@@ -16,6 +16,8 @@ export type VerdictRecord = {
 	/** Attribution carried from the /verify request, so a verdict is groupable by who/which session. */
 	userId?: string;
 	sessionId?: string;
+	/** Credential-derived caller identity (trustworthy); distinct from self-reported userId. */
+	authenticatedEmail?: string;
 	txSignature?: string;
 	discrepancies?: Discrepancy[];
 	confirmedAt?: string;
@@ -31,6 +33,8 @@ export type DecidedInput = {
 	/** Attribution from the /verify request (optional; omitted when the caller sends neither). */
 	userId?: string;
 	sessionId?: string;
+	/** Credential-derived caller identity (trustworthy); distinct from self-reported userId. */
+	authenticatedEmail?: string;
 };
 
 export type VerdictStore = {

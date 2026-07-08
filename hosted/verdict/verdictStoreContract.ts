@@ -156,5 +156,21 @@ export function describeVerdictStoreContract(name: string, makeStore: MakeStore)
 			expect(record?.userId).toBeUndefined();
 			expect(record?.sessionId).toBeUndefined();
 		});
+
+		it("persists authenticatedEmail and round-trips it", async () => {
+			const store = await makeStore();
+			await store.putDecided({ ...decided("c1"), authenticatedEmail: "alice@example.com" });
+
+			const record = await store.getByCorrelationId("c1");
+			expect(record?.authenticatedEmail).toBe("alice@example.com");
+		});
+
+		it("leaves authenticatedEmail absent when the request carried none", async () => {
+			const store = await makeStore();
+			await store.putDecided(decided("c1"));
+
+			const record = await store.getByCorrelationId("c1");
+			expect(record?.authenticatedEmail).toBeUndefined();
+		});
 	});
 }
