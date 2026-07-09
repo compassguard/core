@@ -13,10 +13,10 @@ Two ways to use it:
 > New to the repo / setting up from source? See the top-level `README.md`. **This** page is the
 > 60-second dev quickstart against the hosted API.
 
-**Base URL:** `https://www.compassguard.xyz` — signup, health, verify, and confirm are all served here.
+**Base URL:** `https://api.compassguard.xyz` — signup, health, verify, and confirm are all served here.
 
 ```sh
-curl https://www.compassguard.xyz/health
+curl https://api.compassguard.xyz/health
 # {"ok":true,"service":"compass-hosted-guard","dependencies":{...}}   (no auth required)
 ```
 
@@ -27,7 +27,7 @@ curl https://www.compassguard.xyz/health
 The fastest path is **self-serve signup** — no auth required, mints an email-scoped API key:
 
 ```sh
-curl -sX POST https://www.compassguard.xyz/signup \
+curl -sX POST https://api.compassguard.xyz/signup \
   -H "Content-Type: application/json" \
   -d '{"email":"you@example.com"}'
 # → {"email":"you@example.com","apiKey":"compass_…"}
@@ -64,7 +64,7 @@ through it. Register it with the Claude Code CLI:
 ```sh
 claude mcp add compass \
   --env COMPASS_HYBRID_GUARD_ENABLED=true \
-  --env COMPASS_HOSTED_API_URL=https://www.compassguard.xyz \
+  --env COMPASS_HOSTED_API_URL=https://api.compassguard.xyz \
   --env COMPASS_HOSTED_API_KEY=$COMPASS_HOSTED_API_KEY \
   -- npx -y @ramadan04/compass-mcp-guard \
      --downstream-name solana-tools \
@@ -89,7 +89,7 @@ Ask for a verdict on a tool call. No decoder or on-chain state needed — the de
 call's `toolName`, declared `intent`, and `arguments`.
 
 ```sh
-curl -sX POST https://www.compassguard.xyz/v1/verify \
+curl -sX POST https://api.compassguard.xyz/v1/verify \
   -H "Authorization: Bearer $COMPASS_HOSTED_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -124,7 +124,7 @@ Keep the `correlationId` — after the tx lands you can confirm the executed eff
 (phase 2, optional):
 
 ```sh
-curl -sX POST https://www.compassguard.xyz/v1/verify/confirm \
+curl -sX POST https://api.compassguard.xyz/v1/verify/confirm \
   -H "Authorization: Bearer $COMPASS_HOSTED_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{ "correlationId": "4a6f1004-…", "txSignature": "<solana-tx-signature>" }'
