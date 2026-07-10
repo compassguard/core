@@ -79,6 +79,24 @@ Grounded in the repo — **hardening + packaging, not building from scratch**:
 
 > **⚠️ MVP honesty gap (from the [judge-unblinding workstream](../judge-unblinding/proposal.md)):** today `evaluationService.derivePolicyContext` builds `flags.authority_change` from the agent's **self-reported args**, not the real tx. So a compromised/injected agent that omits the flag passes the deterministic check. For the `/verify` MVP to be honest, it must derive flags from the **decoded tx (ground truth)** — the **decode half** of un-blinding — even though the **simulate + LLM half** is the post-MVP deep-verify tier. Caps and recipient/allowlist checks *can* run on decoded ground truth today; authority-change detection needs the decode step. See [decision tiers](#the-decision-tiers-mvp--tier-1).
 
+## Build status — 2026-07-10 (what's actually shipped)
+
+*From a code read of `hosted/verify/` + the verdict store + vocab (not a runtime test). The `/verify` MVP is largely built; the one substantive gap is the decode module.*
+
+**Shipped & solid:**
+- **`POST /v1/verify` + `POST /v1/verify/confirm`** — live routes (`verifyRoutes.ts`) behind API-key auth (`hostedAuthMiddleware` on `/v1/*`). `/verify` is deterministic-only (no LLM inline), server-generates the `correlationId`, and writes a best-effort `DECIDED` record.
+- **The confirm state machine** (`verifyConfirmService.ts`) — full and rigorous: `unknown_correlation`; idempotency (`already_closed` → cached outcome); the abuse case (`signature_mismatch` — one correlationId = one execution, can't confirm a *different* tx); a lease for concurrency (`claim`/`release`, covers mid-flight process death); `unconfirmed` (retry); `execution_failed` (on-chain `err` → mismatch); and honest **`unverified_no_decoder`** / fail-closed `error` — never a fabricated verdict.
+- **`compareEffects`** — fail-closed per-dimension (recipient / amount / mint); a declared-but-unconfirmable dimension is a discrepancy (never a silent match); every extra instruction is flagged.
+- **Durable store** — `verdictStorePg.ts` (Postgres) + env switch (`verdictStoreFromEnv.ts`); in-memory is the fallback. ⚠️ **Verify the deploy selects Pg** — on Vercel serverless the in-memory `Map` is wiped between the `/verify` and `/verify/confirm` invocations, so confirm would return `unknown_correlation` for everything.
+- **Decision vocab (4→3) done** — `collapseToHostedDecision`: `ALLOW`/`DENY` map direct, everything else (incl. `REQUIRE_ADDITIONAL_CONTEXT`) → `REVIEW`. No `confirm` decision value → **no collision** with the `/verify/confirm` endpoint. Attribution (`userId`/`sessionId`) validated + stored (not anonymous).
+
+**The one gap — the decode module (pending Fran):**
+- `/verify` still decides on the **declared tool call** (`derivePolicyContext(intent.kind, args)`); `verifyService.ts:87–98` explicitly leaves `lamports`/`tokenAmount`/`mint` **undefined, not fabricated**, seamed for "injection ①" (Fran's `decodeTransaction`). The confirm-side `deriveActualEffect` is a stub returning `unverified_no_decoder`. So **today neither side catches a declared-benign-but-malicious tx** — this is the honest **floor**; it becomes the **target** when decode lands. Handoff detail: agree the `arguments` key that carries the serialized tx.
+
+**Still demo-day / unbuilt:** the Guard Console (Act 3), the approval channel, and the seeded-mismatch demo tx.
+
+**Minor:** auth is a single shared hosted key (not per-dev); confirm isn't scoped to the correlationId's *creator* (mitigated by opaque UUID + `signature_mismatch`).
+
 ## Workstream 0 — the `/verify` endpoint + fast deterministic engine · MVP, critical path
 
 Goal: the already-REAL engine, behind a stateless HTTP API any dev or x402 partner can call, fast enough to sit inline.
