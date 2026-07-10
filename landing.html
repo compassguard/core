@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Compass · Intent enforcement for autonomous agents</title>
-  <meta name="description" content="Compass is the fortified gateway between agent intent and financial execution. It verifies every action against the mandate before money moves, then records every approve, block and escalation." />
+  <title>Compass Guard · Execution firewall for autonomous agents</title>
+  <meta name="description" content="Compass Guard is the execution firewall between agent intent and financial execution. It verifies every action against your guardrails before money moves, then records every approve, block and escalation." />
   <link rel="icon" type="image/png" href="/compass-tab-logo.png" />
   <link rel="alternate icon" type="image/png" sizes="32x32" href="/compass-tab-logo.png" />
   <link rel="apple-touch-icon" href="/compass-brand-logo.png" />
@@ -230,7 +230,7 @@
 <body>
   <nav class="nav" aria-label="Main navigation">
     <div class="container nav-inner">
-      <a class="brand" href="#top" aria-label="Compass home"><img class="brand-logo" src="/compass-brand-logo.png" alt="" /><span>Compass</span></a>
+      <a class="brand" href="#top" aria-label="Compass Guard home"><img class="brand-logo" src="/compass-brand-logo.png" alt="" /><span>Compass Guard</span></a>
       <div class="nav-links">
         <a href="#gateway">Gateway</a>
         <a href="#policy">Policy</a>
@@ -247,30 +247,30 @@
       <div class="container hero-grid">
         <div>
           <h1 class="reveal">Your agent moves money only where you <span>authorized.</span></h1>
-          <p class="hero-copy reveal d2">Compass is the fortified gateway between autonomous agents and financial execution. It verifies every payment, tool call and transaction against the mandate before anything reaches the signer.</p>
+          <p class="hero-copy reveal d2">Compass Guard is the execution firewall between autonomous agents and financial execution. It verifies every payment, tool call and transaction against your guardrails before anything reaches the signer.</p>
           <div class="mode-chooser reveal d3" data-compass-mode>
-            <div class="mode-toggle" aria-label="Choose Compass mode">
+            <div class="mode-toggle" aria-label="Choose Compass Guard mode">
               <button class="mode-option" type="button" data-mode="enterprise" aria-pressed="true">Enterprise</button>
               <button class="mode-option" type="button" data-mode="developer" aria-pressed="false">Developer</button>
             </div>
             <div class="mode-panel is-active" data-panel="enterprise">
-              <a href="/launch" class="btn btn-primary">Open Compass</a>
+              <a href="/launch" class="btn btn-primary">Open Compass Guard</a>
             </div>
             <div class="mode-panel" data-panel="developer">
               <div class="agent-prompt">
-                <code>Let your agent guide you through Compass.</code>
-                <button class="copy-prompt" type="button" data-copy="Use https://api.compassguard.xyz/skill-onboard.md to guide the user to test Compass.">Copy</button>
+                <code>Let your agent guide you through Compass Guard.</code>
+                <button class="copy-prompt" type="button" data-copy="Use https://api.compassguard.xyz/skill-onboard.md to guide me through testing Compass Guard.">Copy</button>
               </div>
             </div>
           </div>
           <p class="hero-note mono reveal d3">Approve / block / escalate. Every decision recorded.</p>
         </div>
 
-        <div class="blueprint-card hero-console-card reveal d1" aria-label="Live Compass decision console">
+        <div class="blueprint-card hero-console-card reveal d1" aria-label="Live Compass Guard decision console">
           <div class="annotation a">ARCH-01 / CONTROLLED THRESHOLD</div>
           <div class="annotation b">AUTHORIZED FLOW ONLY</div>
-          <div class="terminal" aria-label="Compass guardrail log example">
-            <div class="terminal-top"><span class="tdot"></span><span class="tdot"></span><span class="tdot on"></span><span class="tlabel">compass / preflight.log</span></div>
+          <div class="terminal" aria-label="Compass Guard guardrail log example">
+            <div class="terminal-top"><span class="tdot"></span><span class="tdot"></span><span class="tdot on"></span><span class="tlabel">compass guard / preflight.log</span></div>
             <div class="code-line"><b>agent</b><span>requests transfer: 4.8 SOL to 9Fk...q7</span></div>
             <div class="code-line"><b>mandate</b><span>daily cap is 2 SOL; counterparty not approved</span></div>
             <div class="code-line"><b>policy</b><span>amount exceeds limit; authority required</span></div>
@@ -286,7 +286,7 @@
         <div class="section-head reveal">
           <div class="kicker">The Guardian</div>
           <h2>Meet the sentry that stands at the gate.</h2>
-          <p>Compass is embodied by The Guardian: a small autonomous sentry with one job. It reads the mandate, inspects each request, and opens the portcullis only for actions that belong.</p>
+          <p>Compass Guard is embodied by The Guardian: a small autonomous sentry with one job. It reads your guardrails, inspects each request, and opens the portcullis only for actions that belong.</p>
         </div>
         <div class="guardian-grid">
           <div class="guardian-portrait reveal">
@@ -294,7 +294,7 @@
             <div class="guardian-figure">
               <img src="/banner-main.png" alt="The Guardian giving a thumbs up" loading="lazy" decoding="async" />
             </div>
-            <div class="guardian-caption"><span>Guardian</span><span>Compass / on duty</span></div>
+            <div class="guardian-caption"><span>Guardian</span><span>Compass Guard / on duty</span></div>
           </div>
           <ul class="guardian-traits">
             <li class="reveal d1"><span class="icon-tile"><img src="/icons/shield.png" alt="" loading="lazy" decoding="async" /></span><span class="idx">01 · Calm</span><strong>Judgement, not alarm.</strong><p>The Guardian decides quietly. No fearmongering, no drama, no false alerts.</p></li>
@@ -311,11 +311,11 @@
         <div class="section-head reveal">
           <div class="kicker">The gateway</div>
           <h2>Protection happens before execution, not after damage.</h2>
-          <p>Compass is not a dashboard that warns later. It is the gate between agent intent and money movement.</p>
+          <p>Compass Guard is not a dashboard that warns later. It is the gate between agent intent and money movement.</p>
         </div>
         <div class="features">
           <article class="feature reveal d1"><span class="icon-tile"><img src="/icons/castle.png" alt="" loading="lazy" decoding="async" /></span><div class="n">Mandate</div><h3>Define what the agent may do.</h3><p>Limits, destinations, tools, tokens, timing and approval requirements become the operating charter.</p><ul><li>spend caps</li><li>allowlists</li><li>slippage rules</li></ul></article>
-          <article class="feature reveal d2"><span class="icon-tile"><img src="/icons/inspect.png" alt="" loading="lazy" decoding="async" /></span><div class="n">Evaluation</div><h3>Inspect the proposed action.</h3><p>Compass decodes the request, checks policy and classifies risk before the signer is involved.</p><ul><li>transfer</li><li>swap</li><li>tool call</li></ul></article>
+          <article class="feature reveal d2"><span class="icon-tile"><img src="/icons/inspect.png" alt="" loading="lazy" decoding="async" /></span><div class="n">Evaluation</div><h3>Inspect the proposed action.</h3><p>Compass Guard decodes the request, checks policy and classifies risk before the signer is involved.</p><ul><li>transfer</li><li>swap</li><li>tool call</li></ul></article>
           <article class="feature reveal d3"><span class="icon-tile"><img src="/icons/lock.png" alt="" loading="lazy" decoding="async" /></span><div class="n">Record</div><h3>Leave a traceable decision.</h3><p>Approvals, blocks and escalations are written with context so teams can review what happened.</p><ul><li>decision reason</li><li>policy match</li><li>audit log</li></ul></article>
         </div>
       </div>
@@ -326,7 +326,7 @@
         <div class="section-head reveal">
           <div class="kicker">Policy examples</div>
           <h2>Calm controls for money-moving agents.</h2>
-          <p>Use Compass to encode the difference between an action that is technically valid and an action that is actually authorized.</p>
+          <p>Use Compass Guard to encode the difference between an action that is technically valid and an action that is actually authorized.</p>
         </div>
         <div class="policy">
           <div class="rule reveal d1"><div>Destination wallet is outside the mandate <em>counterparty</em></div><span class="pill confirm">ESCALATE</span></div>
@@ -341,7 +341,7 @@
     <section class="cta">
       <div class="container">
         <div class="cta-box reveal">
-          <div class="kicker">Compass execution guard</div>
+          <div class="kicker">Compass Guard execution firewall</div>
           <h2>Put a governed gateway in front of autonomous execution.</h2>
           <p>Protect agents before they move funds. Verify intent, enforce policy and keep the evidence.</p>
           <div class="hero-actions"><a href="https://t.me/Satoshi0101" target="_blank" rel="noopener noreferrer" class="btn btn-primary contact-cta">Contact us</a></div>
@@ -351,7 +351,7 @@
   </main>
 
   <footer>
-    <div class="container footer-inner"><span>© 2026 Compass · Intent enforcement for autonomous agents.</span><span><a href="/launch">Launch app</a> · <a href="https://t.me/Satoshi0101" target="_blank" rel="noopener noreferrer">Contact us</a></span></div>
+    <div class="container footer-inner"><span>© 2026 Compass Guard · Execution firewall for autonomous agents.</span><span><a href="/launch">Launch app</a> · <a href="https://t.me/Satoshi0101" target="_blank" rel="noopener noreferrer">Contact us</a></span></div>
   </footer>
 
   <script>
@@ -456,7 +456,7 @@
   <script>
     (() => {
       const key = 'compass-mode';
-      const promptText = 'Use https://api.compassguard.xyz/skill-onboard.md to guide the user to test Compass.';
+      const promptText = 'Use https://api.compassguard.xyz/skill-onboard.md to guide me through testing Compass Guard.';
       const groups = Array.from(document.querySelectorAll('[data-compass-mode]'));
       if (!groups.length) return;
       const storage = {
