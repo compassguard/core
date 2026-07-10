@@ -34,8 +34,7 @@ unrelated to exercising the hosted `/v1/verify` API or MCP guard.
 
 ## Base URL
 
-`https://api.compassguard.xyz` — the apex `compassguard.xyz` 308-redirects here; use the `api` host
-in commands so POSTs don't trip on the redirect. `/signup` and `/health` are public; everything
+`https://compassguard.xyz` — `/signup` and `/health` are public; everything
 under `/v1/*` needs a bearer token.
 
 ## Hard rules — do not violate these
@@ -56,7 +55,7 @@ under `/v1/*` needs a bearer token.
 ### Step 1 · Prove the service is reachable (no auth)
 
 ```sh
-curl -s https://api.compassguard.xyz/health
+curl -s https://compassguard.xyz/health
 ```
 
 Expect `{"ok":true,"service":"compass-hosted-guard","dependencies":{...}}`. If you get this, the
@@ -68,7 +67,7 @@ service is live; if not, stop and troubleshoot connectivity with the user first.
 email-scoped API key for the user. Confirm the email with them first, then:
 
 ```sh
-curl -sX POST https://api.compassguard.xyz/signup \
+curl -sX POST https://compassguard.xyz/signup \
   -H "Content-Type: application/json" \
   -d '{"email":"<their-email>"}'
 # → {"email":"<their-email>","apiKey":"compass_…"}
@@ -121,7 +120,7 @@ so it never signs; it returns a *recommendation*:
 **3a — unknown recipient → `review`:**
 
 ```sh
-curl -sX POST https://api.compassguard.xyz/v1/verify \
+curl -sX POST https://compassguard.xyz/v1/verify \
   -H "Authorization: Bearer $COMPASS_HOSTED_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -159,7 +158,7 @@ flowing through it:
 ```sh
 claude mcp add compass \
   --env COMPASS_HYBRID_GUARD_ENABLED=true \
-  --env COMPASS_HOSTED_API_URL=https://api.compassguard.xyz \
+  --env COMPASS_HOSTED_API_URL=https://compassguard.xyz \
   --env COMPASS_HOSTED_API_KEY=$COMPASS_HOSTED_API_KEY \
   -- npx -y @ramadan04/compass-mcp-guard \
      --downstream-name solana-tools \
@@ -176,7 +175,7 @@ If the user executed a transaction they verified, close the loop with the `corre
 Step 3 and the on-chain signature:
 
 ```sh
-curl -sX POST https://api.compassguard.xyz/v1/verify/confirm \
+curl -sX POST https://compassguard.xyz/v1/verify/confirm \
   -H "Authorization: Bearer $COMPASS_HOSTED_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{ "correlationId": "<from-step-3>", "txSignature": "<solana-tx-signature>" }'
