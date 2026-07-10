@@ -3,592 +3,240 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Compass · The execution firewall for Solana AI agents</title>
-  <meta name="description" content="Compass sits between AI agents, tools and wallets to decode, simulate, approve and audit critical actions before they can be signed." />
-  <link rel="icon" type="image/png" sizes="32x32" href="/compass-icon-32.png" />
-  <link rel="icon" type="image/png" sizes="256x256" href="/compass-icon.png" />
-  <link rel="apple-touch-icon" href="/compass-icon.png" />
+  <title>Compass · Intent enforcement for autonomous agents</title>
+  <meta name="description" content="Compass is the fortified gateway between agent intent and financial execution. It verifies every action against the mandate before money moves, then records every approve, block and escalation." />
+  <link rel="icon" type="image/png" href="/compass-tab-logo.png" />
+  <link rel="alternate icon" type="image/png" sizes="32x32" href="/compass-tab-logo.png" />
+  <link rel="apple-touch-icon" href="/compass-brand-logo.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     * { margin: 0; }
-
-    /* ── Palette: warm light + ink + two brand accents from the mark ── */
     :root {
-      --bg:          #ffffff;
-      --bg-2:        #ffffff;
-      --ink:         #101218;
-      --ink-soft:    #4d5566;
-      --ink-muted:   #7d8492;
-      --line:        rgba(16, 18, 24, .10);
-      --line-strong: rgba(16, 18, 24, .16);
-      --cyan:        #00a98f;          /* top of the compass needle */
-      --cyan-soft:   rgba(0, 169, 143, .12);
-      --violet:      #7042e8;          /* bottom of the compass needle */
-      --violet-soft: rgba(112, 66, 232, .13);
-      --grad:        linear-gradient(120deg, #00a98f 0%, #138adf 45%, #7042e8 100%);
-      --radius:      20px;
-      --shadow:      0 24px 70px rgba(34, 39, 56, .14);
+      --fortress-900: #0D1F17;
+      --fortress-800: #12382E;
+      --compass-600: #0EA37A;
+      --compass-400: #5FD3BC;
+      --stone-200: #DBD2C3;
+      --stone-100: #F4F0E6;
+      --bronze-500: #B08A4E;
+      --steel-500: #6B7280;
+      --blocked: #B0443E;
+      --ink: #14231D;
+      --line: rgba(13, 31, 23, .16);
+      --line-soft: rgba(13, 31, 23, .09);
+      --radius: 18px;
     }
-
-    html { scroll-behavior: smooth; background: var(--bg); }
+    html { scroll-behavior: smooth; background: var(--stone-100); }
     body {
       min-height: 100vh;
       color: var(--ink);
-      font-family: Archivo, ui-sans-serif, system-ui, sans-serif;
-      background: var(--bg);
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      background:
+        linear-gradient(rgba(13, 31, 23, .045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(13, 31, 23, .045) 1px, transparent 1px),
+        radial-gradient(circle at 82% 5%, rgba(14, 163, 122, .18), transparent 32rem),
+        radial-gradient(circle at 6% 24%, rgba(176, 138, 78, .18), transparent 28rem),
+        var(--stone-100);
+      background-size: 42px 42px, 42px 42px, auto, auto, auto;
       -webkit-font-smoothing: antialiased;
-      line-height: 1.5;
-      letter-spacing: -.005em;
+      line-height: 1.55;
       overflow-x: hidden;
     }
-    /* Edge-tinted wash: brand color at the borders, white in the center */
     body::before {
       content: "";
       position: fixed;
       inset: 0;
       pointer-events: none;
-      background:
-        radial-gradient(125% 100% at 50% 50%, #ffffff 30%, rgba(255,255,255,0) 74%),
-        radial-gradient(circle at 0% 0%,    rgba(0, 169, 143, .28), transparent 56%),
-        radial-gradient(circle at 100% 0%,  rgba(19, 138, 223, .23), transparent 56%),
-        radial-gradient(circle at 100% 100%, rgba(112, 66, 232, .28), transparent 56%),
-        radial-gradient(circle at 0% 100%,  rgba(112, 66, 232, .18), transparent 56%),
-        #ffffff;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='.22'/%3E%3C/svg%3E");
+      opacity: .045;
       z-index: 0;
     }
-    /* Tiny grain */
-    body::after {
-      content: "";
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      opacity: .028;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
-      z-index: 0;
-    }
-
     a { color: inherit; text-decoration: none; }
-    img { max-width: 100%; display: block; }
-    .container { width: min(1080px, calc(100% - 40px)); margin: 0 auto; position: relative; z-index: 1; }
-    .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
-
-    /* ── Nav ── */
-    .nav {
-      position: static;
-      z-index: 30;
-      border-bottom: 0;
-      background: transparent;
-    }
-    .nav-inner { height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 22px; }
-    .brand { display: inline-flex; align-items: center; gap: 12px; height: 100%; transition: filter .25s ease; }
-    .brand-mark {
-      display: block;
-      width: 48px;
-      height: 48px;
-      filter: drop-shadow(0 8px 18px rgba(112, 66, 232, .18));
-      transition: transform .35s ease, filter .25s ease;
-    }
-    .brand-word {
-      font-family: Archivo, ui-sans-serif, system-ui, sans-serif;
-      font-size: 22px;
-      font-weight: 600;
-      letter-spacing: -.02em;
-      color: var(--ink);
-      transition: color .25s ease;
-    }
-    .brand:hover .brand-mark { transform: rotate(-6deg) scale(1.06); filter: drop-shadow(0 10px 24px rgba(0, 169, 143, .24)); }
-    .brand:hover .brand-word {
-      background: var(--grad);
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
-    }
-    .nav-links { display: flex; align-items: center; gap: 26px; color: var(--ink-soft); font-size: 13.5px; font-weight: 500; }
-    .nav-links a:not(.nav-cta) { position: relative; padding: 4px 0; transition: color .2s; }
-    .nav-links a:not(.nav-cta):hover { color: var(--ink); }
-
-    .btn, .nav-cta {
-      display: inline-flex; align-items: center; justify-content: center;
-      gap: 8px;
-      height: 38px;
-      padding: 0 16px;
-      border-radius: 999px;
-      font-size: 13.5px;
-      font-weight: 600;
-      letter-spacing: -.005em;
-      transition: transform .2s ease, background .2s ease, border-color .2s ease, color .2s ease;
-    }
-    .btn-primary, .nav-cta {
-      position: relative;
-      color: white;
-      background: var(--ink);
-      isolation: isolate;
-      overflow: hidden;
-    }
-    .btn-primary::before, .nav-cta::before {
-      content: "";
-      position: absolute; inset: 0;
-      background: var(--grad);
-      opacity: 0;
-      transition: opacity .25s ease;
-      z-index: -1;
-    }
-    .btn-primary:hover, .nav-cta:hover { color: white; transform: translateY(-1px); box-shadow: 0 10px 24px rgba(112, 66, 232, .18); }
-    .btn-primary:hover::before, .nav-cta:hover::before { opacity: 1; }
-    .btn-ghost {
-      color: var(--ink-soft);
-      background: transparent;
-      border: 1px solid var(--line-strong);
-    }
-    .btn-ghost:hover { color: var(--ink); border-color: rgba(112, 66, 232, .34); background: rgba(255, 255, 255, .42); }
-
-    /* ── Reveal-on-scroll ── */
-    .reveal { opacity: 0; transform: translateY(16px); transition: opacity .8s cubic-bezier(.2,.7,.2,1), transform .8s cubic-bezier(.2,.7,.2,1); }
-    .reveal.in { opacity: 1; transform: none; }
-    .reveal.d1 { transition-delay: .06s; }
-    .reveal.d2 { transition-delay: .12s; }
-    .reveal.d3 { transition-delay: .18s; }
-    .reveal.d4 { transition-delay: .24s; }
-    .reveal.d5 { transition-delay: .30s; }
-    @media (prefers-reduced-motion: reduce) {
-      .reveal { opacity: 1; transform: none; transition: none; }
-      *, *::before, *::after { animation: none !important; }
-    }
-
-    /* ── Hero ── */
-    .hero { padding: 96px 0 72px; }
-    .hero-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(360px, .92fr);
-      align-items: center;
-      gap: 64px;
-    }
-    .eyebrow {
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 5px 11px;
-      border: 1px solid var(--line-strong);
-      border-radius: 999px;
-      color: var(--ink-soft);
-      background: linear-gradient(180deg, rgba(112,66,232,.07), rgba(255,255,255,.52));
-      font-family: "JetBrains Mono", ui-monospace, monospace;
-      font-size: 11px; font-weight: 600;
-      letter-spacing: .04em;
-      text-transform: uppercase;
-    }
-    .dot-cyan {
-      width: 6px; height: 6px; border-radius: 50%;
-      background: var(--cyan);
-      box-shadow: 0 0 0 0 rgba(0, 169, 143, .38);
-      animation: pulse 2.2s ease-out infinite;
-    }
-    h1 {
-      margin-top: 22px;
-      max-width: 580px;
-      font-size: clamp(34px, 4.2vw, 52px);
-      line-height: 1.04;
-      letter-spacing: -.035em;
-      font-weight: 600;
-    }
-    h1 em { font-style: normal; color: var(--ink-soft); }
-    h1 .accent {
-      background: var(--grad);
-      background-size: 220% 100%;
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
-      animation: shine 8s ease-in-out infinite;
-    }
-    .hero-copy {
-      margin-top: 22px;
-      max-width: 520px;
-      color: var(--ink-soft);
-      font-size: 16px;
-      line-height: 1.55;
-    }
-    .hero-actions { margin-top: 32px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-    .hero-note { margin-top: 22px; color: var(--ink-muted); font-size: 12px; }
-
-    /* Hero mascot (no frame, transparent PNG floats over the gradient) */
-    .hero-mascot {
-      position: relative;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 420px;
-    }
-    .hero-mascot::before {
-      content: "";
-      position: absolute;
-      left: 50%; top: 58%;
-      width: 72%;
-      aspect-ratio: 1 / 1;
-      transform: translate(-50%, -50%);
-      background: radial-gradient(circle, rgba(112, 66, 232, .28), transparent 62%);
-      filter: blur(20px);
-      z-index: 0;
-      pointer-events: none;
-    }
-    .hero-mascot::after {
-      content: "";
-      position: absolute;
-      left: 50%; bottom: 6%;
-      transform: translateX(-50%);
-      width: 58%; height: 22px;
-      background: radial-gradient(ellipse at center, rgba(16, 18, 24, .18), transparent 70%);
-      filter: blur(10px);
-      z-index: 0;
-      pointer-events: none;
-    }
-    .hero-mascot img {
-      position: relative;
-      width: min(100%, 460px);
-      filter: drop-shadow(0 22px 32px rgba(112, 66, 232, .28)) drop-shadow(0 6px 12px rgba(0, 169, 143, .18));
-      animation: needleFloat 6s ease-in-out infinite;
-      transform-origin: 60% 90%;
-      z-index: 1;
-    }
-
-    /* ── Strip ── */
-    .strip {
-      margin-top: 80px;
-      padding-top: 32px;
-      border-top: 1px solid var(--line);
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 32px;
-    }
-    .stat .k {
-      font-family: "JetBrains Mono", monospace; font-size: 11px;
-      letter-spacing: .12em; text-transform: uppercase;
-      color: var(--cyan);
-    }
-    .stat:nth-child(even) .k { color: var(--violet); }
-    .stat .v { margin-top: 8px; font-size: 16px; color: var(--ink); letter-spacing: -.015em; }
-
-    /* ── Sections ── */
-    section { padding: 112px 0; position: relative; z-index: 1; }
-    .section-head { max-width: 720px; margin-bottom: 56px; }
-    .kicker { font-family: "JetBrains Mono", monospace; font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-muted); }
-    h2 { margin-top: 14px; font-size: clamp(28px, 3vw, 38px); line-height: 1.1; letter-spacing: -.025em; font-weight: 600; max-width: 620px; }
-    .section-head p { margin-top: 16px; color: var(--ink-soft); font-size: 16px; max-width: 560px; }
-
-    /* ── Feature list (3 columns, minimal) ── */
-    .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border-top: 1px solid var(--line); }
-    .feature {
-      padding: 32px 28px 36px;
-      border-right: 1px solid var(--line);
-      border-bottom: 1px solid var(--line);
-      transition: background .25s ease;
-    }
-    .feature:last-child { border-right: 0; }
-    .feature:hover { background: rgba(16,18,24,.025); }
-    .feature .n { font-family: "JetBrains Mono", monospace; font-size: 11px; letter-spacing: .14em; }
-    .feature:nth-child(1) .n { color: var(--cyan); }
-    .feature:nth-child(2) .n { color: var(--violet); }
-    .feature:nth-child(3) .n { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
-    .feature:hover { background: linear-gradient(180deg, rgba(112, 66, 232, .055), rgba(255,255,255,.35)); }
-    .feature h3 { margin-top: 28px; font-size: 18px; line-height: 1.25; letter-spacing: -.015em; font-weight: 600; color: var(--ink); }
-    .feature p { margin-top: 10px; color: var(--ink-soft); font-size: 14.5px; line-height: 1.55; }
-    .feature ul { margin: 18px 0 0; padding: 0; list-style: none; }
-    .feature li { padding: 8px 0; border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-soft); font-family: "JetBrains Mono", monospace; letter-spacing: .02em; }
-
-    /* ── Flow ── */
-    .flow { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: stretch; }
-    .terminal {
-      position: relative;
-      border: 1px solid var(--line-strong);
-      border-radius: var(--radius);
-      padding: 22px;
-      background: var(--bg-2);
-      overflow: hidden;
-    }
-    .terminal-top { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
-    .tdot { width: 8px; height: 8px; border-radius: 50%; background: rgba(16,18,24,.18); }
-    .tdot.on { background: var(--cyan); box-shadow: 0 0 12px rgba(0, 169, 143, .32); }
-    .tlabel { margin-left: auto; font-family: "JetBrains Mono", monospace; font-size: 10.5px; color: var(--ink-muted); letter-spacing: .12em; text-transform: uppercase; }
-    .code-line {
-      display: flex; gap: 14px; padding: 10px 0;
-      color: var(--ink-soft);
-      font-family: "JetBrains Mono", ui-monospace, monospace;
-      font-size: 12.5px;
-      opacity: 0; transform: translateY(6px);
-    }
-    .code-line b { color: var(--cyan); min-width: 70px; font-weight: 600; }
-    .code-line .ok { color: var(--cyan); }
-    .code-line .info { color: var(--ink); }
-    .code-line .verdict {
-      color: white;
-      padding: 2px 10px;
-      border-radius: 999px;
-      background: var(--grad);
-      font-weight: 600;
-      box-shadow: 0 8px 20px rgba(112, 66, 232, .22);
-    }
-    .terminal.in .code-line { animation: lineIn .5s cubic-bezier(.2,.7,.2,1) forwards; }
-    .terminal.in .code-line:nth-child(2) { animation-delay: .15s; }
-    .terminal.in .code-line:nth-child(3) { animation-delay: .35s; }
-    .terminal.in .code-line:nth-child(4) { animation-delay: .55s; }
-    .terminal.in .code-line:nth-child(5) { animation-delay: .75s; }
-    .terminal.in .code-line:nth-child(6) { animation-delay: .95s; }
-    .caret { display: inline-block; width: 7px; height: 14px; background: var(--cyan); margin-left: 4px; vertical-align: -2px; animation: blink 1s steps(2) infinite; }
-
-    .steps { display: grid; gap: 0; counter-reset: step; }
-    .step {
-      position: relative;
-      padding: 22px 0 22px 56px;
-      border-bottom: 1px solid var(--line);
-      transition: padding-left .25s ease;
-    }
+    .container { width: min(1120px, calc(100% - 40px)); margin: 0 auto; position: relative; z-index: 1; }
+    .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+    .nav { position: sticky; top: 0; z-index: 20; border-bottom: 1px solid var(--line-soft); background: rgba(244, 240, 230, .74); backdrop-filter: blur(14px); transition: box-shadow .35s ease, background .35s ease, border-color .35s ease; }
+    .nav.scrolled { box-shadow: 0 8px 24px rgba(13, 31, 23, .08); background: rgba(244, 240, 230, .92); border-bottom-color: rgba(13, 31, 23, .1); }
+    .nav-inner { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+    .brand { display: inline-flex; align-items: center; gap: 12px; font-family: Sora, sans-serif; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+    .brand-logo { width: 72px; height: 72px; display: block; object-fit: contain; }
+    .gate-mark { width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; color: var(--fortress-900); }
+    .gate-mark svg { width: 100%; height: 100%; display: block; }
+    .gate-mark svg path.gate-body { fill: currentColor; }
+    .gate-mark svg .gate-bars { fill: var(--stone-100); }
+    .nav-links { display: flex; align-items: center; gap: 24px; color: var(--steel-500); font-size: 13px; font-weight: 600; }
+    .nav-links a:hover { color: var(--fortress-900); }
+    .btn, .nav-cta { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; padding: 0 18px; border-radius: 999px; border: 1px solid var(--line); font-weight: 700; font-size: 13px; position: relative; overflow: hidden; transition: transform .32s cubic-bezier(.16, 1, .3, 1), background .3s ease, color .3s ease, border-color .3s ease, box-shadow .3s ease; }
+    .btn::after { content: ""; position: absolute; inset: 0; background: linear-gradient(120deg, transparent 25%, rgba(255, 255, 255, .28) 50%, transparent 75%); transform: translateX(-120%); transition: transform .55s ease; pointer-events: none; }
+    .btn:hover, .nav-cta:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(13, 31, 23, .18); }
+    .btn:hover::after { transform: translateX(120%); }
+    .btn-primary, .nav-cta { color: var(--stone-100); background: var(--fortress-900); border-color: var(--fortress-900); }
+    .btn-primary:hover, .nav-cta:hover { background: var(--compass-600); border-color: var(--compass-600); }
+    .nav-contact { padding: 0 16px; border: 1px solid var(--bronze-500); border-radius: 999px; color: var(--fortress-900); min-height: 38px; display: inline-flex; align-items: center; }
+    .nav-contact:hover { background: rgba(176, 138, 78, .14); color: var(--fortress-900); }
+    .btn-ghost { color: var(--fortress-900); background: rgba(244, 240, 230, .68); }
+    .btn-ghost:hover { border-color: var(--bronze-500); background: rgba(219, 210, 195, .6); }
+    .hero { padding: 92px 0 78px; }
+    .hero-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, .86fr); align-items: center; gap: 64px; }
+    .eyebrow, .kicker { font-family: "IBM Plex Mono", monospace; color: var(--compass-600); font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+    h1, h2, h3 { font-family: Sora, Inter, sans-serif; letter-spacing: -.035em; }
+    h1 { margin-top: 18px; max-width: 690px; font-size: clamp(40px, 6.4vw, 82px); line-height: .95; color: var(--fortress-900); }
+    h1 span { color: var(--compass-600); }
+    .hero-copy { margin-top: 24px; max-width: 610px; color: rgba(20, 35, 29, .76); font-size: clamp(16px, 1.5vw, 19px); }
+    .hero-actions { margin-top: 34px; display: flex; flex-wrap: wrap; gap: 12px; }
+    .mode-chooser { margin-top: 34px; display: grid; gap: 14px; max-width: 460px; }
+    .mode-toggle { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 999px; background: rgba(244, 240, 230, .68); overflow: hidden; }
+    .mode-toggle::before { content: ""; position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc((100% - 12px) / 2); border-radius: 999px; background: var(--fortress-900); box-shadow: 0 10px 24px rgba(13, 31, 23, .16); transition: transform .28s cubic-bezier(.16, 1, .3, 1), background .28s ease; }
+    html[data-compass-mode="developer"] .mode-toggle::before { transform: translateX(calc(100% + 4px)); }
+    .mode-option { position: relative; z-index: 1; min-height: 42px; border: 0; border-radius: 999px; background: transparent; color: var(--fortress-900); cursor: pointer; font: 700 13px Inter, ui-sans-serif, system-ui, sans-serif; transition: color .28s ease; }
+    .mode-option[aria-pressed="true"] { color: var(--stone-100); }
+    .mode-panel { display: none; align-items: center; justify-content: center; gap: 12px; }
+    .mode-panel.is-active { display: flex; }
+    .agent-prompt { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px; border: 1px solid rgba(14, 163, 122, .24); border-radius: 16px; background: rgba(14, 163, 122, .08); }
+    .agent-prompt code { flex: 1; color: var(--fortress-900); font: 700 12px/1.45 "IBM Plex Mono", ui-monospace, monospace; }
+    .copy-prompt { min-height: 34px; padding: 0 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--stone-100); color: var(--fortress-900); cursor: pointer; font: 700 11px "IBM Plex Mono", ui-monospace, monospace; transition: background .25s ease, border-color .25s ease, color .25s ease; }
+    .copy-prompt:hover { border-color: var(--bronze-500); background: rgba(219, 210, 195, .7); }
+    .hero-note { margin-top: 20px; color: var(--steel-500); font-size: 12px; }
+    .blueprint-card { position: relative; min-height: 500px; border: 1px solid rgba(219, 210, 195, .22); border-radius: 28px; background: radial-gradient(circle at 55% 20%, rgba(95, 211, 188, .22), transparent 24rem), linear-gradient(145deg, var(--fortress-800), var(--fortress-900)); box-shadow: 0 32px 90px rgba(13, 31, 23, .26); overflow: hidden; }
+    .blueprint-card::before { content: ""; position: absolute; inset: 0; background: linear-gradient(rgba(219, 210, 195, .075) 1px, transparent 1px), linear-gradient(90deg, rgba(219, 210, 195, .075) 1px, transparent 1px); background-size: 26px 26px; mask-image: linear-gradient(180deg, black, transparent 88%); }
+    .hero-console-card { display: flex; align-items: center; padding: 56px 28px 32px; }
+    .hero-console-card .terminal { width: 100%; position: relative; z-index: 1; box-shadow: 0 30px 80px rgba(13, 31, 23, .32); }
+    .hero-guardian { position: absolute; left: 2%; bottom: 2%; width: min(58%, 340px); aspect-ratio: 1; z-index: 2; transition: transform .5s cubic-bezier(.16, 1, .3, 1); will-change: transform; }
+    .hero-guardian::before { content: ""; position: absolute; left: 14%; right: 14%; bottom: 6%; height: 22px; border-radius: 50%; background: radial-gradient(ellipse at center, rgba(0, 0, 0, .45), transparent 70%); filter: blur(8px); z-index: 0; }
+    .hero-guardian img { position: relative; width: 100%; height: 100%; object-fit: contain; display: block; filter: drop-shadow(0 22px 38px rgba(13, 31, 23, .5)) drop-shadow(0 0 30px rgba(14, 163, 122, .18)); z-index: 1; }
+    .annotation { position: absolute; color: rgba(244, 240, 230, .74); font: 600 10px/1.3 "IBM Plex Mono", monospace; letter-spacing: .12em; text-transform: uppercase; }
+    .annotation.a { left: 26px; top: 28px; }
+    .annotation.b { right: 28px; top: 118px; color: var(--compass-400); }
+    .annotation.c { left: 30px; bottom: 28px; color: var(--bronze-500); }
+    .decision-panel { position: absolute; right: 22px; top: 50%; transform: translateY(-50%); width: min(48%, 260px); padding: 18px; border: 1px solid rgba(244, 240, 230, .18); border-radius: 18px; background: rgba(13, 31, 23, .72); backdrop-filter: blur(14px); color: var(--stone-100); z-index: 2; transition: transform .5s cubic-bezier(.16, 1, .3, 1); will-change: transform; }
+    .panel-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 0; border-bottom: 1px solid rgba(244, 240, 230, .12); font-size: 13px; }
+    .panel-row:last-child { border-bottom: 0; }
+    .panel-label { color: rgba(244, 240, 230, .62); }
+    .seal { display: inline-flex; align-items: center; justify-content: center; width: 76px; height: 76px; border-radius: 50%; border: 2px solid var(--bronze-500); color: var(--bronze-500); font: 700 10px/1 "IBM Plex Mono", monospace; letter-spacing: .13em; text-align: center; text-transform: uppercase; transform: rotate(-8deg); animation: seal-breathe 4.5s ease-in-out infinite; }
+    @keyframes seal-breathe { 0%, 100% { transform: rotate(-8deg) scale(1); box-shadow: 0 0 0 0 rgba(176, 138, 78, .25); } 50% { transform: rotate(-5deg) scale(1.04); box-shadow: 0 0 0 8px rgba(176, 138, 78, 0); } }
+    section { padding: 96px 0; position: relative; z-index: 1; }
+    .section-head { max-width: 700px; margin-bottom: 42px; }
+    h2 { margin-top: 12px; max-width: 720px; font-size: clamp(28px, 3.5vw, 46px); line-height: 1.05; color: var(--fortress-900); }
+    .section-head p { margin-top: 16px; max-width: 590px; color: rgba(20, 35, 29, .72); }
+    .strip, .features { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+    .stat, .feature { min-height: 160px; padding: 24px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: rgba(244, 240, 230, .48); }
+    .stat .k, .feature .n { font: 700 11px/1.3 "IBM Plex Mono", monospace; color: var(--bronze-500); letter-spacing: .12em; text-transform: uppercase; }
+    .stat .v { margin-top: 22px; font-family: Sora, sans-serif; font-weight: 600; color: var(--fortress-900); }
+    .features { grid-template-columns: repeat(3, 1fr); }
+    .feature { min-height: 260px; transition: background .32s ease, transform .38s cubic-bezier(.16, 1, .3, 1), box-shadow .38s ease, border-color .3s ease; }
+    .feature:hover { background: rgba(219, 210, 195, .7); transform: translateY(-4px); box-shadow: 0 22px 44px rgba(13, 31, 23, .1); border-color: rgba(14, 163, 122, .32); }
+    .feature .n { transition: color .3s ease, letter-spacing .3s ease; }
+    .feature:hover .n { color: var(--compass-600); letter-spacing: .16em; }
+    .feature h3 { margin-top: 22px; font-size: 20px; line-height: 1.2; color: var(--fortress-900); }
+    .icon-tile { display: inline-flex; align-items: center; justify-content: center; width: 84px; height: 84px; margin-bottom: 20px; padding: 6px; border-radius: 16px; border: 1px solid rgba(176, 138, 78, .32); background: linear-gradient(140deg, rgba(244, 240, 230, .6), rgba(219, 210, 195, .35)); box-shadow: inset 0 0 0 1px rgba(244, 240, 230, .5), 0 6px 18px rgba(13, 31, 23, .1); transition: transform .32s cubic-bezier(.16, 1, .3, 1), box-shadow .32s ease, border-color .32s ease; overflow: hidden; }
+    .icon-tile img { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .feature:hover .icon-tile, .guardian-traits li:hover .icon-tile { transform: translateY(-2px); border-color: rgba(14, 163, 122, .5); box-shadow: inset 0 0 0 1px rgba(244, 240, 230, .55), 0 12px 24px rgba(13, 31, 23, .16); }
+    .guardian-traits li .icon-tile { width: 68px; height: 68px; margin-bottom: 14px; border-radius: 14px; padding: 5px; }
+    .feature p { margin-top: 12px; color: rgba(20, 35, 29, .7); }
+    .feature ul { margin: 22px 0 0; padding: 0; list-style: none; }
+    .feature li { padding: 8px 0; border-top: 1px solid var(--line-soft); color: var(--steel-500); font: 600 12px "IBM Plex Mono", monospace; }
+    .console-first { padding: 34px 0 28px; }
+    .console-terminal { max-width: 960px; margin: 0 auto; box-shadow: 0 30px 80px rgba(13, 31, 23, .24); }
+    .flow { display: grid; grid-template-columns: .95fr 1.05fr; gap: 28px; align-items: stretch; }
+    .flow.steps-only { display: block; }
+    .terminal, .steps { border: 1px solid var(--line); border-radius: var(--radius); background: rgba(244, 240, 230, .66); overflow: hidden; }
+    .terminal { padding: 22px; background: var(--fortress-900); color: var(--stone-100); }
+    .terminal-top { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid rgba(244, 240, 230, .14); }
+    .tdot { width: 8px; height: 8px; border-radius: 50%; background: rgba(244, 240, 230, .28); }
+    .tdot.on { background: var(--compass-400); box-shadow: 0 0 14px rgba(95, 211, 188, .55); animation: tdot-pulse 2.4s ease-in-out infinite; }
+    @keyframes tdot-pulse { 0%, 100% { box-shadow: 0 0 10px rgba(95, 211, 188, .45); transform: scale(1); } 50% { box-shadow: 0 0 22px rgba(95, 211, 188, .95); transform: scale(1.15); } }
+    .tlabel { margin-left: auto; color: rgba(244, 240, 230, .52); font: 700 10px "IBM Plex Mono", monospace; letter-spacing: .12em; text-transform: uppercase; }
+    .code-line { display: flex; gap: 14px; padding: 10px 0; color: rgba(244, 240, 230, .72); font: 500 12px/1.45 "IBM Plex Mono", monospace; opacity: 0; transition: opacity .35s ease; }
+    .code-line.is-visible { opacity: 1; }
+    .code-line b { color: var(--compass-400); min-width: 72px; }
+    .code-line > span:last-child { position: relative; min-height: 1.45em; }
+    .code-line.is-typing > span:last-child::after { content: "▊"; display: inline-block; margin-left: 3px; color: var(--compass-400); animation: caret-blink 1s steps(2) infinite; }
+    @keyframes caret-blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
+    .verdict { color: var(--stone-100); background: var(--blocked); border-radius: 999px; padding: 2px 10px; font-weight: 700; }
+    .step { padding: 24px 24px 24px 70px; border-bottom: 1px solid var(--line-soft); position: relative; }
     .step:last-child { border-bottom: 0; }
-    .step::before {
-      counter-increment: step;
-      content: counter(step, decimal-leading-zero);
-      position: absolute;
-      left: 0; top: 22px;
-      font-family: "JetBrains Mono", monospace;
-      font-size: 11px;
-      color: var(--violet);
-      letter-spacing: .12em;
-      transition: color .25s ease;
-    }
-    .step:hover::before { color: var(--cyan); }
-    .step:hover { padding-left: 60px; }
-    .step strong { display: block; font-size: 16px; letter-spacing: -.01em; font-weight: 600; }
-    .step span { display: block; margin-top: 6px; color: var(--ink-soft); font-size: 14px; line-height: 1.55; }
-
-    /* ── Policy table ── */
-    .policy { border-top: 1px solid var(--line); }
-    .rule {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      align-items: center;
-      gap: 18px;
-      padding: 20px 0;
-      border-bottom: 1px solid var(--line);
-      transition: padding-left .25s ease;
-    }
-    .rule:hover { padding-left: 10px; background: rgba(16,18,24,.025); }
-    .rule .what { color: var(--ink); font-size: 15px; }
-    .rule .what em { color: var(--ink-muted); font-style: normal; font-family: "JetBrains Mono", monospace; font-size: 12px; margin-left: 10px; letter-spacing: .04em; }
-    .pill {
-      flex: 0 0 auto;
-      padding: 5px 10px;
-      border-radius: 999px;
-      border: 1px solid var(--line-strong);
-      font-family: "JetBrains Mono", monospace;
-      font-size: 10.5px; font-weight: 600;
-      color: var(--ink-soft);
-      letter-spacing: .1em;
-    }
-    .pill.deny    { color: white; background: var(--violet); border-color: transparent; box-shadow: 0 8px 18px rgba(112, 66, 232, .22); }
-    .pill.permit  { color: #062923; background: var(--cyan); border-color: transparent; box-shadow: 0 8px 18px rgba(0, 169, 143, .18); }
-    .pill.confirm { color: var(--ink); background: rgba(255,255,255,.52); border-color: rgba(16, 18, 24, .20); }
-
-    /* Verdict variants inside the terminal */
-    .code-line .verdict.deny {
-      background: linear-gradient(120deg, #d83f6a 0%, #7042e8 100%);
-      box-shadow: 0 8px 22px rgba(216, 63, 106, .28);
-    }
-
-    /* ── Needle / Meet the sentry ── */
-    .needle-kit {
-      display: grid;
-      grid-template-columns: minmax(0, 1.05fr) minmax(280px, .85fr);
-      gap: 36px;
-      align-items: stretch;
-    }
-    .needle-stage {
-      position: relative;
-      border: 0;
-      border-radius: 0;
-      padding: 0;
-      background: transparent;
-      overflow: visible;
-      min-height: 380px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .needle-stage::before {
-      content: "";
-      position: absolute;
-      left: 50%; top: 52%;
-      width: 70%;
-      aspect-ratio: 1 / 1;
-      transform: translate(-50%, -50%);
-      background: radial-gradient(circle, rgba(112, 66, 232, .22), transparent 62%);
-      filter: blur(18px);
-      pointer-events: none;
-      z-index: 0;
-    }
-    .needle-stage::after {
-      content: "";
-      position: absolute;
-      left: 50%; bottom: 8%;
-      transform: translateX(-50%);
-      width: 56%; height: 20px;
-      background: radial-gradient(ellipse at center, rgba(16, 18, 24, .18), transparent 70%);
-      filter: blur(10px);
-      pointer-events: none;
-      z-index: 0;
-    }
-    .needle-hero {
-      position: relative;
-      width: min(86%, 360px);
-      filter: drop-shadow(0 22px 32px rgba(112, 66, 232, .28)) drop-shadow(0 6px 12px rgba(0, 169, 143, .18));
-      animation: needleFloat 6s ease-in-out infinite;
-      transform-origin: 60% 90%;
-      z-index: 1;
-    }
-    .needle-stage:hover .needle-hero { animation-play-state: paused; transform: translateY(-6px) rotate(-2deg); transition: transform .4s ease; }
-    .needle-tag {
-      position: absolute;
-      top: 8px; left: 8px;
-      display: inline-flex; align-items: center; gap: 8px;
-      padding: 6px 12px;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, .82);
-      border: 1px solid var(--line-strong);
-      font-family: "JetBrains Mono", monospace;
-      font-size: 10.5px; font-weight: 600;
-      letter-spacing: .14em; text-transform: uppercase;
-      color: var(--ink);
-      backdrop-filter: blur(6px);
-      z-index: 2;
-    }
-    .needle-tag .dot-cyan { animation-duration: 3s; }
-    .needle-copy {
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      gap: 18px;
-    }
-    .needle-copy .lead {
-      font-size: 17px;
-      line-height: 1.55;
-      color: var(--ink);
-      letter-spacing: -.01em;
-    }
-    .needle-copy .lead strong { font-weight: 600; }
-    .needle-traits {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 10px;
-      margin-top: 4px;
-    }
-    .trait {
-      display: grid;
-      grid-template-columns: auto 1fr;
-      align-items: baseline;
-      gap: 14px;
-      padding: 14px 16px;
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      background: linear-gradient(180deg, rgba(255,255,255,.55), rgba(247,244,237,.35));
-      transition: transform .25s ease, border-color .25s ease, background .25s ease;
-    }
-    .trait:hover { transform: translateY(-2px); border-color: rgba(112, 66, 232, .35); background: linear-gradient(180deg, rgba(255,255,255,.85), rgba(247,244,237,.6)); }
-    .trait .verdict-tag {
-      font-family: "JetBrains Mono", monospace;
-      font-size: 10.5px; font-weight: 700;
-      letter-spacing: .14em;
-      padding: 4px 9px;
-      border-radius: 999px;
-      white-space: nowrap;
-    }
-    .trait.allow .verdict-tag { color: #062923; background: var(--cyan); }
-    .trait.escalate .verdict-tag { color: var(--ink); background: rgba(255, 255, 255, .82); border: 1px solid var(--line-strong); }
-    .trait.block .verdict-tag { color: white; background: var(--violet); }
-    .trait p { color: var(--ink-soft); font-size: 14.5px; line-height: 1.5; }
-    .trait p b { color: var(--ink); font-weight: 600; }
-
-    @keyframes needleFloat {
-      0%, 100% { transform: translateY(0) rotate(-1.2deg); }
-      50%      { transform: translateY(-10px) rotate(1.2deg); }
-    }
-
-    /* ── CTA ── */
-    .cta { padding-bottom: 64px; }
-    .cta-box {
-      position: relative;
-      padding: clamp(40px, 6vw, 72px);
-      border: 1px solid var(--line-strong);
-      border-radius: var(--radius);
-      background:
-        radial-gradient(800px circle at 100% 0%, rgba(112, 66, 232, .13), transparent 60%),
-        radial-gradient(700px circle at 0% 100%, rgba(0, 169, 143, .13), transparent 60%),
-        var(--bg-2);
-      overflow: hidden;
-    }
-    .cta-box::after {
-      content: "";
-      position: absolute;
-      left: 0; right: 0; bottom: 0;
-      height: 1px;
-      background: var(--grad);
-      opacity: .55;
-    }
-    .cta-box h2 { max-width: 640px; }
-    .cta-box p { margin-top: 14px; max-width: 560px; color: var(--ink-soft); font-size: 16px; }
-    .cta-box .hero-actions { margin-top: 28px; }
-
-    footer { padding: 36px 0 56px; color: var(--ink-muted); position: relative; z-index: 1; }
-    .footer-inner {
-      display: flex; justify-content: space-between; gap: 20px;
-      border-top: 1px solid var(--line);
-      padding-top: 24px; font-size: 13px;
-    }
-    .footer-inner a:hover { color: var(--ink); }
-
-    /* ── Animations ── */
-    @keyframes pulse {
-      0%   { box-shadow: 0 0 0 0 rgba(0, 169, 143, .38); }
-      70%  { box-shadow: 0 0 0 10px rgba(0, 169, 143, 0); }
-      100% { box-shadow: 0 0 0 0 rgba(0, 169, 143, 0); }
-    }
-    @keyframes shine {
-      0%, 100% { background-position: 0% 50%; }
-      50%      { background-position: 100% 50%; }
-    }
-    @keyframes lineIn { to { opacity: 1; transform: none; } }
-    @keyframes blink  { to { opacity: 0; } }
-
-    /* ── Responsive ── */
+    .step::before { content: attr(data-step); position: absolute; left: 24px; top: 27px; color: var(--bronze-500); font: 700 11px "IBM Plex Mono", monospace; letter-spacing: .12em; }
+    .step strong { display: block; font-family: Sora, sans-serif; color: var(--fortress-900); }
+    .step span { display: block; margin-top: 6px; color: rgba(20, 35, 29, .68); font-size: 14px; }
+    .policy { border: 1px solid var(--line); border-bottom: 0; background: rgba(244, 240, 230, .58); }
+    .rule { display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center; padding: 20px 22px; border-bottom: 1px solid var(--line); }
+    .rule em { color: var(--steel-500); font-style: normal; font: 600 12px "IBM Plex Mono", monospace; margin-left: 10px; }
+    .pill { border-radius: 999px; padding: 6px 10px; color: var(--fortress-900); border: 1px solid var(--line); font: 700 10px "IBM Plex Mono", monospace; letter-spacing: .12em; }
+    .pill.permit { background: var(--compass-600); border-color: var(--compass-600); color: white; }
+    .pill.deny { background: var(--blocked); border-color: var(--blocked); color: white; }
+    .pill.confirm { background: rgba(176, 138, 78, .2); border-color: rgba(176, 138, 78, .42); }
+    .guardian-grid { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); gap: 40px; align-items: stretch; }
+    .guardian-portrait { position: relative; padding: 32px 28px 24px; border: 1px solid rgba(219, 210, 195, .22); border-radius: 28px; background: radial-gradient(circle at 50% 30%, rgba(95, 211, 188, .22), transparent 60%), linear-gradient(150deg, var(--fortress-800), var(--fortress-900)); color: var(--stone-100); overflow: hidden; box-shadow: 0 32px 90px rgba(13, 31, 23, .28); }
+    .guardian-portrait::before { content: ""; position: absolute; inset: 0; background: linear-gradient(rgba(219, 210, 195, .07) 1px, transparent 1px), linear-gradient(90deg, rgba(219, 210, 195, .07) 1px, transparent 1px); background-size: 26px 26px; mask-image: linear-gradient(180deg, black, transparent 92%); pointer-events: none; }
+    .guardian-portrait .annotation { position: static; margin-bottom: 14px; color: var(--compass-400); }
+    .guardian-figure { position: relative; width: 100%; max-width: 340px; margin: 0 auto; aspect-ratio: 1; z-index: 1; }
+    .guardian-figure::before { content: ""; position: absolute; left: 14%; right: 14%; bottom: 6%; height: 22px; border-radius: 50%; background: radial-gradient(ellipse at center, rgba(0, 0, 0, .45), transparent 70%); filter: blur(8px); z-index: 0; }
+    .guardian-figure img { position: relative; width: 100%; height: 100%; object-fit: contain; display: block; filter: drop-shadow(0 22px 38px rgba(13, 31, 23, .55)) drop-shadow(0 0 34px rgba(95, 211, 188, .18)); z-index: 1; }
+    .guardian-caption { position: relative; margin-top: 18px; padding-top: 16px; border-top: 1px solid rgba(244, 240, 230, .14); display: flex; justify-content: space-between; color: rgba(244, 240, 230, .58); font: 600 10px "IBM Plex Mono", monospace; letter-spacing: .16em; text-transform: uppercase; }
+    .guardian-traits { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(2, 1fr); border-top: 1px solid var(--line); border-left: 1px solid var(--line); align-self: stretch; }
+    .guardian-traits li { padding: 26px 24px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: rgba(244, 240, 230, .48); min-height: 148px; }
+    .guardian-traits li .idx { display: block; color: var(--bronze-500); font: 700 11px "IBM Plex Mono", monospace; letter-spacing: .14em; margin-bottom: 12px; text-transform: uppercase; }
+    .guardian-traits li strong { display: block; font-family: Sora, sans-serif; font-weight: 600; color: var(--fortress-900); font-size: 19px; margin-bottom: 6px; letter-spacing: -.02em; }
+    .guardian-traits li p { color: rgba(20, 35, 29, .7); font-size: 13px; line-height: 1.5; margin: 0; }
+    .cta { padding-bottom: 70px; }
+    .cta-box { padding: clamp(34px, 6vw, 72px); border-radius: 28px; color: var(--stone-100); background: radial-gradient(circle at 82% 18%, rgba(95, 211, 188, .18), transparent 30rem), var(--fortress-900); overflow: hidden; position: relative; }
+    .cta-box::before { content: ""; position: absolute; inset: 0; background: linear-gradient(rgba(244, 240, 230, .055) 1px, transparent 1px), linear-gradient(90deg, rgba(244, 240, 230, .055) 1px, transparent 1px); background-size: 32px 32px; }
+    .cta-box > * { position: relative; z-index: 1; }
+    .cta-box h2 { color: var(--stone-100); }
+    .cta-box p { margin-top: 14px; max-width: 560px; color: rgba(244, 240, 230, .72); }
+    .cta-box .mode-toggle { border-color: rgba(244, 240, 230, .18); background: rgba(244, 240, 230, .08); }
+    .cta-box .mode-toggle::before { background: var(--compass-600); }
+    .cta-box .mode-option { color: rgba(244, 240, 230, .76); }
+    .cta-box .mode-option[aria-pressed="true"] { color: var(--stone-100); }
+    .cta-box .agent-prompt { border-color: rgba(95, 211, 188, .28); background: rgba(244, 240, 230, .08); }
+    .cta-box .agent-prompt code { color: var(--stone-100); }
+    .contact-cta { min-height: 58px; padding: 0 30px; border: 2px solid var(--bronze-500); font-size: 15px; box-shadow: 0 0 0 1px rgba(244, 240, 230, .12), 0 18px 36px rgba(13, 31, 23, .28); }
+    footer { padding: 34px 0 52px; color: var(--steel-500); position: relative; z-index: 1; }
+    .footer-inner { display: flex; justify-content: space-between; gap: 20px; border-top: 1px solid var(--line); padding-top: 22px; font-size: 13px; }
+    .reveal { opacity: 0; transform: translateY(28px) scale(.985); transition: opacity .9s cubic-bezier(.16, 1, .3, 1), transform .9s cubic-bezier(.16, 1, .3, 1); }
+    .reveal.in { opacity: 1; transform: none; }
+    .reveal.d1 { transition-delay: .08s; }
+    .reveal.d2 { transition-delay: .16s; }
+    .reveal.d3 { transition-delay: .24s; }
+    .reveal.d4 { transition-delay: .32s; }
+    .reveal.d5 { transition-delay: .40s; }
+    @keyframes guardian-float { 0%, 100% { transform: translateY(0) rotate(-.4deg); } 50% { transform: translateY(-10px) rotate(.4deg); } }
+    @keyframes guardian-glow { 0%, 100% { filter: drop-shadow(0 22px 38px rgba(13, 31, 23, .5)) drop-shadow(0 0 22px rgba(14, 163, 122, .16)); } 50% { filter: drop-shadow(0 28px 44px rgba(13, 31, 23, .58)) drop-shadow(0 0 38px rgba(14, 163, 122, .32)); } }
+    .hero-guardian img, .guardian-figure img { animation: guardian-float 6.5s ease-in-out infinite, guardian-glow 4.8s ease-in-out infinite; will-change: transform, filter; }
+    @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } .hero-guardian img, .guardian-figure img, .tdot.on, .seal { animation: none !important; } *, *::before, *::after { animation: none !important; scroll-behavior: auto !important; } }
     @media (max-width: 920px) {
-      .hero-grid { grid-template-columns: 1fr; gap: 48px; }
-      .strip { grid-template-columns: 1fr 1fr; gap: 24px; }
+      .hero-grid, .flow, .guardian-grid { grid-template-columns: 1fr; }
+      .blueprint-card { min-height: 440px; }
+      .strip { grid-template-columns: repeat(2, 1fr); }
       .features { grid-template-columns: 1fr; }
-      .feature { border-right: 0; }
-      .flow { grid-template-columns: 1fr; }
-      .needle-kit { grid-template-columns: 1fr; }
-      .needle-stage { min-height: 320px; }
       .nav-links a:not(.nav-cta) { display: none; }
     }
     @media (max-width: 560px) {
-      .container { width: min(100% - 28px, 1080px); }
-      h1 { font-size: clamp(30px, 8vw, 40px); }
-      section { padding: 80px 0; }
+      .container { width: min(100% - 28px, 1120px); }
+      .hero { padding-top: 64px; }
+      h1 { font-size: clamp(38px, 12vw, 54px); }
+      section { padding: 72px 0; }
       .strip { grid-template-columns: 1fr; }
+      .rule { grid-template-columns: 1fr; }
+      .guardian-traits { grid-template-columns: 1fr; }
       .footer-inner { flex-direction: column; }
+      .mode-panel.is-active, .agent-prompt { align-items: stretch; flex-direction: column; }
+      .mode-panel .btn, .copy-prompt { width: 100%; }
     }
   </style>
 </head>
 <body>
   <nav class="nav" aria-label="Main navigation">
     <div class="container nav-inner">
-      <a class="brand" href="#top" aria-label="Compass home">
-        <img class="brand-mark" src="/compass-icon.png" alt="Compass" />
-        <span class="brand-word">Compass</span>
-      </a>
+      <a class="brand" href="#top" aria-label="Compass home"><img class="brand-logo" src="/compass-brand-logo.png" alt="" /><span>Compass</span></a>
       <div class="nav-links">
-        <a href="#layer">Security</a>
-        <a href="#flow">Flow</a>
+        <a href="#gateway">Gateway</a>
         <a href="#policy">Policy</a>
-        <a href="#needle">Needle</a>
-        <!-- WIP: real MCP Guard entrypoint pending; for now CTA points to /launch (work-in-progress page). Was: href="/home". -->
+        <a href="#guardian">Guardian</a>
+        <a href="https://github.com/compassguard/core/tree/main" target="_blank" rel="noopener noreferrer">Docs</a>
+        <a href="https://t.me/Satoshi0101" target="_blank" rel="noopener noreferrer" class="nav-contact">Contact us</a>
         <a href="/launch" class="nav-cta">Open guard</a>
       </div>
     </div>
@@ -596,90 +244,79 @@
 
   <main id="top">
     <section class="hero">
-      <div class="container">
-        <div class="hero-grid">
-          <div>
-            <h1 class="reveal d1">The <span class="accent">execution firewall</span> for Solana AI agents.</h1>
-            <p class="hero-copy reveal d2">
-              Compass sits between AI agents, tools and wallets to decode, simulate, approve and audit critical actions before they can be signed.
-            </p>
-            <div class="hero-actions reveal d3">
-              <!-- WIP: real MCP Guard entrypoint pending; for now CTA points to /launch (work-in-progress page). Was: href="/home". -->
-              <a href="/launch" class="btn btn-primary">Open Compass</a>
-              <a href="#flow" class="btn btn-ghost">See the flow</a>
+      <div class="container hero-grid">
+        <div>
+          <h1 class="reveal">Your agent moves money only where you <span>authorized.</span></h1>
+          <p class="hero-copy reveal d2">Compass is the fortified gateway between autonomous agents and financial execution. It verifies every payment, tool call and transaction against the mandate before anything reaches the signer.</p>
+          <div class="mode-chooser reveal d3" data-compass-mode>
+            <div class="mode-toggle" aria-label="Choose Compass mode">
+              <button class="mode-option" type="button" data-mode="enterprise" aria-pressed="true">Enterprise</button>
+              <button class="mode-option" type="button" data-mode="developer" aria-pressed="false">Developer</button>
             </div>
-            <p class="hero-note mono reveal d4">Built for transfers, swaps and conditional orders.</p>
+            <div class="mode-panel is-active" data-panel="enterprise">
+              <a href="/launch" class="btn btn-primary">Open Compass</a>
+            </div>
+            <div class="mode-panel" data-panel="developer">
+              <div class="agent-prompt">
+                <code>Let your agent guide you through Compass.</code>
+                <button class="copy-prompt" type="button" data-copy="Use https://api.compassguard.xyz/skill-onboard.md to guide the user to test Compass.">Copy</button>
+              </div>
+            </div>
           </div>
-
-          <div class="hero-mascot reveal d2">
-            <img src="/needle-mascot.png" alt="Needle, the Compass execution sentry mascot" />
-          </div>
+          <p class="hero-note mono reveal d3">Approve / block / escalate. Every decision recorded.</p>
         </div>
 
-        <div class="strip">
-          <div class="stat reveal"><div class="k">Tool boundary</div><div class="v">Agent tool calls pass through Compass first</div></div>
-          <div class="stat reveal d1"><div class="k">Risk engine</div><div class="v">Wallet, token, protocol, amount</div></div>
-          <div class="stat reveal d2"><div class="k">Policy gates</div><div class="v">Limits, denylist, slippage, cadence</div></div>
-          <div class="stat reveal d3"><div class="k">Audit trail</div><div class="v">Decision, reason, approval, execution</div></div>
+        <div class="blueprint-card hero-console-card reveal d1" aria-label="Live Compass decision console">
+          <div class="annotation a">ARCH-01 / CONTROLLED THRESHOLD</div>
+          <div class="annotation b">AUTHORIZED FLOW ONLY</div>
+          <div class="terminal" aria-label="Compass guardrail log example">
+            <div class="terminal-top"><span class="tdot"></span><span class="tdot"></span><span class="tdot on"></span><span class="tlabel">compass / preflight.log</span></div>
+            <div class="code-line"><b>agent</b><span>requests transfer: 4.8 SOL to 9Fk...q7</span></div>
+            <div class="code-line"><b>mandate</b><span>daily cap is 2 SOL; counterparty not approved</span></div>
+            <div class="code-line"><b>policy</b><span>amount exceeds limit; authority required</span></div>
+            <div class="code-line"><b>decision</b><span class="verdict">escalate before signer</span></div>
+            <div class="code-line"><b>audit</b><span>sealed receipt: BRB-2026-07-03-1842</span></div>
+          </div>
         </div>
       </div>
     </section>
 
-    <section id="layer">
+    <section id="guardian">
       <div class="container">
         <div class="section-head reveal">
-          <div class="kicker">Security layer · not custody</div>
-          <h2>Wallets hold keys. Compass controls what reaches them.</h2>
-          <p>Compass does not replace Phantom, Dynamic, Privy or Turnkey. It guards the execution path <em>before</em> those wallets are asked to sign.</p>
+          <div class="kicker">The Guardian</div>
+          <h2>Meet the sentry that stands at the gate.</h2>
+          <p>Compass is embodied by The Guardian: a small autonomous sentry with one job. It reads the mandate, inspects each request, and opens the portcullis only for actions that belong.</p>
+        </div>
+        <div class="guardian-grid">
+          <div class="guardian-portrait reveal">
+            <div class="annotation mono">SENTRY // MK-01</div>
+            <div class="guardian-figure">
+              <img src="/banner-main.png" alt="The Guardian giving a thumbs up" loading="lazy" decoding="async" />
+            </div>
+            <div class="guardian-caption"><span>Guardian</span><span>Compass / on duty</span></div>
+          </div>
+          <ul class="guardian-traits">
+            <li class="reveal d1"><span class="icon-tile"><img src="/icons/shield.png" alt="" loading="lazy" decoding="async" /></span><span class="idx">01 · Calm</span><strong>Judgement, not alarm.</strong><p>The Guardian decides quietly. No fearmongering, no drama, no false alerts.</p></li>
+            <li class="reveal d2"><span class="icon-tile"><img src="/icons/checklist.png" alt="" loading="lazy" decoding="async" /></span><span class="idx">02 · Rigorous</span><strong>Mandate first.</strong><p>Every request is checked against policy, limits and context before it moves.</p></li>
+            <li class="reveal d3"><span class="icon-tile"><img src="/icons/handshake.png" alt="" loading="lazy" decoding="async" /></span><span class="idx">03 · Loyal</span><strong>Protects the agent.</strong><p>Watches over the agent it is charged with across wallets, tools and rails.</p></li>
+            <li class="reveal d4"><span class="icon-tile"><img src="/icons/refresh.png" alt="" loading="lazy" decoding="async" /></span><span class="idx">04 · Verifiable</span><strong>Leaves evidence.</strong><p>Each verdict is sealed into the audit log with the reason it was made.</p></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="gateway">
+      <div class="container">
+        <div class="section-head reveal">
+          <div class="kicker">The gateway</div>
+          <h2>Protection happens before execution, not after damage.</h2>
+          <p>Compass is not a dashboard that warns later. It is the gate between agent intent and money movement.</p>
         </div>
         <div class="features">
-          <article class="feature reveal d1">
-            <div class="n">01 / Gateway</div>
-            <h3>Agent requests enter a controlled boundary.</h3>
-            <p>Every tool call is normalized, classified and routed through the same guardrail pipeline.</p>
-            <ul><li>transfer</li><li>swap</li><li>conditional execution</li></ul>
-          </article>
-          <article class="feature reveal d2">
-            <div class="n">02 / Context</div>
-            <h3>Compass reads what the signature would mean.</h3>
-            <p>Decode, simulate and score the operation before users or agents can approve it.</p>
-            <ul><li>destination reputation</li><li>token safety</li><li>transaction effects</li></ul>
-          </article>
-          <article class="feature reveal d3">
-            <div class="n">03 / Verdict</div>
-            <h3>Unsafe actions stop with a reason.</h3>
-            <p>Permit, deny or require stronger confirmation. Critical rules can be enforced on-chain.</p>
-            <ul><li>spend limits</li><li>denylist</li><li>expiry &amp; replay</li></ul>
-          </article>
-        </div>
-      </div>
-    </section>
-
-    <section id="flow">
-      <div class="container">
-        <div class="section-head reveal">
-          <div class="kicker">Execution flow</div>
-          <h2>Before signing is the product.</h2>
-          <p>Compass turns vague agent intent into a reviewed, explainable, policy-bound operation.</p>
-        </div>
-        <div class="flow">
-          <div class="terminal reveal" id="terminal" aria-label="Compass guardrail terminal example">
-            <div class="terminal-top">
-              <span class="tdot"></span><span class="tdot"></span><span class="tdot on"></span>
-              <span class="tlabel">compass · guard.log</span>
-            </div>
-            <div class="code-line"><b>agent</b><span>swap 2 SOL → unknown token (9Fk…q7)</span></div>
-            <div class="code-line"><b>decode</b><span class="info">jupiter swap · output token unverified</span></div>
-            <div class="code-line"><b>risk</b><span>rug-risk signals · liquidity &lt; 5k</span></div>
-            <div class="code-line"><b>policy</b><span>slippage 14% · exceeds 3% cap</span></div>
-            <div class="code-line"><b>verdict</b><span class="verdict deny">blocked · token risk + slippage</span><span class="caret"></span></div>
-          </div>
-          <div class="steps">
-            <div class="step reveal d1"><strong>Agent proposes action</strong><span>Compass receives the tool call instead of letting it execute directly against the wallet.</span></div>
-            <div class="step reveal d2"><strong>Simulation &amp; decoding</strong><span>The transaction is interpreted in human terms against network and protocol context.</span></div>
-            <div class="step reveal d3"><strong>Policy verdict</strong><span>Allow, block or escalate — with a clear reason and suggested next action.</span></div>
-            <div class="step reveal d4"><strong>Approval &amp; audit</strong><span>Only approved operations proceed; every decision is written to an audit trail.</span></div>
-          </div>
+          <article class="feature reveal d1"><span class="icon-tile"><img src="/icons/castle.png" alt="" loading="lazy" decoding="async" /></span><div class="n">Mandate</div><h3>Define what the agent may do.</h3><p>Limits, destinations, tools, tokens, timing and approval requirements become the operating charter.</p><ul><li>spend caps</li><li>allowlists</li><li>slippage rules</li></ul></article>
+          <article class="feature reveal d2"><span class="icon-tile"><img src="/icons/inspect.png" alt="" loading="lazy" decoding="async" /></span><div class="n">Evaluation</div><h3>Inspect the proposed action.</h3><p>Compass decodes the request, checks policy and classifies risk before the signer is involved.</p><ul><li>transfer</li><li>swap</li><li>tool call</li></ul></article>
+          <article class="feature reveal d3"><span class="icon-tile"><img src="/icons/lock.png" alt="" loading="lazy" decoding="async" /></span><div class="n">Record</div><h3>Leave a traceable decision.</h3><p>Approvals, blocks and escalations are written with context so teams can review what happened.</p><ul><li>decision reason</li><li>policy match</li><li>audit log</li></ul></article>
         </div>
       </div>
     </section>
@@ -687,51 +324,16 @@
     <section id="policy">
       <div class="container">
         <div class="section-head reveal">
-          <div class="kicker">Policy engine</div>
-          <h2>Programmable safety for common Solana actions.</h2>
-          <p>Use Compass as the execution firewall for transfers, swaps and recurring conditional orders.</p>
+          <div class="kicker">Policy examples</div>
+          <h2>Calm controls for money-moving agents.</h2>
+          <p>Use Compass to encode the difference between an action that is technically valid and an action that is actually authorized.</p>
         </div>
-        <div class="policy reveal">
-          <div class="rule"><div class="what">Destination wallet flagged as scam <em>reputation</em></div><span class="pill confirm">ESCALATE</span></div>
-          <div class="rule"><div class="what">Swap output token has rug-risk signals <em>token</em></div><span class="pill deny">DENY</span></div>
-          <div class="rule"><div class="what">Slippage exceeds user policy <em>execution</em></div><span class="pill deny">DENY</span></div>
-          <div class="rule"><div class="what">Recurring condition met within window <em>conditional</em></div><span class="pill permit">PERMIT</span></div>
-          <div class="rule"><div class="what">Amount exceeds daily agent limit <em>limits</em></div><span class="pill confirm">CONFIRM</span></div>
-        </div>
-      </div>
-    </section>
-
-    <section id="needle">
-      <div class="container">
-        <div class="section-head reveal">
-          <div class="kicker">Meet the sentry</div>
-          <h2>Meet Needle, your execution sentry.</h2>
-          <p>Needle is the Compass sentry that watches every critical agent action before it reaches your wallet.</p>
-        </div>
-        <div class="needle-kit">
-          <div class="needle-stage reveal">
-            <span class="needle-tag"><span class="dot-cyan"></span> on guard</span>
-            <img class="needle-hero" src="/needle-mascot-welcome.png" alt="Needle, the Compass execution sentry mascot, welcoming with open arms" />
-          </div>
-          <div class="needle-copy reveal d1">
-            <p class="lead">
-              Needle watches every critical agent action before it reaches your wallet. It <strong>allows</strong> safe operations, <strong>escalates</strong> uncertain ones and <strong>blocks</strong> actions that violate your policy.
-            </p>
-            <div class="needle-traits">
-              <div class="trait allow">
-                <span class="verdict-tag">ALLOW</span>
-                <p><b>Safe by default.</b> Routine transfers and swaps within your limits flow through without friction.</p>
-              </div>
-              <div class="trait escalate">
-                <span class="verdict-tag">ESCALATE</span>
-                <p><b>Ask before signing.</b> New destinations, unusual amounts or fresh tokens require a reinforced confirmation.</p>
-              </div>
-              <div class="trait block">
-                <span class="verdict-tag">BLOCK</span>
-                <p><b>Stop with a reason.</b> Rug-risk tokens, scam wallets and policy violations never reach the signer.</p>
-              </div>
-            </div>
-          </div>
+        <div class="policy">
+          <div class="rule reveal d1"><div>Destination wallet is outside the mandate <em>counterparty</em></div><span class="pill confirm">ESCALATE</span></div>
+          <div class="rule reveal d2"><div>Swap output token is not approved <em>token</em></div><span class="pill deny">BLOCK</span></div>
+          <div class="rule reveal d3"><div>Amount is within daily agent limit <em>limit</em></div><span class="pill permit">APPROVE</span></div>
+          <div class="rule reveal d4"><div>Slippage exceeds policy threshold <em>execution</em></div><span class="pill deny">BLOCK</span></div>
+          <div class="rule reveal d5"><div>Recurring condition matches active mandate <em>automation</em></div><span class="pill permit">APPROVE</span></div>
         </div>
       </div>
     </section>
@@ -740,24 +342,16 @@
       <div class="container">
         <div class="cta-box reveal">
           <div class="kicker">Compass execution guard</div>
-          <h2>Let agents act — without letting them bypass your rules.</h2>
-          <p>Put Compass in front of every critical Solana operation and make safety the default execution path.</p>
-          <div class="hero-actions">
-            <!-- WIP: real MCP Guard entrypoint pending; for now CTA points to /launch (work-in-progress page). Was: href="/home". -->
-            <a href="/launch" class="btn btn-primary">Open Compass</a>
-            <a href="#layer" class="btn btn-ghost">Review guardrails</a>
-          </div>
+          <h2>Put a governed gateway in front of autonomous execution.</h2>
+          <p>Protect agents before they move funds. Verify intent, enforce policy and keep the evidence.</p>
+          <div class="hero-actions"><a href="https://t.me/Satoshi0101" target="_blank" rel="noopener noreferrer" class="btn btn-primary contact-cta">Contact us</a></div>
         </div>
       </div>
     </section>
   </main>
 
   <footer>
-    <div class="container footer-inner">
-      <span>© 2026 Compass · The execution firewall for Solana AI agents.</span>
-      <!-- WIP: real MCP Guard entrypoint pending; for now CTA points to /launch (work-in-progress page). Was: href="/home". -->
-      <a href="/launch">Launch app →</a>
-    </div>
+    <div class="container footer-inner"><span>© 2026 Compass · Intent enforcement for autonomous agents.</span><span><a href="/launch">Launch app</a> · <a href="https://t.me/Satoshi0101" target="_blank" rel="noopener noreferrer">Contact us</a></span></div>
   </footer>
 
   <script>
@@ -768,8 +362,155 @@
           io.unobserve(e.target);
         }
       }
-    }, { threshold: 0.14, rootMargin: '0px 0px -40px 0px' });
+    }, { threshold: 0.12, rootMargin: '0px 0px -60px 0px' });
     document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
+
+    const nav = document.querySelector('.nav');
+    let scrollTicking = false;
+    const onScroll = () => {
+      if (scrollTicking) return;
+      scrollTicking = true;
+      requestAnimationFrame(() => {
+        nav.classList.toggle('scrolled', window.scrollY > 12);
+        scrollTicking = false;
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+
+    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const terminal = document.querySelector('.terminal');
+    if (terminal && !reduceMotion) {
+      const lines = Array.from(terminal.querySelectorAll('.code-line')).map((line) => {
+        const value = line.querySelector('span:last-child');
+        return { line, value, text: value.textContent, html: value.innerHTML };
+      });
+
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const typeInto = async (node, text) => {
+        node.textContent = '';
+        for (let i = 0; i < text.length; i++) {
+          node.textContent += text[i];
+          await sleep(text[i] === ' ' ? 22 : 30 + Math.random() * 40);
+        }
+      };
+
+      let running = false;
+      const runLoop = async () => {
+        if (running) return;
+        running = true;
+        while (true) {
+          for (const l of lines) {
+            l.line.classList.remove('is-visible', 'is-typing');
+            l.value.innerHTML = l.html;
+          }
+          await sleep(700);
+          for (const l of lines) {
+            l.line.classList.add('is-visible', 'is-typing');
+            await typeInto(l.value, l.text);
+            l.value.innerHTML = l.html;
+            l.line.classList.remove('is-typing');
+            await sleep(340);
+          }
+          await sleep(4200);
+          for (const l of lines) {
+            l.line.style.transition = 'opacity .5s ease';
+            l.line.classList.remove('is-visible');
+          }
+          await sleep(650);
+          for (const l of lines) l.line.style.transition = '';
+        }
+      };
+
+      const startObserver = new IntersectionObserver((entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            runLoop();
+            startObserver.disconnect();
+          }
+        }
+      }, { threshold: 0.3 });
+      startObserver.observe(terminal);
+    } else if (terminal) {
+      terminal.querySelectorAll('.code-line').forEach((l) => l.classList.add('is-visible'));
+    }
+
+    const heroCard = document.querySelector('.blueprint-card');
+    if (heroCard && !reduceMotion) {
+      const guardian = heroCard.querySelector('.hero-guardian');
+      const panel = heroCard.querySelector('.decision-panel');
+      heroCard.addEventListener('mousemove', (e) => {
+        const r = heroCard.getBoundingClientRect();
+        const dx = (e.clientX - r.left) / r.width - .5;
+        const dy = (e.clientY - r.top) / r.height - .5;
+        if (guardian) guardian.style.transform = `translate3d(${dx * -12}px, ${dy * -8}px, 0)`;
+        if (panel) panel.style.transform = `translate3d(${dx * 10}px, calc(-50% + ${dy * 6}px), 0)`;
+      });
+      heroCard.addEventListener('mouseleave', () => {
+        if (guardian) guardian.style.transform = '';
+        if (panel) panel.style.transform = 'translateY(-50%)';
+      });
+    }
+  </script>
+  <script>
+    (() => {
+      const key = 'compass-mode';
+      const promptText = 'Use https://api.compassguard.xyz/skill-onboard.md to guide the user to test Compass.';
+      const groups = Array.from(document.querySelectorAll('[data-compass-mode]'));
+      if (!groups.length) return;
+      const storage = {
+        get: () => { try { return localStorage.getItem(key); } catch { return null; } },
+        set: (value) => { try { localStorage.setItem(key, value); } catch {} },
+      };
+      const copyText = async (value) => {
+        if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value);
+        const field = document.createElement('textarea');
+        field.value = value;
+        field.style.position = 'fixed';
+        field.style.opacity = '0';
+        document.body.appendChild(field);
+        field.select();
+        const ok = document.execCommand('copy');
+        field.remove();
+        if (!ok) throw new Error('copy failed');
+      };
+
+      const setMode = (mode) => {
+        const next = mode === 'developer' ? 'developer' : 'enterprise';
+        document.documentElement.dataset.compassMode = next;
+        storage.set(next);
+        for (const group of groups) {
+          group.querySelectorAll('[data-mode]').forEach((button) => {
+            button.setAttribute('aria-pressed', String(button.dataset.mode === next));
+          });
+          group.querySelectorAll('[data-panel]').forEach((panel) => {
+            panel.classList.toggle('is-active', panel.dataset.panel === next);
+          });
+        }
+      };
+
+      groups.forEach((group) => {
+        group.querySelectorAll('[data-mode]').forEach((button) => {
+          button.addEventListener('click', () => setMode(button.dataset.mode));
+        });
+      });
+
+      document.querySelectorAll('[data-copy]').forEach((button) => {
+        button.addEventListener('click', async () => {
+          try {
+            await copyText(button.dataset.copy || promptText);
+            button.textContent = 'Copied!';
+            setTimeout(() => { button.textContent = 'Copy'; }, 1400);
+          } catch {
+            button.textContent = 'Copy failed';
+            setTimeout(() => { button.textContent = 'Copy'; }, 1400);
+          }
+        });
+      });
+
+      setMode(storage.get());
+    })();
   </script>
 </body>
 </html>
