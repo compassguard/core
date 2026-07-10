@@ -1,0 +1,47 @@
+---
+title: "Architecture overview"
+description: "How Compass Guard checks agent tool calls before Solana execution."
+---
+
+# Architecture overview
+
+Compass is an execution gateway. The agent connects to Compass, not directly to execution tools. Compass evaluates every sensitive call before forwarding it.
+
+```text
+AI agent / MCP client
+  ↓
+Compass MCP Guard
+  ↓
+Tool classification
+  ↓
+Policy + risk checks
+  ↓
+Simulation / decoding when available
+  ↓
+Allow, review, or deny
+  ↓
+Downstream Solana tool / signer
+  ↓
+Audit log
+```
+
+## Core components
+
+| Component | Role |
+| --- | --- |
+| MCP guard | Proxies downstream MCP tools and guards `tools/call` requests. |
+| Hosted API | Accepts verification requests from custom integrations. |
+| Policy engine | Applies limits, allowlists, denylists, and fail-closed defaults. |
+| Risk checks | Flags suspicious recipients, risky tools, or unsafe execution conditions. |
+| Audit trail | Stores decisions with reasons and correlation IDs. |
+
+## Current public surface
+
+- `GET /health` — open liveness check.
+- `POST /signup` — mints an email-scoped API key.
+- `POST /v1/verify` — returns the live guard verdict.
+- `POST /v1/verify/confirm` — optional post-execution confirmation path; decoding is still being expanded.
+
+## Design stance
+
+Compass fails closed for unknown mutating tools. If the system cannot classify an action safely, the answer is `deny` or `review`, not silent execution.

@@ -1,0 +1,31 @@
+---
+title: "Compass Guard"
+description: "Execution firewall for AI agents operating on Solana."
+---
+
+# Compass Guard
+
+Compass Guard sits between an AI agent and Solana execution tools. Before a transfer, swap, or other sensitive action runs, Compass classifies the tool call, applies policy, returns `allow`, `review`, or `deny`, and records the decision for audit.
+
+## What it protects
+
+| Risk | Compass response |
+| --- | --- |
+| Unknown recipient | Hold for human review |
+| Amount above policy | Hold for human review |
+| Unknown mutating tool | Deny by default |
+| Denylisted or dangerous action | Deny with a clear reason |
+
+## Ways to use it
+
+1. **MCP proxy** — place Compass in front of an existing Solana MCP server so agent tool calls are checked before execution.
+2. **Hosted API** — call `POST /v1/verify` directly from a backend, wallet flow, or integration.
+3. **Future signer gateway** — move from advisory checks toward validation, approval, and signing control.
+
+## What it is not
+
+Compass is not a wallet, custodian, chatbot, or identity layer. Wallets control signing. Compass controls whether an agent action should be allowed to reach execution.
+
+## Next step
+
+Start with the [quickstart](/public-docs/quickstart) to mint an API key and get a live verdict.

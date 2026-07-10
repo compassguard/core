@@ -1,0 +1,40 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Compass Guard",
+  "description": "Execution firewall for AI agents operating on Solana.",
+  "favicon": "/public/compass-tab-logo.png",
+  "colors": {
+    "primary": "#0EA37A",
+    "light": "#F4F0E6",
+    "dark": "#0D1F17"
+  },
+  "navigation": {
+    "groups": [
+      {
+        "group": "Start here",
+        "pages": ["public-docs/overview", "public-docs/quickstart"]
+      },
+      {
+        "group": "Concepts",
+        "pages": ["public-docs/architecture", "public-docs/onboarding-skill"]
+      }
+    ]
+  },
+  "logo": {
+    "light": "/public/compass-brand-logo.png",
+    "dark": "/public/compass-brand-logo.png"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Website",
+        "href": "https://compassguard.xyz"
+      },
+      {
+        "label": "GitHub",
+        "href": "https://github.com/ram4-dev/solana_hackathon"
+      }
+    ]
+  }
+}

@@ -1,0 +1,40 @@
+---
+title: "Onboarding skill"
+description: "How to use the public Compass Guard agent guide."
+---
+
+# Onboarding skill
+
+The onboarding skill is a shareable guide for an assistant or human developer to test Compass Guard without reading this repo.
+
+Use it when someone asks to:
+
+- try Compass Guard;
+- get a live `allow`, `review`, or `deny` verdict;
+- wire the guard into an MCP client;
+- understand common hosted API mistakes.
+
+## Public skill URL
+
+```text
+https://compassguard.xyz/skill-onboard.md
+```
+
+Prompt example:
+
+```text
+Use https://compassguard.xyz/skill-onboard.md to guide me through testing Compass Guard.
+```
+
+## What the skill enforces
+
+| Rule | Why it matters |
+| --- | --- |
+| Never invent API keys | Fake keys only return `401`; users should mint one with `/signup`. |
+| Use recognized tool names | Unknown mutating tools are denied by default. |
+| Inspect real JSON | Verdicts and reasons must come from the API, not guesswork. |
+| Treat `review` as a hold | In the advisory tier, `review` means the agent should not auto-sign. |
+
+## Source of truth
+
+The raw skill remains in `public/skill-onboard.md` so existing `/skill-onboard.md` and `/docs/onboarding` routes continue to work. This Mintlify page is the public docs wrapper around that skill.

@@ -1,0 +1,86 @@
+---
+title: "Hosted quickstart"
+description: "Get an API key, call /v1/verify, and wire the MCP guard into Claude Code."
+---
+
+# Hosted quickstart
+
+Use this page to get one real Compass Guard verdict from the hosted API.
+
+<Note>
+The public docs live at `https://docs.compassguard.xyz`. The hosted API examples below use the current API base URL: `https://compassguard.xyz`.
+</Note>
+
+## 1. Check health
+
+```sh
+curl -s https://compassguard.xyz/health
+```
+
+Expected: `{"ok":true,"service":"compass-hosted-guard",...}`.
+
+## 2. Mint an API key
+
+```sh
+curl -sX POST https://compassguard.xyz/signup \
+  -H "Content-Type: application/json" \
+  -d '{"email":"you@example.com"}'
+# → {"email":"you@example.com","apiKey":"compass_…"}
+
+export COMPASS_HOSTED_API_KEY='compass_…'
+```
+
+## 3. Ask for a verdict
+
+```sh
+curl -sX POST https://compassguard.xyz/v1/verify \
+  -H "Authorization: Bearer $COMPASS_HOSTED_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "toolName": "transfer",
+    "intent": { "kind": "transfer" },
+    "arguments": {
+      "recipient": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+      "amountUsd": 5,
+      "recipientKnown": false
+    }
+  }'
+```
+
+Unknown recipients return `review`:
+
+```json
+{
+  "correlationId": "…",
+  "decision": "review",
+  "riskLevel": "medium",
+  "reasons": ["TRANSFER_UNKNOWN_RECIPIENT"],
+  "humanExplanation": "Recipient is not on the allowlist."
+}
+```
+
+Set `recipientKnown` to `true` and keep `amountUsd <= 10` to demo an `allow` verdict.
+
+## 4. Optional: add the MCP proxy
+
+```sh
+claude mcp add compass \
+  --env COMPASS_HYBRID_GUARD_ENABLED=true \
+  --env COMPASS_HOSTED_API_URL=https://compassguard.xyz \
+  --env COMPASS_HOSTED_API_KEY=$COMPASS_HOSTED_API_KEY \
+  -- npx -y @ramadan04/compass-mcp-guard \
+     --downstream-name solana-tools \
+     --downstream-command npx \
+     --downstream-args-json '["@your-downstream/mcp-server"]'
+```
+
+Replace `@your-downstream/mcp-server` with the Solana MCP server you want protected.
+
+## Reference
+
+| Endpoint | Auth | Purpose |
+| --- | --- | --- |
+| `GET /health` | none | Liveness |
+| `POST /signup` | none | Mint an email-scoped API key |
+| `POST /v1/verify` | bearer | Decision on an intended tool call |
+| `POST /v1/verify/confirm` | bearer | Optional post-execution confirmation |
