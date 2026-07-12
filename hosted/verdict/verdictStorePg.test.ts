@@ -102,6 +102,36 @@ describe("createPgVerdictStore — durable-specific (cross-instance + schema ens
 		expect(closedB?.txSignature).toBe("sigA");
 	});
 
+	it("legacy tolerance: a CONFIRMING row left by pre-deletion code is still closable", async () => {
+		const db = new PGlite();
+		const sql = executor(db);
+		const store = createPgVerdictStore({ sql });
+
+		await store.putDecided(decided("c1")); // ensures schema + inserts a DECIDED row
+		// Simulate a pre-deletion (lease-bearing) instance having parked the row in CONFIRMING.
+		await sql(`UPDATE verdicts SET status = 'CONFIRMING' WHERE correlation_id = $1`, ["c1"]);
+
+		const closed = await store.closeOutcome("c1", "match", [], "sig");
+		// The retained 'CONFIRMING' predicate lets its next confirm still close it — not stranded.
+		expect(closed?.status).toBe("CONFIRMED_MATCH");
+		expect(closed?.confirmOutcome).toBe("match");
+	});
+
+	it("provisions claimed_at so an old lease-bearing instance's UPDATE does not error on a new-code table", async () => {
+		const db = new PGlite();
+		const sql = executor(db);
+		const store = createPgVerdictStore({ sql });
+
+		await store.putDecided(decided("c1")); // new code creates the table (no claimed_at written)
+		// An old instance still runs the retired lease UPDATE; the column must exist for it.
+		await expect(
+			sql(`UPDATE verdicts SET status = 'CONFIRMING', claimed_at = $2 WHERE correlation_id = $1`, [
+				"c1",
+				1000,
+			]),
+		).resolves.toBeDefined();
+	});
+
 	it("ensure: a race-loser whose CREATE throws proceeds when the table already exists", async () => {
 		const db = new PGlite();
 		// Store A creates the table for real.

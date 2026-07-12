@@ -3,7 +3,13 @@ import type { Discrepancy, IntendedEffect } from "@shared/verdictContracts";
 
 export type VerdictStatus = "DECIDED" | "CONFIRMED_MATCH" | "CONFIRMED_MISMATCH";
 
-export type ConfirmOutcome = "match" | "mismatch";
+/**
+ * The terminal result of a confirm. `execution_failed` (tx confirmed but reverted on-chain)
+ * and `mismatch` (executed but effect diverged) are DIFFERENT real-world states that both map
+ * to the CONFIRMED_MISMATCH status — so status alone cannot tell them apart. closeOutcome
+ * persists this value so the distinction survives restarts and idempotent re-confirms.
+ */
+export type ConfirmOutcome = "match" | "mismatch" | "execution_failed";
 
 export type VerdictRecord = {
 	correlationId: string;
@@ -21,6 +27,12 @@ export type VerdictRecord = {
 	txSignature?: string;
 	discrepancies?: Discrepancy[];
 	confirmedAt?: string;
+	/**
+	 * The persisted confirm outcome. Preserves `execution_failed` vs `mismatch`, which the
+	 * CONFIRMED_MISMATCH status collapses. Absent on legacy rows closed before this field
+	 * existed; readers infer it from status (CONFIRMED_MISMATCH → mismatch) in that case.
+	 */
+	confirmOutcome?: ConfirmOutcome;
 };
 
 export type DecidedInput = {
@@ -103,7 +115,10 @@ export function createInMemoryVerdictStore(
 			}
 			const closed: VerdictRecord = {
 				...record,
+				// execution_failed and mismatch share the CONFIRMED_MISMATCH status; confirmOutcome
+				// keeps them distinct.
 				status: outcome === "match" ? "CONFIRMED_MATCH" : "CONFIRMED_MISMATCH",
+				confirmOutcome: outcome,
 				discrepancies,
 				confirmedAt: isoNow(),
 				// Persist the confirming tx link (#14a); only overwrite when provided so a

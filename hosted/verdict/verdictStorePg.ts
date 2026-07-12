@@ -24,6 +24,11 @@ export type SqlExecutor = (
 
 export type PgVerdictStoreDependencies = { sql: SqlExecutor } & VerdictStoreOptions;
 
+// confirm_outcome preserves execution_failed vs mismatch (both are CONFIRMED_MISMATCH status).
+// claimed_at is the RETIRED lease column, kept nullable-and-unwritten by new code ONLY for
+// rolling-deploy safety: an old lease-bearing instance still runs UPDATE ... SET claimed_at and
+// would error if the column were absent. Do NOT drop until rollback to a lease-bearing version
+// is impossible (see the debt registry in docs/compass-demo-day/proposal.md).
 const CREATE_TABLE = `CREATE TABLE IF NOT EXISTS verdicts (
 	correlation_id text PRIMARY KEY,
 	seq bigserial,
@@ -38,16 +43,21 @@ const CREATE_TABLE = `CREATE TABLE IF NOT EXISTS verdicts (
 	authenticated_email text,
 	tx_signature text,
 	discrepancies jsonb,
-	confirmed_at text
+	confirmed_at text,
+	confirm_outcome text,
+	claimed_at double precision
 )`;
 
 // Forward-compat migrations for a table created before a column existed (idempotent; a no-op
 // on a freshly-created table, an ADD on a pre-existing one — so a live `verdicts` table gains
-// attribution columns with no manual migration).
+// new columns with no manual migration). claimed_at is re-provisioned here too, so a table
+// created new-code-first still carries the column old instances write during a rolling deploy.
 const MIGRATIONS = [
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS user_id text`,
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS session_id text`,
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS authenticated_email text`,
+	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS confirm_outcome text`,
+	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS claimed_at double precision`,
 ];
 
 /**
@@ -134,6 +144,7 @@ export function createPgVerdictStore(
 			const closed = await run(
 				`UPDATE verdicts SET
 					status = $2,
+					confirm_outcome = $6,
 					discrepancies = $3::jsonb,
 					confirmed_at = $4,
 					tx_signature = COALESCE($5, tx_signature)
@@ -145,6 +156,7 @@ export function createPgVerdictStore(
 					JSON.stringify(discrepancies),
 					isoNow(),
 					txSignature ?? null,
+					outcome,
 				],
 			);
 			if (closed[0]) return rowToRecord(closed[0]);
@@ -202,5 +214,8 @@ function rowToRecord(row: Record<string, unknown>): VerdictRecord {
 		record.discrepancies = parseJsonb<Discrepancy[]>(row.discrepancies);
 	}
 	if (row.confirmed_at != null) record.confirmedAt = row.confirmed_at as string;
+	if (row.confirm_outcome != null) {
+		record.confirmOutcome = row.confirm_outcome as ConfirmOutcome;
+	}
 	return record;
 }

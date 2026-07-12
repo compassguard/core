@@ -4,7 +4,11 @@ import type {
 	Discrepancy,
 } from "@shared/verdictContracts";
 
-import type { VerdictRecord, VerdictStore } from "../verdict/verdictStore";
+import type {
+	ConfirmOutcome,
+	VerdictRecord,
+	VerdictStore,
+} from "../verdict/verdictStore";
 import { compareEffects } from "./compareEffects";
 import type { GetConfirmedTx } from "./getConfirmedTx";
 import type {
@@ -21,22 +25,66 @@ export type VerifyConfirmServiceDependencies = {
 };
 
 /**
- * Map a (possibly absent) verdict record to its API outcome + discrepancies (D19).
- * Pure and lease-independent — the leaseless confirm reuses it verbatim for both the
- * already-closed cached read and the post-close response. Fail-closed: a missing record
- * OR any non-terminal status yields `error`, never a fabricated verdict.
+ * The confirm outcome of a terminal record, inferring it from status for a legacy row closed
+ * before confirmOutcome was persisted. execution_failed is indistinguishable from mismatch at
+ * the status level, so a legacy CONFIRMED_MISMATCH degrades to `mismatch` — the safe reading
+ * (never fabricates the stronger execution_failed signal). A non-terminal record → undefined.
+ */
+function confirmOutcomeOf(record: VerdictRecord): ConfirmOutcome | undefined {
+	if (record.confirmOutcome !== undefined) return record.confirmOutcome;
+	if (record.status === "CONFIRMED_MATCH") return "match";
+	if (record.status === "CONFIRMED_MISMATCH") return "mismatch";
+	return undefined;
+}
+
+/**
+ * Map a (possibly absent) verdict record to its API outcome + discrepancies (D19), reading the
+ * persisted confirmOutcome so execution_failed survives an idempotent re-confirm instead of
+ * degrading to mismatch (#2). Fail-closed: a missing record OR a non-terminal one yields
+ * `error`, never a fabricated verdict.
  */
 function outcomeFromRecord(record: VerdictRecord | undefined): {
 	outcome: VerifyConfirmOutcome;
 	discrepancies: Discrepancy[];
 } {
-	if (record?.status === "CONFIRMED_MATCH") {
-		return { outcome: "match", discrepancies: record.discrepancies ?? [] };
+	if (!record) return { outcome: "error", discrepancies: [] };
+	switch (confirmOutcomeOf(record)) {
+		case "match":
+			return { outcome: "match", discrepancies: record.discrepancies ?? [] };
+		case "mismatch":
+			return { outcome: "mismatch", discrepancies: record.discrepancies ?? [] };
+		case "execution_failed":
+			return { outcome: "execution_failed", discrepancies: [] };
+		default:
+			return { outcome: "error", discrepancies: [] };
 	}
-	if (record?.status === "CONFIRMED_MISMATCH") {
-		return { outcome: "mismatch", discrepancies: record.discrepancies ?? [] };
+}
+
+/**
+ * Build the API response from the record a close (or cached read) resolved to. Because
+ * closeOutcome is first-writer-wins, the resolved record may be a CONCURRENT confirm's winner,
+ * so every closed-record response must, in one place (#1/#5):
+ *   (a) fail closed to `error` when the record is absent (store inconsistency),
+ *   (b) surface `signature_mismatch` (#14b) when the winning record is bound to a DIFFERENT
+ *       signature than this request verified — we must not speak for another tx's verdict,
+ *   (c) otherwise report the persisted confirm outcome.
+ * Shared by the already-closed, normal-close, and failed-tx paths so the invariant cannot drift.
+ */
+function respondFromClosedRecord(
+	correlationId: string,
+	record: VerdictRecord | undefined,
+	requestTxSignature: string,
+): VerifyConfirmResponse {
+	if (!record) {
+		return { correlationId, outcome: "error", discrepancies: [] };
 	}
-	return { outcome: "error", discrepancies: [] };
+	if (
+		record.txSignature !== undefined &&
+		record.txSignature !== requestTxSignature
+	) {
+		return { correlationId, outcome: "signature_mismatch", discrepancies: [] };
+	}
+	return { correlationId, ...outcomeFromRecord(record) };
 }
 
 /** Narrow the ActualEffect union to its unavailable variant (D13, clears TS2345). */
@@ -67,26 +115,13 @@ export function createVerifyConfirmService(
 				return { correlationId, outcome: "unknown_correlation", discrepancies: [] };
 			}
 
-			// Already closed → #14b signature check, then the cached outcome.
+			// Already closed → shared closed-record response (#14b signature check + cached
+			// outcome). Same signature → cached outcome (idempotent, unchanged).
 			if (
 				record.status === "CONFIRMED_MATCH" ||
 				record.status === "CONFIRMED_MISMATCH"
 			) {
-				// #14b: one correlationId = one execution. A repeat confirm carrying a
-				// DIFFERENT signature than the one this record was closed with is not the
-				// transaction we verified — surface it, don't return the cached verdict for
-				// another tx. (Same signature → cached outcome, idempotent, unchanged.)
-				if (
-					record.txSignature !== undefined &&
-					record.txSignature !== txSignature
-				) {
-					return {
-						correlationId,
-						outcome: "signature_mismatch",
-						discrepancies: [],
-					};
-				}
-				return { correlationId, ...outcomeFromRecord(record) };
+				return respondFromClosedRecord(correlationId, record, txSignature);
 			}
 
 			// Still open (DECIDED, or a legacy durable CONFIRMING row) — retryable, no lease.
@@ -97,15 +132,17 @@ export function createVerifyConfirmService(
 			}
 			if (tx.meta?.err) {
 				// Confirmed but FAILED on-chain (D5-v2/D9-v2): the intended action did not
-				// execute. Terminal close (fail-closed), NOT re-poll. The record closes
-				// CONFIRMED_MISMATCH; this detecting call returns the precise signal.
-				await verdictStore.closeOutcome(
+				// execute. Terminal close (fail-closed), NOT re-poll. Persisted as the distinct
+				// execution_failed outcome so an idempotent retry stays execution_failed (#2).
+				// Routed through the shared responder so a lost close-race to a different-signature
+				// confirm surfaces as signature_mismatch — not this signal for a tx we didn't win (#1).
+				const closed = await verdictStore.closeOutcome(
 					correlationId,
-					"mismatch",
+					"execution_failed",
 					[],
 					request.txSignature,
 				);
-				return { correlationId, outcome: "execution_failed", discrepancies: [] };
+				return respondFromClosedRecord(correlationId, closed, request.txSignature);
 			}
 
 			const actual = deriveActualEffect(tx, record.intendedEffect);
@@ -124,27 +161,14 @@ export function createVerifyConfirmService(
 			);
 			// Atomic first-writer-wins close; the response derives from the record the store
 			// returns (D7/D8), so the HTTP outcome can never diverge from what was persisted
-			// and txSignature is stored (#14a).
+			// and txSignature is stored (#14a). The shared responder applies the #14b guard.
 			const closed = await verdictStore.closeOutcome(
 				correlationId,
 				outcome,
 				discrepancies,
 				request.txSignature,
 			);
-			// #14b under concurrency: if we lost the close race to a DIFFERENT-signature
-			// confirm, the returned winner is bound to another tx — surface it, don't return
-			// its verdict for a signature we did not verify.
-			if (
-				closed?.txSignature !== undefined &&
-				closed.txSignature !== request.txSignature
-			) {
-				return {
-					correlationId,
-					outcome: "signature_mismatch",
-					discrepancies: [],
-				};
-			}
-			return { correlationId, ...outcomeFromRecord(closed) };
+			return respondFromClosedRecord(correlationId, closed, request.txSignature);
 		},
 	};
 }

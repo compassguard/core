@@ -90,6 +90,21 @@ export function describeVerdictStoreContract(name: string, makeStore: MakeStore)
 			expect(stored?.discrepancies).toEqual(a?.discrepancies);
 		});
 
+		it("closeOutcome persists confirmOutcome, keeping execution_failed distinct from the CONFIRMED_MISMATCH status, and round-trips it", async () => {
+			const store = await makeStore();
+			await store.putDecided(decided("c1"));
+
+			const closed = await store.closeOutcome("c1", "execution_failed", [], "sig-ef");
+			// execution_failed collapses to CONFIRMED_MISMATCH status but is preserved verbatim.
+			expect(closed?.status).toBe("CONFIRMED_MISMATCH");
+			expect(closed?.confirmOutcome).toBe("execution_failed");
+
+			// Survives a re-read (durable round-trip), not just the returned record.
+			const again = await store.getByCorrelationId("c1");
+			expect(again?.status).toBe("CONFIRMED_MISMATCH");
+			expect(again?.confirmOutcome).toBe("execution_failed");
+		});
+
 		it("closeOutcome persists a provided txSignature on the closed record (#14a)", async () => {
 			const store = await makeStore();
 			await store.putDecided(decided("c1"));
