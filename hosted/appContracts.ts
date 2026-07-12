@@ -5,7 +5,7 @@ import type { EvaluationService } from "./evaluate/evaluationContracts";
 import type { PolicyService } from "./policies/policyContracts";
 import type { VerifyService } from "./verify/verifyContracts";
 import type { VerifyConfirmService } from "./verify/verifyConfirmContracts";
-import type { VerdictStore } from "./verdict/verdictStore";
+import type { VerdictStore } from "./verdict/verdictStoreTypes";
 import type { CredentialStore } from "./credential/credentialStore";
 
 export type HostedAppDependencies = {

@@ -31,7 +31,7 @@ import postgres from "postgres";
 
 import { createHostedApp } from "../app";
 import { createInMemoryVerdictStore } from "../verdict/verdictStore";
-import type { VerdictStore } from "../verdict/verdictStore";
+import type { VerdictStore } from "../verdict/verdictStoreTypes";
 import { createVerifyService } from "./verifyService";
 import { createVerifyConfirmService } from "./verifyConfirmService";
 import type { ConfirmedTx, GetConfirmedTx } from "./getConfirmedTx";

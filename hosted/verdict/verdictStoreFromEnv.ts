@@ -1,7 +1,8 @@
 import { createSqlExecutorFromEnv, readEnv } from "../db/sqlExecutorFromEnv";
 
-import { createInMemoryVerdictStore, type VerdictStore } from "./verdictStore";
+import { createInMemoryVerdictStore } from "./verdictStore";
 import { createPgVerdictStore } from "./verdictStorePg";
+import type { VerdictStore } from "./verdictStoreTypes";
 
 /**
  * Env-selected VerdictStore: durable Supabase Postgres when COMPASS_VERDICT_DB_URL is set,

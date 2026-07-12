@@ -3,10 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import { createHostedApp } from "./app";
 import type { HostedAppDependencies } from "./appContracts";
 import type { EvaluateActionResponse } from "./evaluate/evaluationContracts";
-import {
-	createInMemoryVerdictStore,
-	type VerdictStore,
-} from "./verdict/verdictStore";
+import { createInMemoryVerdictStore } from "./verdict/verdictStore";
+import type { VerdictStore } from "./verdict/verdictStoreTypes";
 import {
 	createInMemoryCredentialStore,
 	type CredentialStore,

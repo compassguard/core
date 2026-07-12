@@ -1,58 +1,12 @@
-import type { HostedDecision } from "@shared/evaluationContracts";
-import type { Discrepancy, IntendedEffect } from "@shared/verdictContracts";
+import type { Discrepancy } from "@shared/verdictContracts";
 
-export type VerdictStatus = "DECIDED" | "CONFIRMED_MATCH" | "CONFIRMED_MISMATCH";
-
-export type ConfirmOutcome = "match" | "mismatch";
-
-export type VerdictRecord = {
-	correlationId: string;
-	decision: HostedDecision;
-	reasons: string[];
-	humanExplanation: string;
-	intendedEffect: IntendedEffect;
-	status: VerdictStatus;
-	decidedAt: string;
-	/** Attribution carried from the /verify request, so a verdict is groupable by who/which session. */
-	userId?: string;
-	sessionId?: string;
-	/** Credential-derived caller identity (trustworthy); distinct from self-reported userId. */
-	authenticatedEmail?: string;
-	txSignature?: string;
-	discrepancies?: Discrepancy[];
-	confirmedAt?: string;
-};
-
-export type DecidedInput = {
-	correlationId: string;
-	decision: HostedDecision;
-	reasons: string[];
-	humanExplanation: string;
-	intendedEffect: IntendedEffect;
-	decidedAt: string;
-	/** Attribution from the /verify request (optional; omitted when the caller sends neither). */
-	userId?: string;
-	sessionId?: string;
-	/** Credential-derived caller identity (trustworthy); distinct from self-reported userId. */
-	authenticatedEmail?: string;
-};
-
-export type VerdictStore = {
-	putDecided(input: DecidedInput): Promise<void>;
-	getByCorrelationId(id: string): Promise<VerdictRecord | undefined>;
-	closeOutcome(
-		id: string,
-		outcome: ConfirmOutcome,
-		discrepancies: Discrepancy[],
-		txSignature?: string,
-	): Promise<VerdictRecord | undefined>;
-	list(limit?: number): Promise<VerdictRecord[]>;
-};
-
-export type VerdictStoreOptions = {
-	/** ISO timestamp source for confirmedAt. Defaults to new Date().toISOString(). */
-	isoNow?: () => string;
-};
+import type {
+	ConfirmOutcome,
+	DecidedInput,
+	VerdictRecord,
+	VerdictStore,
+	VerdictStoreOptions,
+} from "./verdictStoreTypes";
 
 /**
  * In-memory verdict store keyed by correlationId (single-process / demo / tests).
@@ -103,7 +57,10 @@ export function createInMemoryVerdictStore(
 			}
 			const closed: VerdictRecord = {
 				...record,
+				// execution_failed and mismatch share the CONFIRMED_MISMATCH status; confirmOutcome
+				// keeps them distinct.
 				status: outcome === "match" ? "CONFIRMED_MATCH" : "CONFIRMED_MISMATCH",
+				confirmOutcome: outcome,
 				discrepancies,
 				confirmedAt: isoNow(),
 				// Persist the confirming tx link (#14a); only overwrite when provided so a
