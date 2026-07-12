@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createInMemoryVerdictStore } from "../verdict/verdictStore";
 import { createVerifyService } from "./verifyService";
-import type { VerdictStore } from "../verdict/verdictStore";
+import type { VerdictStore } from "../verdict/verdictStoreTypes";
 
 describe("createVerifyService", () => {
 	it("allows a read-only tool (balance) and records a DECIDED verdict", async () => {

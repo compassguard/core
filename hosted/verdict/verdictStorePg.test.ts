@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { PGlite } from "@electric-sql/pglite";
 
-import type { DecidedInput } from "./verdictStore";
+import type { DecidedInput } from "./verdictStoreTypes";
 import { createPgVerdictStore, type SqlExecutor } from "./verdictStorePg";
 import { describeVerdictStoreContract } from "./verdictStoreContract";
 
@@ -129,6 +129,71 @@ describe("createPgVerdictStore — durable-specific (cross-instance + schema ens
 				"c1",
 				1000,
 			]),
+		).resolves.toBeDefined();
+	});
+
+	it("migrates a pre-confirm_outcome table: ensureSchema ADDs the new columns, and a legacy closed row reads back (confirmOutcome absent, inferred downstream)", async () => {
+		const db = new PGlite();
+		const sql = executor(db);
+
+		// Hand-build the OLD schema exactly as it existed before this change: no confirm_outcome,
+		// no claimed_at. `CREATE TABLE IF NOT EXISTS` in the new store will no-op against this, so
+		// only the idempotent MIGRATIONS (ADD COLUMN IF NOT EXISTS) can introduce the new columns.
+		await sql(
+			`CREATE TABLE verdicts (
+				correlation_id text PRIMARY KEY,
+				seq bigserial,
+				status text NOT NULL,
+				decision text NOT NULL,
+				reasons jsonb NOT NULL,
+				human_explanation text NOT NULL,
+				intended_effect jsonb NOT NULL,
+				decided_at text NOT NULL,
+				user_id text,
+				session_id text,
+				authenticated_email text,
+				tx_signature text,
+				discrepancies jsonb,
+				confirmed_at text
+			)`,
+			[],
+		);
+		// A row a pre-change instance closed: CONFIRMED_MISMATCH with NO confirm_outcome column.
+		await sql(
+			`INSERT INTO verdicts
+				(correlation_id, status, decision, reasons, human_explanation, intended_effect, decided_at, tx_signature, discrepancies, confirmed_at)
+			VALUES ($1, 'CONFIRMED_MISMATCH', 'review', $2::jsonb, $3, $4::jsonb, $5, $6, $7::jsonb, $8)`,
+			[
+				"legacy1",
+				JSON.stringify(["TRANSFER_UNKNOWN_RECIPIENT"]),
+				"Recipient is not on the allowlist.",
+				JSON.stringify({ actionKind: "transfer", recipient: "RcpT111", lamports: 25_000_000 }),
+				"2026-07-03T00:00:00.000Z",
+				"sig-legacy",
+				JSON.stringify([{ field: "recipient", actual: "y" }]),
+				"2026-07-03T01:00:00.000Z",
+			],
+		);
+
+		// Initializing the new store and touching it runs ensureSchema → MIGRATIONS on the old table.
+		const store = createPgVerdictStore({ sql });
+
+		// Migration succeeded (no "column does not exist" error) and the legacy row round-trips with
+		// confirmOutcome absent — the service infers `mismatch` from status, never fabricating a value.
+		const legacy = await store.getByCorrelationId("legacy1");
+		expect(legacy?.status).toBe("CONFIRMED_MISMATCH");
+		expect(legacy?.confirmOutcome).toBeUndefined();
+		expect(legacy?.discrepancies).toHaveLength(1);
+
+		// The confirm_outcome column really was added: a fresh close now persists it.
+		await store.putDecided(decided("c2"));
+		const closed = await store.closeOutcome("c2", "execution_failed", [], "sig2");
+		expect(closed?.confirmOutcome).toBe("execution_failed");
+		expect((await store.getByCorrelationId("c2"))?.confirmOutcome).toBe("execution_failed");
+
+		// And the re-provisioned claimed_at column exists, so an old lease UPDATE would not error.
+		await expect(
+			sql(`UPDATE verdicts SET claimed_at = $2 WHERE correlation_id = $1`, ["legacy1", 1000]),
 		).resolves.toBeDefined();
 	});
 

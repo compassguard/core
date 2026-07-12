@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { DeriveActualEffect, IntendedEffect } from "@shared/verdictContracts";
-import {
-	createInMemoryVerdictStore,
-	type DecidedInput,
-	type VerdictRecord,
-	type VerdictStore,
-} from "../verdict/verdictStore";
+import { createInMemoryVerdictStore } from "../verdict/verdictStore";
+import type {
+	DecidedInput,
+	VerdictRecord,
+	VerdictStore,
+} from "../verdict/verdictStoreTypes";
 import type { ConfirmedTx } from "./getConfirmedTx";
 import { createVerifyConfirmService } from "./verifyConfirmService";
 

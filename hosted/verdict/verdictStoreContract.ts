@@ -5,7 +5,7 @@ import type {
 	DecidedInput,
 	VerdictStore,
 	VerdictStoreOptions,
-} from "./verdictStore";
+} from "./verdictStoreTypes";
 
 /**
  * The behavioral contract of a VerdictStore, as a reusable suite. Every implementation

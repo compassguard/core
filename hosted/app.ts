@@ -9,7 +9,7 @@ import { hostedErrorHandler } from "./http/hostedErrorMiddleware";
 import { createPolicyService } from "./policies/policyService";
 import { createPolicyRoutes } from "./policies/policyRoutes";
 import { createVerdictStoreFromEnv } from "./verdict/verdictStoreFromEnv";
-import type { VerdictStore } from "./verdict/verdictStore";
+import type { VerdictStore } from "./verdict/verdictStoreTypes";
 import { createCredentialStoreFromEnv } from "./credential/credentialStoreFromEnv";
 import { createSignupService } from "./signup/signupService";
 import { createSignupRoutes } from "./signup/signupRoutes";

@@ -8,7 +8,7 @@ import type {
 	VerdictStatus,
 	VerdictStore,
 	VerdictStoreOptions,
-} from "./verdictStore";
+} from "./verdictStoreTypes";
 
 /**
  * Minimal parameterized-SQL seam (D3). A row is a plain column→value map. jsonb columns are
@@ -29,6 +29,10 @@ export type PgVerdictStoreDependencies = { sql: SqlExecutor } & VerdictStoreOpti
 // rolling-deploy safety: an old lease-bearing instance still runs UPDATE ... SET claimed_at and
 // would error if the column were absent. Do NOT drop until rollback to a lease-bearing version
 // is impossible (see the debt registry in docs/compass-demo-day/proposal.md).
+// NOTE: keeping the column is SCHEMA compatibility only. Leaseless code still ignores an ACTIVE
+// lease and will close a CONFIRMING row out from under an old instance, so a rollback to a
+// lease-bearing version MUST be non-overlapping (drain leaseless instances first). Overlap costs
+// only a duplicate close race, never a wrong verdict — the constraint avoids the wasted work.
 const CREATE_TABLE = `CREATE TABLE IF NOT EXISTS verdicts (
 	correlation_id text PRIMARY KEY,
 	seq bigserial,

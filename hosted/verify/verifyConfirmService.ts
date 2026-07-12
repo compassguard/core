@@ -8,7 +8,7 @@ import type {
 	ConfirmOutcome,
 	VerdictRecord,
 	VerdictStore,
-} from "../verdict/verdictStore";
+} from "../verdict/verdictStoreTypes";
 import { compareEffects } from "./compareEffects";
 import type { GetConfirmedTx } from "./getConfirmedTx";
 import type {
@@ -124,7 +124,12 @@ export function createVerifyConfirmService(
 				return respondFromClosedRecord(correlationId, record, txSignature);
 			}
 
-			// Still open (DECIDED, or a legacy durable CONFIRMING row) — retryable, no lease.
+			// Still open (DECIDED, or a legacy durable CONFIRMING row) — retryable, no lease. A
+			// CONFIRMING row is treated as open and closed here; this leaseless code does NOT honor
+			// an ACTIVE lease, so a rollback to a lease-bearing version MUST be non-overlapping
+			// (drain leaseless instances first). Overlap only costs a duplicate fetch+close race,
+			// never a wrong verdict (the atomic first-writer-wins close is the guarantee) — the
+			// constraint just keeps that waste out of the rollback window. See proposal.md registry.
 			const tx = await getConfirmedTx(txSignature);
 			if (!tx) {
 				// Leaves the record DECIDED so a later confirm can retry.

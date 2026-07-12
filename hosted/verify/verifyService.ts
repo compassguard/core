@@ -15,7 +15,7 @@ import {
 import { derivePolicyContext } from "../policy/policyContext";
 import { evaluateAction } from "../policy/policyEngine";
 import { loadDefaultPolicy } from "../policy/loadPolicy";
-import type { VerdictStore } from "../verdict/verdictStore";
+import type { VerdictStore } from "../verdict/verdictStoreTypes";
 import { buildHumanExplanation } from "./humanExplanation";
 import type {
 	VerifyActionRequest,
