@@ -127,9 +127,9 @@ export function createVerifyConfirmService(
 			// Still open (DECIDED, or a legacy durable CONFIRMING row) — retryable, no lease. A
 			// CONFIRMING row is treated as open and closed here; this leaseless code does NOT honor
 			// an ACTIVE lease, so a rollback to a lease-bearing version MUST be non-overlapping
-			// (drain leaseless instances first). Overlap only costs a duplicate fetch+close race,
-			// never a wrong verdict (the atomic first-writer-wins close is the guarantee) — the
-			// constraint just keeps that waste out of the rollback window. See proposal.md registry.
+			// (drain leaseless instances first). The atomic close protects the stored verdict, but
+			// an old close-race loser can return the winner's verdict for a different signature
+			// because old code lacks post-close reconciliation. See proposal.md registry.
 			const tx = await getConfirmedTx(txSignature);
 			if (!tx) {
 				// Leaves the record DECIDED so a later confirm can retry.

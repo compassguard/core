@@ -31,8 +31,9 @@ export type PgVerdictStoreDependencies = { sql: SqlExecutor } & VerdictStoreOpti
 // is impossible (see the debt registry in docs/compass-demo-day/proposal.md).
 // NOTE: keeping the column is SCHEMA compatibility only. Leaseless code still ignores an ACTIVE
 // lease and will close a CONFIRMING row out from under an old instance, so a rollback to a
-// lease-bearing version MUST be non-overlapping (drain leaseless instances first). Overlap costs
-// only a duplicate close race, never a wrong verdict — the constraint avoids the wasted work.
+// lease-bearing version MUST be non-overlapping (drain leaseless instances first). Although the
+// atomic close keeps the stored verdict consistent, the old close-race loser can return the
+// winner's verdict for a different signature because old code lacks post-close reconciliation.
 const CREATE_TABLE = `CREATE TABLE IF NOT EXISTS verdicts (
 	correlation_id text PRIMARY KEY,
 	seq bigserial,
