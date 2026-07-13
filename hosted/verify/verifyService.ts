@@ -5,16 +5,19 @@ import {
 	createActionCandidate,
 } from "@back/guardrail/execution/executionGateway";
 import { getPostHogClient } from "@back/posthog/posthogClient";
+import { HOSTED_DECISIONS } from "@shared/evaluationContracts";
 import type { PolicyEvaluationContext } from "@shared/policyContracts";
+import type { TrustPolicy, TrustProvider } from "@shared/trustContracts";
 import type { IntendedEffect } from "@shared/verdictContracts";
 
 import {
 	collapseToHostedDecision,
-	hostedRiskLevelFor,
+	riskLevelForHostedDecision,
 } from "../evaluate/hostedDecision";
 import { derivePolicyContext } from "../policy/policyContext";
 import { evaluateAction } from "../policy/policyEngine";
 import { loadDefaultPolicy } from "../policy/loadPolicy";
+import { applyTrustSignal } from "../trust/trustSignal";
 import type { VerdictStore } from "../verdict/verdictStoreTypes";
 import { buildHumanExplanation } from "./humanExplanation";
 import type {
@@ -29,6 +32,16 @@ export type VerifyServiceDependencies = {
 	/** Called (best-effort) when the DECIDED write fails; the verdict is still returned. */
 	captureException?: (error: unknown) => void;
 	isoNow?: () => string;
+	/**
+	 * Optional counterparty screening. Omit it and behaviour is unchanged.
+	 *
+	 * The signal is NEGATIVE EVIDENCE ONLY: applyTrustSignal takes max() on
+	 * strictness, so a provider can push a decision toward deny and never away
+	 * from it. It cannot raise a cap or override the denylist — it never sees
+	 * them, only the verdict the deterministic engine already reached.
+	 */
+	trustProvider?: TrustProvider;
+	trustPolicy?: TrustPolicy;
 };
 
 export function createVerifyService(
@@ -80,12 +93,48 @@ export function createVerifyService(
 				policy: loadDefaultPolicy(),
 			});
 
-			const decision = collapseToHostedDecision(evaluation.decision);
-			const riskLevel = hostedRiskLevelFor(evaluation.decision);
-			const humanExplanation = buildHumanExplanation(
-				decision,
-				evaluation.reasonCodes,
-			);
+			const baseDecision = collapseToHostedDecision(evaluation.decision);
+
+			// Counterparty screening. Consulted whenever the engine did not already
+			// deny and there is a recipient to screen — a known drainer has to be
+			// caught even on a payment the deterministic rules were happy with, so
+			// this cannot be narrowed to the unknown-recipient branch.
+			//
+			// Fail-open by construction: a provider that is down returns NO_SIGNAL,
+			// which imposes nothing. That is only safe because the signal can never
+			// relax a decision (applyTrustSignal), so an outage costs a missed extra
+			// caution rather than a wrongly-permitted payment.
+			let decision = baseDecision;
+			let reasons = evaluation.reasonCodes;
+
+			if (
+				deps.trustProvider &&
+				context.recipient_address &&
+				baseDecision !== HOSTED_DECISIONS.DENY
+			) {
+				const signal = await deps.trustProvider.screen(
+					context.recipient_address,
+				);
+				const refined = applyTrustSignal(
+					baseDecision,
+					signal,
+					deps.trustPolicy,
+				);
+
+				decision = refined.decision;
+				if (refined.addedReasons.length > 0) {
+					reasons = [...reasons, ...refined.addedReasons];
+				}
+				// SEAM: signal.evidence carries the provider's signed response, which is
+				// what makes a screening-driven verdict independently auditable. Persisting
+				// it needs a VerdictStore contract change (a decision-evidence column), so
+				// it is deliberately left for that change rather than half-wired here.
+			}
+
+			// Keyed on the FINAL decision, not evaluation.decision: a payment the
+			// trust layer escalated to deny must not still report riskLevel "low".
+			const riskLevel = riskLevelForHostedDecision(decision);
+			const humanExplanation = buildHumanExplanation(decision, reasons);
 			// SEAM (D4-v2 / R2): native intended dimensions — lamports / tokenAmount /
 			// mint — are populated here once a verify-side decode source (Fran's
 			// decodeTransaction, injection ①) is wired. There is no such source in
@@ -106,7 +155,7 @@ export function createVerifyService(
 				await deps.verdictStore.putDecided({
 					correlationId,
 					decision,
-					reasons: evaluation.reasonCodes,
+					reasons,
 					humanExplanation,
 					intendedEffect,
 					decidedAt: requestedAt,
@@ -126,7 +175,7 @@ export function createVerifyService(
 				correlationId,
 				decision,
 				riskLevel,
-				reasons: evaluation.reasonCodes,
+				reasons,
 				humanExplanation,
 			};
 		},

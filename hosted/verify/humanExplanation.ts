@@ -1,5 +1,6 @@
 import type { HostedDecision } from "@shared/evaluationContracts";
 import { POLICY_REASON_CODES } from "@shared/policyContracts";
+import { TRUST_REASON_CODES } from "@shared/trustContracts";
 
 /**
  * Operator-readable sentence per known policy reason code. Keyed on the
@@ -35,6 +36,17 @@ const REASON_SENTENCES: Partial<Record<string, string>> = {
 		"Unknown state-changing tool — denied by default.",
 	[POLICY_REASON_CODES.UNKNOWN_TOOL_NEEDS_CONTEXT]:
 		"Unknown tool — more context is needed before allowing it.",
+
+	// Counterparty screening. These only ever accompany a decision the trust layer
+	// made stricter — no screening result can produce an approving sentence.
+	[TRUST_REASON_CODES.COUNTERPARTY_SANCTIONED]:
+		"The recipient appears on a sanctions list.",
+	[TRUST_REASON_CODES.COUNTERPARTY_MALICIOUS]:
+		"The recipient is a known scam, phishing or drainer address.",
+	[TRUST_REASON_CODES.COUNTERPARTY_REPUTATION_REVOKED]:
+		"The recipient's on-chain reputation has been revoked.",
+	[TRUST_REASON_CODES.COUNTERPARTY_INSUFFICIENT_EVIDENCE]:
+		"There is too little on-chain evidence about the recipient to judge it.",
 };
 
 const DECISION_FALLBACK: Record<HostedDecision, string> = {
