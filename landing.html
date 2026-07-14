@@ -181,8 +181,9 @@
     .guardian-traits li strong { display: block; font-family: Sora, sans-serif; font-weight: 600; color: var(--fortress-900); font-size: 19px; margin-bottom: 6px; letter-spacing: -.02em; }
     .guardian-traits li p { color: rgba(20, 35, 29, .7); font-size: 13px; line-height: 1.5; margin: 0; }
     .partners { padding: 28px 0; }
-    .trust-row { display: flex; align-items: center; justify-content: space-between; gap: 28px; padding: 24px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .trust-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px 28px; padding: 24px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
     .trust-row h2 { margin: 0; font-size: clamp(24px, 3vw, 34px); }
+    .partner-links { display: flex; flex: 1; flex-wrap: wrap; justify-content: flex-end; gap: 12px; }
     .partner-link { display: inline-flex; align-items: center; gap: 12px; padding: 8px 14px 8px 8px; border: 1px solid var(--line); border-radius: 999px; background: rgba(244, 240, 230, .66); font: 700 14px Sora, sans-serif; transition: transform .3s ease, border-color .3s ease, box-shadow .3s ease; }
     .partner-link img { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; }
     .partner-link:hover, .partner-link:focus-visible { transform: translateY(-2px); border-color: var(--compass-600); box-shadow: 0 10px 22px rgba(13, 31, 23, .12); outline: none; }
@@ -228,6 +229,7 @@
       .rule { grid-template-columns: 1fr; }
       .guardian-traits { grid-template-columns: 1fr; }
       .trust-row { align-items: flex-start; flex-direction: column; }
+      .partner-links { justify-content: flex-start; }
       .footer-inner { flex-direction: column; }
       .mode-panel.is-active, .agent-prompt { align-items: stretch; flex-direction: column; }
       .mode-panel .btn, .copy-prompt { width: 100%; }
@@ -292,7 +294,11 @@
       <div class="container">
         <div class="trust-row reveal">
           <h2 id="trusted-by">Trusted by</h2>
-          <a class="partner-link" href="https://trust.nsgoods.org" target="_blank" rel="noopener noreferrer" aria-label="Visit nsgoods trust site (opens in a new tab)"><img src="/nsgoods-logo.png" alt="" loading="lazy" decoding="async" /><span>nsgoods</span><span aria-hidden="true">↗</span></a>
+          <div class="partner-links">
+            <a class="partner-link" href="https://trust.nsgoods.org" target="_blank" rel="noopener noreferrer" aria-label="Visit nsgoods trust site (opens in a new tab)"><img src="/nsgoods-logo.png" alt="" loading="lazy" decoding="async" /><span>nsgoods</span><span aria-hidden="true">↗</span></a>
+            <a class="partner-link" href="https://x.com/dev3pack" target="_blank" rel="noopener noreferrer" aria-label="Visit dev3pack on X (opens in a new tab)"><img src="/dev3pack-logo.png" alt="" loading="lazy" decoding="async" /><span>dev3pack</span><span aria-hidden="true">↗</span></a>
+            <a class="partner-link" href="https://emprelatam.com" target="_blank" rel="noopener noreferrer" aria-label="Visit Emprelatam (opens in a new tab)"><img src="/emprelatam-logo.png" alt="" loading="lazy" decoding="async" /><span>Emprelatam</span><span aria-hidden="true">↗</span></a>
+          </div>
         </div>
       </div>
     </section>
