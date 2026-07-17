@@ -22,6 +22,10 @@ export const DEFAULT_TRUST_POLICY: TrustPolicy = {
 	on_malicious: HOSTED_DECISIONS.REVIEW,
 	on_revoked: HOSTED_DECISIONS.DENY,
 	on_insufficient_evidence: HOSTED_DECISIONS.REVIEW,
+	on_suspicious: HOSTED_DECISIONS.REVIEW,
+	// A screen we could not complete escalates an otherwise-allowed payment to
+	// human review — never permits it. "Could not check" must not read as "clean".
+	on_unavailable: HOSTED_DECISIONS.REVIEW,
 };
 
 /** allow < review < deny. Higher is stricter. */
@@ -37,6 +41,9 @@ const REASON_FOR: Partial<Record<TrustVerdict, string>> = {
 	[TRUST_VERDICTS.REVOKED]: TRUST_REASON_CODES.COUNTERPARTY_REPUTATION_REVOKED,
 	[TRUST_VERDICTS.INSUFFICIENT_EVIDENCE]:
 		TRUST_REASON_CODES.COUNTERPARTY_INSUFFICIENT_EVIDENCE,
+	[TRUST_VERDICTS.SUSPICIOUS]: TRUST_REASON_CODES.COUNTERPARTY_SUSPICIOUS,
+	[TRUST_VERDICTS.UNAVAILABLE]:
+		TRUST_REASON_CODES.COUNTERPARTY_SCREENING_UNAVAILABLE,
 };
 
 /** What a verdict imposes on its own. CLEAN and NO_SIGNAL impose nothing. */
@@ -50,6 +57,10 @@ function imposedBy(verdict: TrustVerdict, policy: TrustPolicy): HostedDecision {
 			return policy.on_revoked;
 		case TRUST_VERDICTS.INSUFFICIENT_EVIDENCE:
 			return policy.on_insufficient_evidence;
+		case TRUST_VERDICTS.SUSPICIOUS:
+			return policy.on_suspicious;
+		case TRUST_VERDICTS.UNAVAILABLE:
+			return policy.on_unavailable;
 		case TRUST_VERDICTS.CLEAN:
 		case TRUST_VERDICTS.NO_SIGNAL:
 			return HOSTED_DECISIONS.ALLOW;

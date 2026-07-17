@@ -14,6 +14,8 @@ import { createCredentialStoreFromEnv } from "./credential/credentialStoreFromEn
 import { createSignupService } from "./signup/signupService";
 import { createSignupRoutes } from "./signup/signupRoutes";
 import { createVerifyService } from "./verify/verifyService";
+import { createNsgoodsTrustProvider } from "./trust/nsgoodsTrustProvider";
+import { DEFAULT_TRUST_POLICY } from "./trust/trustSignal";
 import { createVerifyConfirmService } from "./verify/verifyConfirmService";
 import { createBoundedConfirmedTxFetcher } from "./verify/getConfirmedTx";
 import { deriveActualEffectUnavailable } from "./verify/deriveActualEffect.unavailable";
@@ -45,7 +47,14 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 		(sharedVerdictStore ??= createVerdictStoreFromEnv());
 	const verifyService =
 		deps.verifications ??
-		createVerifyService({ verdictStore: resolveVerdictStore() });
+		createVerifyService({
+			verdictStore: resolveVerdictStore(),
+			// Counterparty screening — only active when a provider was wired in
+			// (createDefaultHostedAppDependencies does so under an env flag); absent
+			// → behaviour unchanged, no network call on the verify path.
+			trustProvider: deps.trustProvider,
+			trustPolicy: deps.trustPolicy,
+		});
 	const verifyConfirmService =
 		deps.confirmations ??
 		createVerifyConfirmService({
@@ -75,6 +84,12 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 export function createDefaultHostedAppDependencies(
 	env: Record<string, string | undefined> = process.env,
 ): HostedAppDependencies {
+	// Counterparty screening is opt-in per deployment: enabling it adds a bounded,
+	// fail-open network call to the /verify path, so it stays off unless the env
+	// flag is set (keeping tests and unconfigured runs network-free). The signal is
+	// negative-evidence-only, so turning it on can never relax a verdict.
+	const screeningEnabled = env.COMPASS_TRUST_SCREENING_ENABLED === "1";
+
 	return {
 		auth: {
 			apiKey: env.COMPASS_HOSTED_API_KEY,
@@ -86,5 +101,14 @@ export function createDefaultHostedAppDependencies(
 				llm: "ok",
 			},
 		},
+		...(screeningEnabled
+			? {
+					trustProvider: createNsgoodsTrustProvider({
+						chain: "solana",
+						baseUrl: env.COMPASS_TRUST_BASE_URL,
+					}),
+					trustPolicy: DEFAULT_TRUST_POLICY,
+				}
+			: {}),
 	};
 }

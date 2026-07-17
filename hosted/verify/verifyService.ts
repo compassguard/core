@@ -100,12 +100,15 @@ export function createVerifyService(
 			// caught even on a payment the deterministic rules were happy with, so
 			// this cannot be narrowed to the unknown-recipient branch.
 			//
-			// Fail-open by construction: a provider that is down returns NO_SIGNAL,
-			// which imposes nothing. That is only safe because the signal can never
-			// relax a decision (applyTrustSignal), so an outage costs a missed extra
-			// caution rather than a wrongly-permitted payment.
+			// Never throws and never relaxes: a provider that is down returns
+			// UNAVAILABLE (→ REVIEW, so an outage is recorded distinctly rather than
+			// reading as a clean pass), and by applyTrustSignal a signal can only make
+			// a decision stricter. NO_SIGNAL (no address) imposes nothing.
 			let decision = baseDecision;
 			let reasons = evaluation.reasonCodes;
+			// The provider's signed response, retained on the verdict record as
+			// third-party attestation so a screening-driven decision is auditable.
+			let evidence: unknown;
 
 			if (
 				deps.trustProvider &&
@@ -125,10 +128,12 @@ export function createVerifyService(
 				if (refined.addedReasons.length > 0) {
 					reasons = [...reasons, ...refined.addedReasons];
 				}
-				// SEAM: signal.evidence carries the provider's signed response, which is
-				// what makes a screening-driven verdict independently auditable. Persisting
-				// it needs a VerdictStore contract change (a decision-evidence column), so
-				// it is deliberately left for that change rather than half-wired here.
+				// Persist evidence only when the screen actually drove/accompanied the
+				// decision — i.e. it added a reason. A CLEAN/NO_SIGNAL pass leaves the
+				// verdict unchanged and carries no attestation worth storing.
+				if (refined.addedReasons.length > 0) {
+					evidence = signal.evidence;
+				}
 			}
 
 			// Keyed on the FINAL decision, not evaluation.decision: a payment the
@@ -166,6 +171,9 @@ export function createVerifyService(
 					// Trustworthy credential-derived identity (D11), server-set from the
 					// resolved credential — distinct from the self-reported userId above.
 					authenticatedEmail: caller?.authenticatedEmail,
+					// Signed screening attestation backing a trust-driven verdict (absent
+					// when screening did not change the decision).
+					evidence,
 				});
 			} catch (error) {
 				captureException(error);

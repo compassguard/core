@@ -55,6 +55,8 @@ describe("applyTrustSignal — the invariant", () => {
 			on_malicious: HOSTED_DECISIONS.ALLOW,
 			on_revoked: HOSTED_DECISIONS.ALLOW,
 			on_insufficient_evidence: HOSTED_DECISIONS.ALLOW,
+			on_suspicious: HOSTED_DECISIONS.ALLOW,
+			on_unavailable: HOSTED_DECISIONS.ALLOW,
 		};
 
 		for (const base of ALL_DECISIONS) {
@@ -150,5 +152,42 @@ describe("applyTrustSignal — absent signal is a no-op", () => {
 			expect(decision).toBe(base);
 			expect(addedReasons).toEqual([]);
 		}
+	});
+});
+
+describe("applyTrustSignal — screening unavailable is caution, recorded distinctly", () => {
+	it("escalates an otherwise-allowed payment to review, distinct from a clean pass", () => {
+		const { decision, addedReasons } = applyTrustSignal(
+			HOSTED_DECISIONS.ALLOW,
+			signalOf(TRUST_VERDICTS.UNAVAILABLE),
+		);
+
+		// An outage must not read as "screened clean": it moves ALLOW → REVIEW and
+		// carries its own reason, unlike NO_SIGNAL/CLEAN which leave ALLOW untouched.
+		expect(decision).toBe(HOSTED_DECISIONS.REVIEW);
+		expect(addedReasons).toContain(
+			TRUST_REASON_CODES.COUNTERPARTY_SCREENING_UNAVAILABLE,
+		);
+	});
+
+	it("never permits: UNAVAILABLE cannot relax a review or a deny", () => {
+		expect(
+			applyTrustSignal(HOSTED_DECISIONS.REVIEW, signalOf(TRUST_VERDICTS.UNAVAILABLE))
+				.decision,
+		).toBe(HOSTED_DECISIONS.REVIEW);
+		expect(
+			applyTrustSignal(HOSTED_DECISIONS.DENY, signalOf(TRUST_VERDICTS.UNAVAILABLE))
+				.decision,
+		).toBe(HOSTED_DECISIONS.DENY);
+	});
+
+	it("routes a soft/suspicious flag to review", () => {
+		const { decision, addedReasons } = applyTrustSignal(
+			HOSTED_DECISIONS.ALLOW,
+			signalOf(TRUST_VERDICTS.SUSPICIOUS),
+		);
+
+		expect(decision).toBe(HOSTED_DECISIONS.REVIEW);
+		expect(addedReasons).toContain(TRUST_REASON_CODES.COUNTERPARTY_SUSPICIOUS);
 	});
 });

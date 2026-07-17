@@ -4,10 +4,23 @@ import {
 	type TrustSignal,
 } from "@shared/trustContracts";
 
+/** No address to screen — screening did not apply. Imposes nothing. */
 const NO_SIGNAL: TrustSignal = { verdict: TRUST_VERDICTS.NO_SIGNAL, reasons: [] };
+/** The screen was attempted but could not complete. Imposes REVIEW (never a clean pass). */
+const UNAVAILABLE: TrustSignal = {
+	verdict: TRUST_VERDICTS.UNAVAILABLE,
+	reasons: [],
+};
 
 export type NsgoodsProviderOptions = {
 	baseUrl?: string;
+	/**
+	 * Chain the counterparty address lives on, passed to the endpoint. Compass is
+	 * Solana-first, so this defaults to "solana"; the live endpoint otherwise
+	 * defaults to ethereum and would screen a Solana address against the wrong
+	 * chain's lists.
+	 */
+	chain?: string;
 	/** Hard deadline for the whole screen() call, including the JSON read. */
 	timeoutMs?: number;
 	fetchImpl?: typeof fetch;
@@ -24,17 +37,16 @@ export type NsgoodsProviderOptions = {
 	verifySignature?: (body: unknown) => Promise<boolean>;
 };
 
-/** The provisional screening response shape. Every field is optional on purpose. */
+/** The live /screen response shape. Every field is optional on purpose. */
 type ScreenResponseBody = {
 	result?: {
 		sanctioned?: boolean;
 		malicious?: boolean;
-		inputs?: {
-			revoked_count?: number;
-			distinct_clients?: number;
-			min_distinct_clients_required?: number;
-		};
+		hard_flags?: unknown[];
+		soft_flags?: unknown[];
 	};
+	/** Endpoint's own rollup: "deny" | "review" | "clean". Used only for the soft/review tier. */
+	screening_verdict?: string;
 };
 
 /**
@@ -42,34 +54,39 @@ type ScreenResponseBody = {
  *
  * Hardened against the two defects in the vendor's reference helper:
  *
- *   1. TRUE fail-open. The fetch, the status check and the JSON parse all sit
- *      inside the try, so a DNS failure, a timeout, or a 502 HTML error page
- *      yields NO_SIGNAL rather than throwing into the policy engine. (The
- *      reference helper only caught signature-recovery failures, so the failure
- *      mode that actually happens in production — the upstream being down — took
- *      the whole decision down with it.)
+ *   1. Never throws into the policy engine. The fetch, the status check and the
+ *      JSON parse all sit inside the try, so a DNS failure, a timeout, or a 502
+ *      HTML error page yields a verdict rather than an exception. (The reference
+ *      helper only caught signature-recovery failures, so the failure mode that
+ *      actually happens in production — the upstream being down — took the whole
+ *      decision down with it.)
  *
  *   2. A hard deadline. This is a third party sitting in a decision path that is
  *      otherwise pure in-process compute, and the reference helper had no
  *      timeout at all. It is never allowed to hang.
  *
- * Failing open is safe here *only because* the signal is negative-evidence-only:
- * losing it can never relax a decision (see applyTrustSignal), so an outage costs
- * a missed extra caution, never a wrongly-permitted payment.
+ * On any failure the screen returns UNAVAILABLE (not NO_SIGNAL): a screen we
+ * could not complete escalates to REVIEW, so an outage never reads as a clean
+ * pass — while still, by the negative-evidence-only invariant (applyTrustSignal),
+ * never relaxing a decision. NO_SIGNAL is reserved for "no address to screen".
  *
- * The request/response shape is provisional — it tracks the screening endpoint
- * nsgoods described but has not yet shipped. Only this file should need to change
- * when it lands; the port and the invariant above it are stable.
+ * The response shape tracks the live /screen endpoint (sanctioned / malicious /
+ * hard_flags / soft_flags / screening_verdict). Only this file should need to
+ * change if it evolves; the port and the invariant above it are stable.
  */
 export function createNsgoodsTrustProvider(
 	options: NsgoodsProviderOptions = {},
 ): TrustProvider {
 	const baseUrl = options.baseUrl ?? "https://trust.nsgoods.org";
+	const chain = options.chain ?? "solana";
 	const timeoutMs = options.timeoutMs ?? 800;
 	const doFetch = options.fetchImpl ?? fetch;
 
 	return {
 		async screen(counterpartyAddress: string): Promise<TrustSignal> {
+			// No address to screen: screening does not apply. This is the ONLY no-op
+			// path — every other early return below is UNAVAILABLE, because an
+			// attempted-but-failed screen must not read as "checked, nothing found".
 			if (counterpartyAddress.trim().length === 0) {
 				return NO_SIGNAL;
 			}
@@ -77,10 +94,10 @@ export function createNsgoodsTrustProvider(
 			try {
 				const url = `${baseUrl}/screen?address=${encodeURIComponent(
 					counterpartyAddress,
-				)}`;
+				)}&chain=${encodeURIComponent(chain)}`;
 				const response = await withTimeout(doFetch(url), timeoutMs);
 				if (!response.ok) {
-					return NO_SIGNAL;
+					return UNAVAILABLE;
 				}
 
 				const body: unknown = JSON.parse(await response.text());
@@ -88,54 +105,49 @@ export function createNsgoodsTrustProvider(
 				if (options.verifySignature) {
 					const verified = await options.verifySignature(body);
 					if (!verified) {
-						return NO_SIGNAL;
+						return UNAVAILABLE;
 					}
 				}
 
 				return toTrustSignal(body);
 			} catch {
-				// Every failure is a missing signal: never an exception, never a
-				// relaxation. Deliberately catch-all — a screening provider has no
-				// business deciding how a policy engine handles its outages.
-				return NO_SIGNAL;
+				// Network error, timeout, or unparseable body: the screen was attempted
+				// and could not complete → UNAVAILABLE (imposes REVIEW), never a
+				// relaxation and never an exception into the policy engine. Deliberately
+				// catch-all — a screening provider has no business deciding how a policy
+				// engine handles its outages.
+				return UNAVAILABLE;
 			}
 		},
 	};
 }
 
-/** Map a screening response to a verdict. Strongest negative wins. */
+/** Map a /screen response to a verdict. Strongest negative wins. */
 function toTrustSignal(body: unknown): TrustSignal {
-	const result = (body as ScreenResponseBody | null)?.result;
+	const parsed = body as ScreenResponseBody | null;
+	const result = parsed?.result;
 	if (!result) {
-		return NO_SIGNAL;
+		// A 2xx whose body we cannot map to a verdict is a screen we could not
+		// complete, NOT a clean pass: UNAVAILABLE (imposes REVIEW).
+		return { verdict: TRUST_VERDICTS.UNAVAILABLE, reasons: [], evidence: body };
 	}
 
 	if (result.sanctioned === true) {
 		return { verdict: TRUST_VERDICTS.SANCTIONED, reasons: [], evidence: body };
 	}
 
-	if (result.malicious === true) {
+	// A hard flag (e.g. a known drainer) is a confirmed-malicious signal even when
+	// the boolean is absent; the endpoint carries it in hard_flags.
+	if (result.malicious === true || (result.hard_flags?.length ?? 0) > 0) {
 		return { verdict: TRUST_VERDICTS.MALICIOUS, reasons: [], evidence: body };
 	}
 
-	const inputs = result.inputs ?? {};
-
-	if ((inputs.revoked_count ?? 0) > 0) {
-		return { verdict: TRUST_VERDICTS.REVOKED, reasons: [], evidence: body };
-	}
-
-	const distinctClients = inputs.distinct_clients;
-	const minRequired = inputs.min_distinct_clients_required;
+	// Soft flags / a "review" rollup are unconfirmed suspicion → SUSPICIOUS (REVIEW).
 	if (
-		typeof distinctClients === "number" &&
-		typeof minRequired === "number" &&
-		distinctClients < minRequired
+		(result.soft_flags?.length ?? 0) > 0 ||
+		parsed?.screening_verdict === "review"
 	) {
-		return {
-			verdict: TRUST_VERDICTS.INSUFFICIENT_EVIDENCE,
-			reasons: [],
-			evidence: body,
-		};
+		return { verdict: TRUST_VERDICTS.SUSPICIOUS, reasons: [], evidence: body };
 	}
 
 	// No negative flags. CLEAN, not "trusted": this imposes nothing and cannot

@@ -47,6 +47,10 @@ const REASON_SENTENCES: Partial<Record<string, string>> = {
 		"The recipient's on-chain reputation has been revoked.",
 	[TRUST_REASON_CODES.COUNTERPARTY_INSUFFICIENT_EVIDENCE]:
 		"There is too little on-chain evidence about the recipient to judge it.",
+	[TRUST_REASON_CODES.COUNTERPARTY_SUSPICIOUS]:
+		"The recipient carries a soft risk flag and warrants a closer look.",
+	[TRUST_REASON_CODES.COUNTERPARTY_SCREENING_UNAVAILABLE]:
+		"The recipient could not be screened right now, so this was escalated to review as a precaution.",
 };
 
 const DECISION_FALLBACK: Record<HostedDecision, string> = {

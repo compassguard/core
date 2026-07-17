@@ -29,9 +29,22 @@ export const TRUST_VERDICTS = {
 	REVOKED: "revoked",
 	/** Registered, but too little evidence to conclude anything. */
 	INSUFFICIENT_EVIDENCE: "insufficient_evidence",
+	/** A soft negative flag (suspicious but not confirmed malicious). */
+	SUSPICIOUS: "suspicious",
 	/** No negative flags. Imposes nothing — explicitly not a vouch. */
 	CLEAN: "clean",
-	/** Provider unavailable, unverifiable, or address unknown. Imposes nothing. */
+	/**
+	 * The screen was ATTEMPTED but could not be completed — provider down,
+	 * timeout, non-2xx, unparseable body, or a response that failed signature
+	 * verification. Distinct from NO_SIGNAL: "we could not check" is not "we
+	 * checked and found nothing". Imposes REVIEW (see DEFAULT_TRUST_POLICY) so an
+	 * outage never reads as a clean pass in the audit trail.
+	 */
+	UNAVAILABLE: "unavailable",
+	/**
+	 * Screening did not apply — there was no address to screen. Imposes nothing.
+	 * This is the genuine no-op; a provider FAILURE is UNAVAILABLE, not this.
+	 */
 	NO_SIGNAL: "no_signal",
 } as const;
 
@@ -42,6 +55,9 @@ export const TRUST_REASON_CODES = {
 	COUNTERPARTY_MALICIOUS: "COUNTERPARTY_MALICIOUS",
 	COUNTERPARTY_REPUTATION_REVOKED: "COUNTERPARTY_REPUTATION_REVOKED",
 	COUNTERPARTY_INSUFFICIENT_EVIDENCE: "COUNTERPARTY_INSUFFICIENT_EVIDENCE",
+	COUNTERPARTY_SUSPICIOUS: "COUNTERPARTY_SUSPICIOUS",
+	/** The screen could not be completed; the verdict was made stricter as a precaution. */
+	COUNTERPARTY_SCREENING_UNAVAILABLE: "COUNTERPARTY_SCREENING_UNAVAILABLE",
 } as const;
 
 export type TrustSignal = {
@@ -76,4 +92,7 @@ export type TrustPolicy = {
 	on_malicious: HostedDecision;
 	on_revoked: HostedDecision;
 	on_insufficient_evidence: HostedDecision;
+	on_suspicious: HostedDecision;
+	/** What a screen we could not complete imposes. Never ALLOW — an outage must not permit. */
+	on_unavailable: HostedDecision;
 };

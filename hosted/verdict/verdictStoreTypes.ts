@@ -39,6 +39,12 @@ export type VerdictRecord = {
 	 * existed; readers infer it from status (CONFIRMED_MISMATCH → mismatch) in that case.
 	 */
 	confirmOutcome?: ConfirmOutcome;
+	/**
+	 * Third-party attestation backing a decision — currently the signed counterparty-screening
+	 * response. Retained verbatim so a screening-driven verdict is independently auditable.
+	 * The policy layer never reads this back; it is evidence, not input.
+	 */
+	evidence?: unknown;
 };
 
 export type DecidedInput = {
@@ -53,6 +59,8 @@ export type DecidedInput = {
 	sessionId?: string;
 	/** Credential-derived caller identity (trustworthy); distinct from self-reported userId. */
 	authenticatedEmail?: string;
+	/** Signed provider attestation backing the decision (e.g. counterparty screening). */
+	evidence?: unknown;
 };
 
 export type VerdictStore = {

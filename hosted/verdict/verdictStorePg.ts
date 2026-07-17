@@ -50,6 +50,7 @@ const CREATE_TABLE = `CREATE TABLE IF NOT EXISTS verdicts (
 	discrepancies jsonb,
 	confirmed_at text,
 	confirm_outcome text,
+	evidence jsonb,
 	claimed_at double precision
 )`;
 
@@ -63,6 +64,7 @@ const MIGRATIONS = [
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS authenticated_email text`,
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS confirm_outcome text`,
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS claimed_at double precision`,
+	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS evidence jsonb`,
 ];
 
 /**
@@ -113,8 +115,8 @@ export function createPgVerdictStore(
 			// DECIDED. Durable persistence makes replay real, so this must be a DB guarantee.
 			await run(
 				`INSERT INTO verdicts
-					(correlation_id, status, decision, reasons, human_explanation, intended_effect, decided_at, user_id, session_id, authenticated_email)
-				VALUES ($1, 'DECIDED', $2, $3::jsonb, $4, $5::jsonb, $6, $7, $8, $9)
+					(correlation_id, status, decision, reasons, human_explanation, intended_effect, decided_at, user_id, session_id, authenticated_email, evidence)
+				VALUES ($1, 'DECIDED', $2, $3::jsonb, $4, $5::jsonb, $6, $7, $8, $9, $10::jsonb)
 				ON CONFLICT (correlation_id) DO NOTHING`,
 				[
 					input.correlationId,
@@ -126,6 +128,7 @@ export function createPgVerdictStore(
 					input.userId ?? null,
 					input.sessionId ?? null,
 					input.authenticatedEmail ?? null,
+					input.evidence === undefined ? null : JSON.stringify(input.evidence),
 				],
 			);
 		},
@@ -222,5 +225,6 @@ function rowToRecord(row: Record<string, unknown>): VerdictRecord {
 	if (row.confirm_outcome != null) {
 		record.confirmOutcome = row.confirm_outcome as ConfirmOutcome;
 	}
+	if (row.evidence != null) record.evidence = parseJsonb<unknown>(row.evidence);
 	return record;
 }

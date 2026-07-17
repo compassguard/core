@@ -4,70 +4,85 @@ import { TRUST_VERDICTS } from "@shared/trustContracts";
 
 import { createNsgoodsTrustProvider } from "./nsgoodsTrustProvider";
 
-const jsonResponse = (body: unknown, ok = true, status = 200) =>
-	new Response(JSON.stringify(body), { status: ok ? status : 502 });
+const jsonResponse = (body: unknown, status = 200) =>
+	new Response(JSON.stringify(body), { status });
 
-describe("createNsgoodsTrustProvider — fail-open (the vendor helper's bug)", () => {
-	it("returns NO_SIGNAL instead of throwing when the network fails", async () => {
+describe("createNsgoodsTrustProvider — never throws, never relaxes (the vendor helper's bug)", () => {
+	// The failure modes the reference helper let escape. Each must yield UNAVAILABLE
+	// (a screen we could not complete → REVIEW), never an exception and never a
+	// clean pass.
+	it("returns UNAVAILABLE instead of throwing when the network fails", async () => {
 		const provider = createNsgoodsTrustProvider({
 			fetchImpl: () => Promise.reject(new Error("ECONNREFUSED")),
 		});
 
-		await expect(provider.screen("7xKqabc")).resolves.toEqual({
-			verdict: TRUST_VERDICTS.NO_SIGNAL,
-			reasons: [],
-		});
+		const signal = await provider.screen("7xKqabc");
+		expect(signal.verdict).toBe(TRUST_VERDICTS.UNAVAILABLE);
 	});
 
-	it("returns NO_SIGNAL when the upstream 502s with an HTML error page", async () => {
+	it("returns UNAVAILABLE when the upstream 502s with an HTML error page", async () => {
 		// The exact case the reference helper blew up on: no res.ok check, and
 		// JSON.parse of an HTML body threw straight into the caller.
 		const provider = createNsgoodsTrustProvider({
 			fetchImpl: () =>
-				Promise.resolve(new Response("<html>502 Bad Gateway</html>", { status: 502 })),
+				Promise.resolve(
+					new Response("<html>502 Bad Gateway</html>", { status: 502 }),
+				),
 		});
 
-		await expect(provider.screen("7xKqabc")).resolves.toEqual({
-			verdict: TRUST_VERDICTS.NO_SIGNAL,
-			reasons: [],
-		});
+		const signal = await provider.screen("7xKqabc");
+		expect(signal.verdict).toBe(TRUST_VERDICTS.UNAVAILABLE);
 	});
 
-	it("returns NO_SIGNAL when a 200 body is not valid JSON", async () => {
+	it("returns UNAVAILABLE when a 200 body is not valid JSON", async () => {
 		const provider = createNsgoodsTrustProvider({
 			fetchImpl: () => Promise.resolve(new Response("not json", { status: 200 })),
 		});
 
-		await expect(provider.screen("7xKqabc")).resolves.toEqual({
-			verdict: TRUST_VERDICTS.NO_SIGNAL,
-			reasons: [],
-		});
+		const signal = await provider.screen("7xKqabc");
+		expect(signal.verdict).toBe(TRUST_VERDICTS.UNAVAILABLE);
 	});
 
-	it("returns NO_SIGNAL rather than hanging when the upstream never responds", async () => {
+	it("returns UNAVAILABLE rather than hanging when the upstream never responds", async () => {
 		const provider = createNsgoodsTrustProvider({
 			timeoutMs: 20,
 			fetchImpl: () => new Promise<Response>(() => {}), // never settles
 		});
 
 		const signal = await provider.screen("7xKqabc");
-
-		expect(signal.verdict).toBe(TRUST_VERDICTS.NO_SIGNAL);
+		expect(signal.verdict).toBe(TRUST_VERDICTS.UNAVAILABLE);
 	});
 
-	it("discards a response that fails signature verification", async () => {
+	it("returns UNAVAILABLE for a response that fails signature verification", async () => {
 		const provider = createNsgoodsTrustProvider({
-			fetchImpl: () => Promise.resolve(jsonResponse({ result: { malicious: true } })),
+			fetchImpl: () =>
+				Promise.resolve(jsonResponse({ result: { malicious: true } })),
 			verifySignature: () => Promise.resolve(false),
 		});
 
 		const signal = await provider.screen("7xKqabc");
-
-		expect(signal.verdict).toBe(TRUST_VERDICTS.NO_SIGNAL);
+		expect(signal.verdict).toBe(TRUST_VERDICTS.UNAVAILABLE);
 	});
 });
 
-describe("createNsgoodsTrustProvider — verdict mapping", () => {
+describe("createNsgoodsTrustProvider — request shape", () => {
+	it("passes the recipient's chain (solana by default) so a Solana address is not screened as ethereum", async () => {
+		let seenUrl = "";
+		const provider = createNsgoodsTrustProvider({
+			fetchImpl: (input) => {
+				seenUrl = String(input);
+				return Promise.resolve(jsonResponse({ result: {} }));
+			},
+		});
+
+		await provider.screen("7xKqSolAddr");
+
+		expect(seenUrl).toContain("address=7xKqSolAddr");
+		expect(seenUrl).toContain("chain=solana");
+	});
+});
+
+describe("createNsgoodsTrustProvider — verdict mapping (live /screen shape)", () => {
 	const screenWith = (body: unknown) =>
 		createNsgoodsTrustProvider({
 			fetchImpl: () => Promise.resolve(jsonResponse(body)),
@@ -86,6 +101,14 @@ describe("createNsgoodsTrustProvider — verdict mapping", () => {
 		expect(signal.verdict).toBe(TRUST_VERDICTS.MALICIOUS);
 	});
 
+	it("maps a hard_flags hit to MALICIOUS even when the boolean is absent", async () => {
+		const signal = await screenWith({
+			result: { hard_flags: ["ofac_sanctioned"] },
+		});
+
+		expect(signal.verdict).toBe(TRUST_VERDICTS.MALICIOUS);
+	});
+
 	it("prefers the sanctions hit when an address is both sanctioned and malicious", async () => {
 		const signal = await screenWith({
 			result: { sanctioned: true, malicious: true },
@@ -94,34 +117,32 @@ describe("createNsgoodsTrustProvider — verdict mapping", () => {
 		expect(signal.verdict).toBe(TRUST_VERDICTS.SANCTIONED);
 	});
 
-	it("maps a revocation to REVOKED", async () => {
+	it("maps a soft_flags hit to SUSPICIOUS", async () => {
 		const signal = await screenWith({
-			result: { inputs: { revoked_count: 1 } },
+			result: { soft_flags: ["mixer_interaction"] },
 		});
 
-		expect(signal.verdict).toBe(TRUST_VERDICTS.REVOKED);
+		expect(signal.verdict).toBe(TRUST_VERDICTS.SUSPICIOUS);
 	});
 
-	it("maps thin evidence to INSUFFICIENT_EVIDENCE", async () => {
+	it("maps a 'review' screening_verdict to SUSPICIOUS", async () => {
 		const signal = await screenWith({
-			result: {
-				inputs: { distinct_clients: 2, min_distinct_clients_required: 3 },
-			},
+			result: {},
+			screening_verdict: "review",
 		});
 
-		expect(signal.verdict).toBe(TRUST_VERDICTS.INSUFFICIENT_EVIDENCE);
+		expect(signal.verdict).toBe(TRUST_VERDICTS.SUSPICIOUS);
 	});
 
 	it("maps a flag-free response to CLEAN — never to anything that could permit", async () => {
 		const signal = await screenWith({
 			result: {
-				score: 95.72, // present in the payload, and deliberately never read
-				inputs: {
-					revoked_count: 0,
-					distinct_clients: 120,
-					min_distinct_clients_required: 3,
-				},
+				sanctioned: false,
+				malicious: false,
+				hard_flags: [],
+				soft_flags: [],
 			},
+			screening_verdict: "clean",
 		});
 
 		expect(signal.verdict).toBe(TRUST_VERDICTS.CLEAN);
@@ -129,10 +150,10 @@ describe("createNsgoodsTrustProvider — verdict mapping", () => {
 		// relax a decision, so a high score has nowhere to go.
 	});
 
-	it("returns NO_SIGNAL for an unrecognized body shape", async () => {
+	it("maps a 2xx whose body has no result to UNAVAILABLE (could not screen ≠ clean)", async () => {
 		const signal = await screenWith({ unexpected: "shape" });
 
-		expect(signal.verdict).toBe(TRUST_VERDICTS.NO_SIGNAL);
+		expect(signal.verdict).toBe(TRUST_VERDICTS.UNAVAILABLE);
 	});
 
 	it("returns NO_SIGNAL for a blank address without calling the network", async () => {
