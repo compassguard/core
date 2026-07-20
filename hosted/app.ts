@@ -20,6 +20,7 @@ import { deriveActualEffectUnavailable } from "./verify/deriveActualEffect.unava
 import { createVerifyRoutes } from "./verify/verifyRoutes";
 import { createMandateRoutes } from "./mandate/mandateRoutes";
 import { createMandateStoreFromEnv } from "./mandate/mandateStoreFromEnv";
+import { createVerifyJudge, resolveVerifyJudgeConfig } from "./verify/verifyJudge";
 import type { HostedAppDependencies } from "./appContracts";
 
 export function createHostedApp(deps: HostedAppDependencies): Hono {
@@ -45,9 +46,20 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 	let sharedVerdictStore: VerdictStore | undefined = deps.verdictStore;
 	const resolveVerdictStore = (): VerdictStore =>
 		(sharedVerdictStore ??= createVerdictStoreFromEnv());
+	// Mandate store (trusted anchor for the /verify judge) — durable when the shared
+	// pooler env is set, in-memory otherwise. Built BEFORE verifyService: the mandate gate
+	// in the service reads it.
+	const mandateStore = deps.mandateStore ?? createMandateStoreFromEnv();
+
+	// Verify judge (self_report mode): built only when COMPASS_VERIFY_JUDGE_ENABLED — an
+	// absent judge means the mandate gate in verifyService short-circuits with zero noise.
+	const verifyJudgeConfig = resolveVerifyJudgeConfig();
+	const verifyJudge =
+		deps.verifyJudge ??
+		(verifyJudgeConfig.enabled ? createVerifyJudge({ config: verifyJudgeConfig }) : undefined);
 	const verifyService =
 		deps.verifications ??
-		createVerifyService({ verdictStore: resolveVerdictStore() });
+		createVerifyService({ verdictStore: resolveVerdictStore(), mandateStore, verifyJudge });
 	const verifyConfirmService =
 		deps.confirmations ??
 		createVerifyConfirmService({
@@ -59,10 +71,6 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 	// Per-email credential store (D13): env-selected durable Supabase or in-memory fallback,
 	// built once and shared by the /v1 auth middleware and the public signup endpoint.
 	const credentialStore = deps.credentialStore ?? createCredentialStoreFromEnv();
-
-	// Mandate store (trusted anchor for the /verify judge) — durable when the shared
-	// pooler env is set, in-memory otherwise.
-	const mandateStore = deps.mandateStore ?? createMandateStoreFromEnv();
 
 	app.onError(hostedErrorHandler);
 	app.route("/health", createHealthRoutes(deps.health));

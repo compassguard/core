@@ -8,6 +8,7 @@ import type { VerifyConfirmService } from "./verify/verifyConfirmContracts";
 import type { VerdictStore } from "./verdict/verdictStoreTypes";
 import type { CredentialStore } from "./credential/credentialStore";
 import type { MandateStore } from "@shared/mandateContracts";
+import type { VerifyJudge } from "./verify/verifyJudge";
 
 export type HostedAppDependencies = {
 	auth: HostedAuthConfig;
@@ -20,4 +21,5 @@ export type HostedAppDependencies = {
 	verdictStore?: VerdictStore;
 	credentialStore?: CredentialStore;
 	mandateStore?: MandateStore;
+	verifyJudge?: VerifyJudge;
 };
