@@ -856,7 +856,19 @@ After the `createVerifyRoutes` mount:
 	app.route("/v1", createMandateRoutes({ mandateStore }));
 ```
 
-Add to `hosted/app.test.ts` (inside the existing `describe`, using its `createDependencies()` helper):
+`hosted/app.test.ts` — FIRST keep the app tests hermetic: this file injects explicit in-memory
+stores so app construction "never falls through to the env-selected factories" (its own comment)
+— the new `createMandateStoreFromEnv()` fallback would violate that whenever
+`COMPASS_VERDICT_DB_URL` is exported. Extend the helpers:
+
+- add imports:
+  `import { createInMemoryMandateStore } from "./mandate/mandateStore";` and
+  `import type { MandateStore } from "@shared/mandateContracts";`
+- extend the `InjectedStores` type with `mandateStore: MandateStore;`
+- extend `createStores()`'s returned object with `mandateStore: createInMemoryMandateStore(),`
+- extend the object returned by `createDependencies` with `mandateStore: stores.mandateStore,`
+
+Then add this test inside the existing `describe("createHostedApp", ...)`:
 
 ```ts
 	it("registers and fetches a mandate through /v1 with the hosted key", async () => {
@@ -905,9 +917,11 @@ git commit -m "feat(mandate): POST/GET /v1/mandate routes with trusted-identity 
 
 - [ ] **Step 1: Write the failing validator tests**
 
-Append to `hosted/verify/verifyValidators.test.ts` (inside its existing `describe`; match its import style):
+Append to `hosted/verify/verifyValidators.test.ts` as a NEW top-level `describe` block (the file
+is organized as one topic-scoped `describe` per concern — there is no shared enclosing one):
 
 ```ts
+describe("validateVerifyActionRequest — intent.statedPurpose", () => {
 	it("accepts intent.statedPurpose and carries it through", () => {
 		const result = validateVerifyActionRequest({
 			toolName: "transfer_sol",
@@ -953,6 +967,7 @@ Append to `hosted/verify/verifyValidators.test.ts` (inside its existing `describ
 			expect(result.request.intent).toEqual({ kind: "transfer" });
 		}
 	});
+});
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
