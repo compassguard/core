@@ -187,5 +187,29 @@ export function describeVerdictStoreContract(name: string, makeStore: MakeStore)
 			const record = await store.getByCorrelationId("c1");
 			expect(record?.authenticatedEmail).toBeUndefined();
 		});
+
+		it("round-trips intentSource and judgeRationale on a DECIDED record", async () => {
+			const store = await makeStore();
+			await store.putDecided({
+				...decided("c9"),
+				intentSource: "self_report",
+				judgeRationale: "Stated purpose conflicts with the registered mandate.",
+			});
+
+			const record = await store.getByCorrelationId("c9");
+			expect(record?.intentSource).toBe("self_report");
+			expect(record?.judgeRationale).toBe(
+				"Stated purpose conflicts with the registered mandate.",
+			);
+		});
+
+		it("records without judge fields read back with the fields absent", async () => {
+			const store = await makeStore();
+			await store.putDecided(decided("c10"));
+
+			const record = await store.getByCorrelationId("c10");
+			expect(record?.intentSource).toBeUndefined();
+			expect(record?.judgeRationale).toBeUndefined();
+		});
 	});
 }
