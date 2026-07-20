@@ -47,6 +47,27 @@ export function describeVerdictStoreContract(name: string, makeStore: MakeStore)
 			expect(record?.decision).toBe("review");
 		});
 
+		it("persists and round-trips screening evidence (third-party attestation)", async () => {
+			const store = await makeStore();
+			const signed = {
+				result: { sanctioned: true },
+				signed_by: "0x5e63",
+				signature: "0xabc",
+			};
+			await store.putDecided({ ...decided("c1"), evidence: signed });
+
+			const record = await store.getByCorrelationId("c1");
+			expect(record?.evidence).toEqual(signed);
+		});
+
+		it("leaves evidence absent when none was supplied", async () => {
+			const store = await makeStore();
+			await store.putDecided(decided("c1"));
+
+			const record = await store.getByCorrelationId("c1");
+			expect(record?.evidence).toBeUndefined();
+		});
+
 		it("closeOutcome sets the CONFIRMED status and is idempotent", async () => {
 			const store = await makeStore({ isoNow: () => "2026-07-03T01:00:00.000Z" });
 			await store.putDecided(decided("c1"));

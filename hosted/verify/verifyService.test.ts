@@ -1,8 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 
+import {
+	TRUST_VERDICTS,
+	type TrustProvider,
+	type TrustSignal,
+} from "@shared/trustContracts";
+
 import { createInMemoryVerdictStore } from "../verdict/verdictStore";
 import { createVerifyService } from "./verifyService";
 import type { VerdictStore } from "../verdict/verdictStoreTypes";
+
+const fixedProvider = (signal: TrustSignal): TrustProvider => ({
+	screen: () => Promise.resolve(signal),
+});
 
 describe("createVerifyService", () => {
 	it("allows a read-only tool (balance) and records a DECIDED verdict", async () => {
@@ -78,6 +88,74 @@ describe("createVerifyService", () => {
 
 		const record = await store.getByCorrelationId(res.correlationId);
 		expect(record?.authenticatedEmail).toBe("x@y.z");
+	});
+
+	it("screening escalates an otherwise-allowed transfer to a sanctioned recipient into deny, and persists the signed evidence", async () => {
+		const store = createInMemoryVerdictStore();
+		const signed = { result: { sanctioned: true }, signature: "0xabc" };
+		const service = createVerifyService({
+			verdictStore: store,
+			trustProvider: fixedProvider({
+				verdict: TRUST_VERDICTS.SANCTIONED,
+				reasons: [],
+				evidence: signed,
+			}),
+		});
+
+		const res = await service.verifyAction({
+			toolName: "transfer_sol",
+			intent: { kind: "transfer" },
+			// Within cap + known recipient → the deterministic engine alone would allow.
+			arguments: { recipient: "RcpT111", amountUsd: 5, recipientKnown: true },
+		});
+
+		expect(res.decision).toBe("deny");
+		expect(res.reasons).toContain("COUNTERPARTY_SANCTIONED");
+		const record = await store.getByCorrelationId(res.correlationId);
+		expect(record?.decision).toBe("deny");
+		expect(record?.evidence).toEqual(signed);
+	});
+
+	it("records screening-unavailable as review, distinct from a clean pass", async () => {
+		const store = createInMemoryVerdictStore();
+		const service = createVerifyService({
+			verdictStore: store,
+			trustProvider: fixedProvider({
+				verdict: TRUST_VERDICTS.UNAVAILABLE,
+				reasons: [],
+			}),
+		});
+
+		const res = await service.verifyAction({
+			toolName: "transfer_sol",
+			intent: { kind: "transfer" },
+			arguments: { recipient: "RcpT111", amountUsd: 5, recipientKnown: true },
+		});
+
+		expect(res.decision).toBe("review");
+		expect(res.reasons).toContain("COUNTERPARTY_SCREENING_UNAVAILABLE");
+	});
+
+	it("a clean screen leaves an allowed transfer allowed and stores no evidence", async () => {
+		const store = createInMemoryVerdictStore();
+		const service = createVerifyService({
+			verdictStore: store,
+			trustProvider: fixedProvider({
+				verdict: TRUST_VERDICTS.CLEAN,
+				reasons: [],
+				evidence: { result: {} },
+			}),
+		});
+
+		const res = await service.verifyAction({
+			toolName: "transfer_sol",
+			intent: { kind: "transfer" },
+			arguments: { recipient: "RcpT111", amountUsd: 5, recipientKnown: true },
+		});
+
+		expect(res.decision).toBe("allow");
+		const record = await store.getByCorrelationId(res.correlationId);
+		expect(record?.evidence).toBeUndefined();
 	});
 
 	it("returns the verdict even when the DECIDED write fails (stateless verdict)", async () => {
