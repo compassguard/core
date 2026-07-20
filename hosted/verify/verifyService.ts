@@ -5,6 +5,8 @@ import {
 	createActionCandidate,
 } from "@back/guardrail/execution/executionGateway";
 import { getPostHogClient } from "@back/posthog/posthogClient";
+import { COMPASS_DECISIONS } from "@shared/executionGatewayContracts";
+import type { IntentSource, MandateStore } from "@shared/mandateContracts";
 import type { PolicyEvaluationContext } from "@shared/policyContracts";
 import type { IntendedEffect } from "@shared/verdictContracts";
 
@@ -17,6 +19,8 @@ import { evaluateAction } from "../policy/policyEngine";
 import { loadDefaultPolicy } from "../policy/loadPolicy";
 import type { VerdictStore } from "../verdict/verdictStoreTypes";
 import { buildHumanExplanation } from "./humanExplanation";
+import { VERIFY_JUDGE_REASON_UNAVAILABLE } from "./verifyJudge";
+import type { VerifyJudge } from "./verifyJudge";
 import type {
 	VerifyActionRequest,
 	VerifyActionResponse,
@@ -29,6 +33,10 @@ export type VerifyServiceDependencies = {
 	/** Called (best-effort) when the DECIDED write fails; the verdict is still returned. */
 	captureException?: (error: unknown) => void;
 	isoNow?: () => string;
+	/** Trusted-anchor lookup for the mandate judge; absent ⇒ deterministic-only ("none"). */
+	mandateStore?: MandateStore;
+	/** The inline mandate judge (self_report mode); absent ⇒ deterministic-only ("none"). */
+	verifyJudge?: VerifyJudge;
 };
 
 export function createVerifyService(
@@ -80,12 +88,68 @@ export function createVerifyService(
 				policy: loadDefaultPolicy(),
 			});
 
-			const decision = collapseToHostedDecision(evaluation.decision);
-			const riskLevel = hostedRiskLevelFor(evaluation.decision);
-			const humanExplanation = buildHumanExplanation(
-				decision,
-				evaluation.reasonCodes,
-			);
+			// Mandate judge (self_report mode): runs ONLY when wired AND the caller's identity
+			// has a registered mandate AND the request states a purpose. Tier-1 asymmetry: a
+			// deterministic DENY is final and never escalates. The judge may keep or tighten,
+			// never loosen (strictness clamp inside createVerifyJudge).
+			let compassDecision = evaluation.decision;
+			let reasons: string[] = [...evaluation.reasonCodes];
+			let intentSource: IntentSource = "none";
+			let judgeRationale: string | undefined;
+			let judgeChangedDecision = false;
+
+			const statedPurpose = request.intent?.statedPurpose;
+			if (
+				deps.verifyJudge !== undefined &&
+				deps.mandateStore !== undefined &&
+				statedPurpose !== undefined &&
+				evaluation.decision !== COMPASS_DECISIONS.DENY
+			) {
+				// Trusted-identity precedence: credential-derived email over self-reported userId.
+				const ownerId = caller?.authenticatedEmail ?? request.userId;
+				const mandate =
+					ownerId !== undefined
+						? await deps.mandateStore.get(ownerId).catch((error: unknown) => {
+								// A mandate-store hiccup must not 500 the verify path; treated as
+								// no-mandate (deterministic fallback), surfaced to telemetry.
+								captureException(error);
+								return undefined;
+							})
+						: undefined;
+				if (mandate !== undefined) {
+					const judged = await deps
+						.verifyJudge({
+							toolName: request.toolName,
+							actionKind,
+							deterministicDecision: evaluation.decision,
+							reasonCodes: evaluation.reasonCodes,
+							args,
+							statedPurpose,
+							mandate,
+						})
+						.catch((error: unknown) => {
+							captureException(error);
+							return { ran: false as const };
+						});
+					if (judged.ran) {
+						compassDecision = judged.decision;
+						reasons = [...reasons, ...judged.reasonCodes];
+						judgeRationale = judged.rationale;
+						judgeChangedDecision = judged.decision !== evaluation.decision;
+						intentSource = "self_report";
+					} else {
+						// Fail-honest: a structural-only check is never presented as a mandate check.
+						reasons = [...reasons, VERIFY_JUDGE_REASON_UNAVAILABLE];
+					}
+				}
+			}
+
+			const decision = collapseToHostedDecision(compassDecision);
+			const riskLevel = hostedRiskLevelFor(compassDecision);
+			let humanExplanation = buildHumanExplanation(decision, reasons);
+			if (judgeChangedDecision && judgeRationale !== undefined) {
+				humanExplanation = `${humanExplanation} Mandate judge: ${judgeRationale}`;
+			}
 			// SEAM (D4-v2 / R2): native intended dimensions — lamports / tokenAmount /
 			// mint — are populated here once a verify-side decode source (Fran's
 			// decodeTransaction, injection ①) is wired. There is no such source in
@@ -106,7 +170,7 @@ export function createVerifyService(
 				await deps.verdictStore.putDecided({
 					correlationId,
 					decision,
-					reasons: evaluation.reasonCodes,
+					reasons,
 					humanExplanation,
 					intendedEffect,
 					decidedAt: requestedAt,
@@ -117,6 +181,8 @@ export function createVerifyService(
 					// Trustworthy credential-derived identity (D11), server-set from the
 					// resolved credential — distinct from the self-reported userId above.
 					authenticatedEmail: caller?.authenticatedEmail,
+					intentSource,
+					...(judgeRationale !== undefined ? { judgeRationale } : {}),
 				});
 			} catch (error) {
 				captureException(error);
@@ -126,9 +192,9 @@ export function createVerifyService(
 				correlationId,
 				decision,
 				riskLevel,
-				reasons: evaluation.reasonCodes,
+				reasons,
 				humanExplanation,
-				intentSource: "none",
+				intentSource,
 			};
 		},
 	};
