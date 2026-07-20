@@ -9,16 +9,20 @@ import {
 	createInMemoryCredentialStore,
 	type CredentialStore,
 } from "./credential/credentialStore";
+import { createInMemoryMandateStore } from "./mandate/mandateStore";
+import type { MandateStore } from "@shared/mandateContracts";
 
 type InjectedStores = {
 	verdictStore: VerdictStore;
 	credentialStore: CredentialStore;
+	mandateStore: MandateStore;
 };
 
 function createStores(): InjectedStores {
 	return {
 		verdictStore: createInMemoryVerdictStore(),
 		credentialStore: createInMemoryCredentialStore(),
+		mandateStore: createInMemoryMandateStore(),
 	};
 }
 
@@ -48,6 +52,7 @@ function createDependencies(
 		},
 		verdictStore: stores.verdictStore,
 		credentialStore: stores.credentialStore,
+		mandateStore: stores.mandateStore,
 	};
 }
 
@@ -67,6 +72,26 @@ describe("createHostedApp", () => {
 				llm: "ok",
 			},
 		});
+	});
+
+	it("registers and fetches a mandate through /v1 with the hosted key", async () => {
+		const app = createHostedApp(createDependencies());
+
+		const put = await app.request("/v1/mandate", {
+			method: "POST",
+			headers: {
+				Authorization: "Bearer hosted-secret",
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ userId: "user-1", mandateText: "Vendors only." }),
+		});
+		expect(put.status).toBe(200);
+
+		const get = await app.request("/v1/mandate?userId=user-1", {
+			headers: { Authorization: "Bearer hosted-secret" },
+		});
+		expect(get.status).toBe(200);
+		expect(((await get.json()) as { mandateText: string }).mandateText).toBe("Vendors only.");
 	});
 
 	it("returns hosted evaluation decisions for authenticated requests", async () => {

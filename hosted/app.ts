@@ -18,6 +18,8 @@ import { createVerifyConfirmService } from "./verify/verifyConfirmService";
 import { createBoundedConfirmedTxFetcher } from "./verify/getConfirmedTx";
 import { deriveActualEffectUnavailable } from "./verify/deriveActualEffect.unavailable";
 import { createVerifyRoutes } from "./verify/verifyRoutes";
+import { createMandateRoutes } from "./mandate/mandateRoutes";
+import { createMandateStoreFromEnv } from "./mandate/mandateStoreFromEnv";
 import type { HostedAppDependencies } from "./appContracts";
 
 export function createHostedApp(deps: HostedAppDependencies): Hono {
@@ -58,6 +60,10 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 	// built once and shared by the /v1 auth middleware and the public signup endpoint.
 	const credentialStore = deps.credentialStore ?? createCredentialStoreFromEnv();
 
+	// Mandate store (trusted anchor for the /verify judge) — durable when the shared
+	// pooler env is set, in-memory otherwise.
+	const mandateStore = deps.mandateStore ?? createMandateStoreFromEnv();
+
 	app.onError(hostedErrorHandler);
 	app.route("/health", createHealthRoutes(deps.health));
 	// POST /signup is public (outside /v1, like /health): a caller mints an email credential
@@ -66,6 +72,7 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 	app.use("/v1/*", hostedAuthMiddleware(deps.auth, credentialStore));
 	app.route("/v1", createEvaluationRoutes(evaluationService));
 	app.route("/v1", createVerifyRoutes(verifyService, verifyConfirmService));
+	app.route("/v1", createMandateRoutes({ mandateStore }));
 	app.route("/v1", createAuditRoutes(auditStore));
 	app.route("/v1", createPolicyRoutes(policyService));
 
