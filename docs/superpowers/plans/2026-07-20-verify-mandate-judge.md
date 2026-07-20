@@ -1,8 +1,15 @@
 # `/verify` Mandate + LLM Judge (self_report mode) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For the executor (clippy or any agent):** execute the remaining tasks **in order, task-by-task**, following each step exactly — the red/green test cycle is part of the contract, not ceremony. Steps use checkbox (`- [ ]`) syntax for tracking; tick them as you go. Every task ends with its own commit. Design rationale + decision log: `docs/superpowers/specs/2026-07-20-verify-mandate-judge-design.md`.
 
 **Goal:** Add mandate registration (`POST /v1/mandate`), a `statedPurpose` on the `/verify` intent, and an inline LLM mandate-judge (keep-or-tighten, self_report mode) with an honest `intentSource` label — per `docs/superpowers/specs/2026-07-20-verify-mandate-judge-design.md`.
+
+## Current state (baseline already landed on `feat/verify-mandate-judge`)
+
+- **Task 1 DONE** — commit `f04eba3`: `shared/types/mandateContracts.ts` (Mandate, MandateStore, IntentSource, length constants), `hosted/mandate/mandateStoreContract.ts` (reusable 5-test behavioral suite), `hosted/mandate/mandateStore.ts` (in-memory), `hosted/mandate/mandateStore.test.ts`. Verified: 5 passing.
+- **Task 2 DONE** — commit `f4e2971`: `hosted/mandate/mandateStorePg.ts` (atomic upsert, memoized ensureSchema with to_regclass race probe), `hosted/mandate/mandateStoreFromEnv.ts` (shared pooler client via `COMPASS_VERDICT_DB_URL`), PGlite contract + fromEnv tests. Verified: 12 passing across both backings.
+- **Tasks 3–8 NOT started.** The working tree is clean; the test code shown in Task 3 Steps 1–2 was drafted once and intentionally removed — recreate it verbatim from this document as the red step.
+- Spec: commit `f4d66e2`. Everything Tasks 3–8 consume from Tasks 1–2 exists exactly as specified in their Interfaces blocks.
 
 **Architecture:** Mirror the existing store trio pattern (contract suite → in-memory → Pg → fromEnv) for a new `hosted/mandate/` module; extend verify contracts additively; slot the judge between `evaluateAction` and `collapseToHostedDecision` in `verifyService`, reusing `callLlmJudge`/`clampLlmDecision` from `hosted/llm/llmDecisionAdapter.ts`.
 
@@ -21,7 +28,7 @@
 
 ---
 
-### Task 1: Mandate contracts + in-memory store + contract suite
+### Task 1: Mandate contracts + in-memory store + contract suite — ✅ DONE (commit `f04eba3`)
 
 **Files:**
 - Create: `shared/types/mandateContracts.ts`
@@ -32,7 +39,7 @@
 **Interfaces:**
 - Produces: `Mandate`, `MandateStore { put(m): Promise<void>; get(ownerId): Promise<Mandate|undefined> }`, `IntentSource = "full"|"self_report"|"none"`, `INTENT_SOURCES`, `MANDATE_TEXT_MAX_LENGTH`, `STATED_PURPOSE_MAX_LENGTH`, `MANDATE_MAX_ALLOWED_RECIPIENTS`, `createInMemoryMandateStore()`, `describeMandateStoreContract(name, makeStore)`.
 
-- [ ] **Step 1: Write the shared contracts**
+- [x] **Step 1: Write the shared contracts**
 
 `shared/types/mandateContracts.ts`:
 
@@ -75,7 +82,7 @@ export type MandateStore = {
 };
 ```
 
-- [ ] **Step 2: Write the contract suite (the failing tests)**
+- [x] **Step 2: Write the contract suite (the failing tests)**
 
 `hosted/mandate/mandateStoreContract.ts`:
 
@@ -173,12 +180,12 @@ describeMandateStoreContract("createInMemoryMandateStore", () =>
 );
 ```
 
-- [ ] **Step 3: Run tests to verify they fail**
+- [x] **Step 3: Run tests to verify they fail**
 
 Run: `npx vitest --config vitest.back.config.ts --run hosted/mandate`
 Expected: FAIL — cannot resolve `./mandateStore`.
 
-- [ ] **Step 4: Write the in-memory store**
+- [x] **Step 4: Write the in-memory store**
 
 `hosted/mandate/mandateStore.ts`:
 
@@ -205,12 +212,12 @@ export function createInMemoryMandateStore(): MandateStore {
 }
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `npx vitest --config vitest.back.config.ts --run hosted/mandate`
 Expected: 5 passing.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add shared/types/mandateContracts.ts hosted/mandate/
@@ -219,7 +226,7 @@ git commit -m "feat(mandate): shared contracts + in-memory store behind a reusab
 
 ---
 
-### Task 2: Durable Pg mandate store + env switch
+### Task 2: Durable Pg mandate store + env switch — ✅ DONE (commit `f4e2971`)
 
 **Files:**
 - Create: `hosted/mandate/mandateStorePg.ts`
@@ -230,7 +237,7 @@ git commit -m "feat(mandate): shared contracts + in-memory store behind a reusab
 - Consumes: `SqlExecutor` from `../verdict/verdictStorePg`, `createSqlExecutorFromEnv`/`readEnv` from `../db/sqlExecutorFromEnv`, `describeMandateStoreContract` (Task 1).
 - Produces: `createPgMandateStore({ sql })`, `createMandateStoreFromEnv(getEnv?)`.
 
-- [ ] **Step 1: Write the failing Pg tests**
+- [x] **Step 1: Write the failing Pg tests**
 
 `hosted/mandate/mandateStorePg.test.ts`:
 
@@ -294,12 +301,12 @@ describe("createMandateStoreFromEnv", () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `npx vitest --config vitest.back.config.ts --run hosted/mandate`
 Expected: FAIL — cannot resolve `./mandateStorePg` / `./mandateStoreFromEnv`.
 
-- [ ] **Step 3: Write the Pg store**
+- [x] **Step 3: Write the Pg store**
 
 `hosted/mandate/mandateStorePg.ts`:
 
@@ -400,7 +407,7 @@ function rowToMandate(row: Record<string, unknown>): Mandate {
 }
 ```
 
-- [ ] **Step 4: Write the env switch**
+- [x] **Step 4: Write the env switch**
 
 `hosted/mandate/mandateStoreFromEnv.ts`:
 
@@ -432,12 +439,12 @@ export function createMandateStoreFromEnv(
 }
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `npx vitest --config vitest.back.config.ts --run hosted/mandate`
 Expected: all passing (contract ×2 backings + durable-specific + fromEnv).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add hosted/mandate/
