@@ -96,3 +96,51 @@ describe("validateVerifyActionRequest — attribution (userId / sessionId)", () 
 		expect(result.request.sessionId).toBeUndefined();
 	});
 });
+
+describe("validateVerifyActionRequest — intent.statedPurpose", () => {
+	it("accepts intent.statedPurpose and carries it through", () => {
+		const result = validateVerifyActionRequest({
+			toolName: "transfer_sol",
+			intent: { kind: "transfer", statedPurpose: "pay vendor Acme for invoice #42" },
+		});
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.request.intent).toEqual({
+				kind: "transfer",
+				statedPurpose: "pay vendor Acme for invoice #42",
+			});
+		}
+	});
+
+	it("rejects a malformed or oversized intent.statedPurpose", () => {
+		expect(
+			validateVerifyActionRequest({
+				toolName: "transfer_sol",
+				intent: { kind: "transfer", statedPurpose: "  " },
+			}).ok,
+		).toBe(false);
+		expect(
+			validateVerifyActionRequest({
+				toolName: "transfer_sol",
+				intent: { kind: "transfer", statedPurpose: 42 },
+			}).ok,
+		).toBe(false);
+		expect(
+			validateVerifyActionRequest({
+				toolName: "transfer_sol",
+				intent: { kind: "transfer", statedPurpose: "x".repeat(501) },
+			}).ok,
+		).toBe(false);
+	});
+
+	it("an intent without statedPurpose keeps the field absent", () => {
+		const result = validateVerifyActionRequest({
+			toolName: "transfer_sol",
+			intent: { kind: "transfer" },
+		});
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.request.intent).toEqual({ kind: "transfer" });
+		}
+	});
+});

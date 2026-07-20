@@ -128,6 +128,7 @@ export function createVerifyService(
 				riskLevel,
 				reasons: evaluation.reasonCodes,
 				humanExplanation,
+				intentSource: "none",
 			};
 		},
 	};
