@@ -78,6 +78,13 @@
     .nav-contact:hover { background: rgba(176, 138, 78, .14); color: var(--fortress-900); }
     .btn-ghost { color: var(--fortress-900); background: rgba(244, 240, 230, .68); }
     .btn-ghost:hover { border-color: var(--bronze-500); background: rgba(219, 210, 195, .6); }
+    .beta-banner { position: relative; z-index: 1; padding: 18px 0; color: var(--stone-100); background: var(--fortress-900); }
+    .beta-banner::before { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(95, 211, 188, .16), transparent 45%), linear-gradient(rgba(244, 240, 230, .05) 1px, transparent 1px), linear-gradient(90deg, rgba(244, 240, 230, .05) 1px, transparent 1px); background-size: auto, 26px 26px, 26px 26px; pointer-events: none; }
+    .beta-banner-inner { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+    .beta-banner-copy { max-width: 680px; font-size: 15px; font-weight: 600; }
+    .beta-banner-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+    .beta-banner .btn { min-height: 38px; padding: 0 15px; color: var(--stone-100); border-color: rgba(244, 240, 230, .28); background: rgba(244, 240, 230, .08); cursor: pointer; }
+    .beta-banner .btn:hover { border-color: var(--compass-400); background: rgba(244, 240, 230, .18); }
     .hero { padding: 92px 0 78px; }
     .hero-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, .86fr); align-items: center; gap: 64px; }
     .eyebrow, .kicker { font-family: "IBM Plex Mono", monospace; color: var(--compass-600); font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
@@ -219,6 +226,7 @@
       .strip { grid-template-columns: repeat(2, 1fr); }
       .features { grid-template-columns: 1fr; }
       .nav-links a:not(.nav-cta) { display: none; }
+      .beta-banner-inner { align-items: flex-start; flex-direction: column; }
     }
     @media (max-width: 560px) {
       .container { width: min(100% - 28px, 1120px); }
@@ -233,6 +241,8 @@
       .footer-inner { flex-direction: column; }
       .mode-panel.is-active, .agent-prompt { align-items: stretch; flex-direction: column; }
       .mode-panel .btn, .copy-prompt { width: 100%; }
+      .beta-banner-actions { width: 100%; }
+      .beta-banner .btn { flex: 1 1 100%; }
     }
   </style>
 </head>
@@ -250,6 +260,16 @@
       </div>
     </div>
   </nav>
+
+  <aside class="beta-banner" aria-label="Developer beta">
+    <div class="container beta-banner-inner">
+      <p class="beta-banner-copy">Developer beta is open for teams building money-moving agents. Compass verifies agent intent before signing, settlement, or payment execution.</p>
+      <div class="beta-banner-actions">
+        <button class="btn" type="button" data-copy="Use https://compassguard.xyz/skill-onboard.md to guide me through testing Compass Guard.">Add Compass to your agent</button>
+        <a href="https://docs.compassguard.xyz" class="btn">Read the docs</a>
+      </div>
+    </div>
+  </aside>
 
   <main id="top">
     <section class="hero">
@@ -519,14 +539,15 @@
       });
 
       document.querySelectorAll('[data-copy]').forEach((button) => {
+        const defaultLabel = button.textContent;
         button.addEventListener('click', async () => {
           try {
             await copyText(button.dataset.copy || promptText);
             button.textContent = 'Copied!';
-            setTimeout(() => { button.textContent = 'Copy'; }, 1400);
+            setTimeout(() => { button.textContent = defaultLabel; }, 1400);
           } catch {
             button.textContent = 'Copy failed';
-            setTimeout(() => { button.textContent = 'Copy'; }, 1400);
+            setTimeout(() => { button.textContent = defaultLabel; }, 1400);
           }
         });
       });
