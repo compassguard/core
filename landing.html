@@ -577,14 +577,15 @@
       });
 
       document.querySelectorAll('[data-copy]').forEach((button) => {
+        const defaultLabel = button.textContent;
         button.addEventListener('click', async () => {
           try {
             await copyText(button.dataset.copy || promptText);
             button.textContent = 'Copied!';
-            setTimeout(() => { button.textContent = 'Copy'; }, 1400);
+            setTimeout(() => { button.textContent = defaultLabel; }, 1400);
           } catch {
             button.textContent = 'Copy failed';
-            setTimeout(() => { button.textContent = 'Copy'; }, 1400);
+            setTimeout(() => { button.textContent = defaultLabel; }, 1400);
           }
         });
       });
