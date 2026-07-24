@@ -82,12 +82,9 @@
     .beta-banner::before { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(95, 211, 188, .16), transparent 45%), linear-gradient(rgba(244, 240, 230, .05) 1px, transparent 1px), linear-gradient(90deg, rgba(244, 240, 230, .05) 1px, transparent 1px); background-size: auto, 26px 26px, 26px 26px; pointer-events: none; }
     .beta-banner-inner { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
     .beta-banner-copy { max-width: 680px; font-size: 15px; font-weight: 600; }
-    .beta-banner-actions, .beta-actions { display: flex; flex-wrap: wrap; gap: 10px; }
-    .beta-actions { margin-top: 28px; }
-    .beta-banner .btn { min-height: 38px; padding: 0 15px; color: var(--stone-100); border-color: rgba(244, 240, 230, .28); background: rgba(244, 240, 230, .08); }
-    .beta-banner .btn-primary { background: var(--compass-600); border-color: var(--compass-600); }
+    .beta-banner-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+    .beta-banner .btn { min-height: 38px; padding: 0 15px; color: var(--stone-100); border-color: rgba(244, 240, 230, .28); background: rgba(244, 240, 230, .08); cursor: pointer; }
     .beta-banner .btn:hover { border-color: var(--compass-400); background: rgba(244, 240, 230, .18); }
-    .beta-banner .btn-primary:hover { background: var(--compass-400); color: var(--fortress-900); }
     .hero { padding: 92px 0 78px; }
     .hero-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, .86fr); align-items: center; gap: 64px; }
     .eyebrow, .kicker { font-family: "IBM Plex Mono", monospace; color: var(--compass-600); font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
@@ -197,13 +194,6 @@
     .partner-link { display: inline-flex; align-items: center; gap: 12px; padding: 8px 14px 8px 8px; border: 1px solid var(--line); border-radius: 999px; background: rgba(244, 240, 230, .66); font: 700 14px Sora, sans-serif; transition: transform .3s ease, border-color .3s ease, box-shadow .3s ease; }
     .partner-link img { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; }
     .partner-link:hover, .partner-link:focus-visible { transform: translateY(-2px); border-color: var(--compass-600); box-shadow: 0 10px 22px rgba(13, 31, 23, .12); outline: none; }
-    .developer-beta { padding-top: 72px; }
-    .beta-card { padding: clamp(28px, 5vw, 56px); border: 1px solid var(--line); border-radius: 28px; background: rgba(244, 240, 230, .72); box-shadow: 0 24px 56px rgba(13, 31, 23, .08); }
-    .beta-card > p { max-width: 720px; margin-top: 16px; color: rgba(20, 35, 29, .74); font-size: 16px; }
-    .beta-rules { margin: 28px 0; padding: 24px; border-left: 3px solid var(--compass-600); background: rgba(14, 163, 122, .08); }
-    .beta-rules p { color: var(--fortress-900); font-weight: 700; }
-    .beta-rules ul { margin: 14px 0 0; padding-left: 20px; color: rgba(20, 35, 29, .76); }
-    .beta-rules li + li { margin-top: 7px; }
     .cta { padding-bottom: 70px; }
     .cta-box { padding: clamp(34px, 6vw, 72px); border-radius: 28px; color: var(--stone-100); background: radial-gradient(circle at 82% 18%, rgba(95, 211, 188, .18), transparent 30rem), var(--fortress-900); overflow: hidden; position: relative; }
     .cta-box::before { content: ""; position: absolute; inset: 0; background: linear-gradient(rgba(244, 240, 230, .055) 1px, transparent 1px), linear-gradient(90deg, rgba(244, 240, 230, .055) 1px, transparent 1px); background-size: 32px 32px; }
@@ -251,8 +241,8 @@
       .footer-inner { flex-direction: column; }
       .mode-panel.is-active, .agent-prompt { align-items: stretch; flex-direction: column; }
       .mode-panel .btn, .copy-prompt { width: 100%; }
-      .beta-banner-actions, .beta-actions { width: 100%; }
-      .beta-banner .btn, .beta-actions .btn { flex: 1 1 100%; }
+      .beta-banner-actions { width: 100%; }
+      .beta-banner .btn { flex: 1 1 100%; }
     }
   </style>
 </head>
@@ -275,8 +265,7 @@
     <div class="container beta-banner-inner">
       <p class="beta-banner-copy">Developer beta is open for teams building money-moving agents. Compass verifies agent intent before signing, settlement, or payment execution.</p>
       <div class="beta-banner-actions">
-        <a href="https://compassguard.xyz" class="btn btn-primary">Request beta access</a>
-        <a href="https://compassguard.xyz/skill-onboard.md" class="btn">Add Compass to your agent</a>
+        <button class="btn" type="button" data-copy="Use https://compassguard.xyz/skill-onboard.md to guide me through testing Compass Guard.">Add Compass to your agent</button>
         <a href="https://docs.compassguard.xyz" class="btn">Read the docs</a>
       </div>
     </div>
@@ -329,33 +318,6 @@
             <a class="partner-link" href="https://trust.nsgoods.org" target="_blank" rel="noopener noreferrer" aria-label="Visit nsgoods trust site (opens in a new tab)"><img src="/nsgoods-logo.png" alt="" loading="lazy" decoding="async" /><span>nsgoods</span><span aria-hidden="true">↗</span></a>
             <a class="partner-link" href="https://x.com/dev3pack" target="_blank" rel="noopener noreferrer" aria-label="Visit dev3pack on X (opens in a new tab)"><img src="/dev3pack-logo.png" alt="" loading="lazy" decoding="async" /><span>dev3pack</span><span aria-hidden="true">↗</span></a>
             <a class="partner-link" href="https://emprelatam.com" target="_blank" rel="noopener noreferrer" aria-label="Visit Emprelatam (opens in a new tab)"><img src="/emprelatam-logo.png" alt="" loading="lazy" decoding="async" /><span>Emprelatam</span><span aria-hidden="true">↗</span></a>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="developer-beta" class="developer-beta">
-      <div class="container">
-        <div class="beta-card reveal">
-          <div class="kicker">Developer beta</div>
-          <h2>Compass Developer Beta</h2>
-          <p>Intent enforcement for agents that move money.</p>
-          <p>Compass checks every payment, transaction, and tool call against the agent's mandate before it reaches the signer.</p>
-          <div class="beta-rules">
-            <p>Use Compass when your agent needs rules like:</p>
-            <ul>
-              <li>only pay approved counterparties</li>
-              <li>block spend above a mandate limit</li>
-              <li>escalate unusual token, destination, or slippage changes</li>
-              <li>keep an audit trail of every approve, block, and escalation</li>
-            </ul>
-          </div>
-          <p>We're opening the developer beta to a small group of builders working on x402 payments, agent wallets, paid MCP/API calls, and autonomous transaction flows.</p>
-          <p>If your agent can move money, we want to test Compass against your real flow.</p>
-          <div class="beta-actions">
-            <a href="https://compassguard.xyz" class="btn btn-primary">Request developer beta access</a>
-            <a href="https://compassguard.xyz/skill-onboard.md" class="btn btn-ghost">Add Compass to your agent</a>
-            <a href="https://docs.compassguard.xyz" class="btn btn-ghost">Read the docs</a>
           </div>
         </div>
       </div>
