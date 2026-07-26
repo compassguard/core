@@ -1,5 +1,9 @@
 import type { CompassDecision } from "@shared/executionGatewayContracts";
-import type { LlmJudgeConfig, LlmJudgeInput } from "@shared/llmDecisionContracts";
+import type {
+	LlmGuardDecision,
+	LlmJudgeConfig,
+	LlmJudgeInput,
+} from "@shared/llmDecisionContracts";
 import { STATED_PURPOSE_MAX_LENGTH, type Mandate } from "@shared/mandateContracts";
 
 import {
@@ -64,6 +68,13 @@ export type VerifyJudgeResult =
 			model: string;
 			/** The judge's self-reported confidence (0..1). */
 			confidence: number;
+			/**
+			 * The judge's UNCLAMPED decision, verbatim from the model. `decision` above is
+			 * post-clamp and the collapsed hosted decision merges the REQUIRE_* states, so
+			 * without this a discarded loosening attempt and an accepted lateral move can
+			 * store identically. rawDecision is what the model actually said.
+			 */
+			rawDecision: LlmGuardDecision;
 	  };
 
 export type VerifyJudge = (
@@ -135,6 +146,7 @@ export function createVerifyJudge(deps: CreateVerifyJudgeDependencies): VerifyJu
 				: {}),
 			model: deps.config.model,
 			confidence: output.confidence,
+			rawDecision: output.decision,
 		};
 	};
 }

@@ -69,9 +69,16 @@ export type VerdictRecord = {
 	/** Concrete LLM model id the judge call used, when it ran. */
 	judgeModel?: string;
 	/**
+	 * The judge's UNCLAMPED decision, verbatim from the model. The stored `decision` is
+	 * post-clamp and hosted-collapsed (REQUIRE_* states merge into "review"), so this is
+	 * the only record of what the model actually said — e.g. a loosening ALLOW the
+	 * strictness clamp discarded.
+	 */
+	judgeRawDecision?: string;
+	/**
 	 * True when the judge's raw decision diverged from the deterministic one — a tighten
-	 * that was honored, or a loosening the strictness clamp discarded (which of the two is
-	 * distinguishable via deterministicDecision vs the final decision).
+	 * that was honored, or a loosening the strictness clamp discarded (compare
+	 * judgeRawDecision against deterministicDecision to tell which).
 	 */
 	judgeClamped?: boolean;
 	/** The judge's self-reported confidence (0..1), when it ran. */
@@ -114,6 +121,8 @@ export type DecidedInput = {
 	deterministicDecision?: string;
 	/** Concrete LLM model id the judge call used, when it ran. */
 	judgeModel?: string;
+	/** The judge's unclamped decision, verbatim from the model (see VerdictRecord). */
+	judgeRawDecision?: string;
 	/** True when the judge's raw decision diverged from the deterministic one (see VerdictRecord). */
 	judgeClamped?: boolean;
 	/** The judge's self-reported confidence (0..1), when it ran. */

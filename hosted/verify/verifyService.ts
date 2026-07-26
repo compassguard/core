@@ -102,6 +102,7 @@ export function createVerifyService(
 			// have — judge_unavailable included) and the judge call's provenance.
 			let mandateSnapshot: Mandate | undefined;
 			let judgeModel: string | undefined;
+			let judgeRawDecision: string | undefined;
 			let judgeClamped: boolean | undefined;
 			let judgeConfidence: number | undefined;
 			let judgeReasonCodes: string[] | undefined;
@@ -147,6 +148,7 @@ export function createVerifyService(
 						judgeChangedDecision = judged.decision !== evaluation.decision;
 						intentSource = "self_report";
 						judgeModel = judged.model;
+						judgeRawDecision = judged.rawDecision;
 						judgeClamped = judged.clamped;
 						judgeConfidence = judged.confidence;
 						judgeReasonCodes = judged.reasonCodes;
@@ -206,6 +208,7 @@ export function createVerifyService(
 					evaluatedRules: evaluation.evaluatedRules,
 					deterministicDecision: evaluation.decision,
 					...(judgeModel !== undefined ? { judgeModel } : {}),
+					...(judgeRawDecision !== undefined ? { judgeRawDecision } : {}),
 					...(judgeClamped !== undefined ? { judgeClamped } : {}),
 					...(judgeConfidence !== undefined ? { judgeConfidence } : {}),
 					...(judgeReasonCodes !== undefined ? { judgeReasonCodes } : {}),

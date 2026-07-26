@@ -230,6 +230,7 @@ export function describeVerdictStoreContract(name: string, makeStore: MakeStore)
 				evaluatedRules: ["transfers.max_usd_without_approval"],
 				deterministicDecision: "REQUIRE_HUMAN_APPROVAL",
 				judgeModel: "kimi-k2.5",
+				judgeRawDecision: "ALLOW",
 				judgeClamped: true,
 				judgeConfidence: 0.85,
 				judgeReasonCodes: ["MANDATE_RECIPIENT_MISMATCH"],
@@ -243,6 +244,7 @@ export function describeVerdictStoreContract(name: string, makeStore: MakeStore)
 			expect(record?.evaluatedRules).toEqual(["transfers.max_usd_without_approval"]);
 			expect(record?.deterministicDecision).toBe("REQUIRE_HUMAN_APPROVAL");
 			expect(record?.judgeModel).toBe("kimi-k2.5");
+			expect(record?.judgeRawDecision).toBe("ALLOW");
 			expect(record?.judgeClamped).toBe(true);
 			expect(record?.judgeConfidence).toBe(0.85);
 			expect(record?.judgeReasonCodes).toEqual(["MANDATE_RECIPIENT_MISMATCH"]);
@@ -268,6 +270,7 @@ export function describeVerdictStoreContract(name: string, makeStore: MakeStore)
 			expect(record?.evaluatedRules).toBeUndefined();
 			expect(record?.deterministicDecision).toBeUndefined();
 			expect(record?.judgeModel).toBeUndefined();
+			expect(record?.judgeRawDecision).toBeUndefined();
 			expect(record?.judgeClamped).toBeUndefined();
 			expect(record?.judgeConfidence).toBeUndefined();
 			expect(record?.judgeReasonCodes).toBeUndefined();

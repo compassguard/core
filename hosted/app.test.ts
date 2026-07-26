@@ -326,6 +326,7 @@ describe("createHostedApp", () => {
 			rationale: "Recipient is not part of the owner's mandate.",
 			model: "test-model",
 			confidence: 0.9,
+			rawDecision: "DENY" as const,
 		});
 		const app = createHostedApp({ ...createDependencies(), mandateStore, verifyJudge });
 

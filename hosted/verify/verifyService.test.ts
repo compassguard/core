@@ -134,6 +134,7 @@ describe("createVerifyService", () => {
 			rationale: "Recipient is not part of the owner's mandate.",
 			model: "test-model",
 			confidence: 0.9,
+			rawDecision: "DENY",
 		});
 		const service = createVerifyService({ verdictStore: store, mandateStore, verifyJudge });
 
@@ -172,6 +173,7 @@ describe("createVerifyService", () => {
 		expect(record?.evaluatedRules?.length).toBeGreaterThan(0);
 		expect(record?.deterministicDecision).toBe(COMPASS_DECISIONS.ALLOW);
 		expect(record?.judgeModel).toBe("test-model");
+		expect(record?.judgeRawDecision).toBe("DENY");
 		expect(record?.judgeClamped).toBe(true);
 		expect(record?.judgeConfidence).toBe(0.9);
 		expect(record?.judgeReasonCodes).toEqual(["off_mandate_recipient"]);
@@ -195,6 +197,7 @@ describe("createVerifyService", () => {
 		expect(record?.statedPurpose).toBe("pay vendor Acme");
 		expect(record?.mandateSnapshot).toBeUndefined();
 		expect(record?.judgeModel).toBeUndefined();
+		expect(record?.judgeRawDecision).toBeUndefined();
 		expect(record?.judgeClamped).toBeUndefined();
 		expect(record?.judgeConfidence).toBeUndefined();
 		expect(record?.judgeReasonCodes).toBeUndefined();

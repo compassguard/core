@@ -104,6 +104,9 @@ describe.runIf(LIVE)("live reconstruction fields (real LLM via codex shim + Pg s
 			expect(record?.deterministicDecision).toBe("ALLOW");
 			// Judge provenance from the LIVE call.
 			expect(record?.judgeModel).toBe("gpt-5.5");
+			expect(["ALLOW", "DENY", "REQUIRE_HUMAN_APPROVAL", "REQUIRE_ADDITIONAL_CONTEXT"]).toContain(
+				record?.judgeRawDecision,
+			);
 			expect(typeof record?.judgeClamped).toBe("boolean");
 			expect(record?.judgeConfidence).toBeGreaterThanOrEqual(0);
 			expect(record?.judgeConfidence).toBeLessThanOrEqual(1);
@@ -183,6 +186,7 @@ describe.runIf(LIVE)("live reconstruction fields (real LLM via codex shim + Pg s
 			expect(record?.mandateSnapshot).toEqual(MANDATE);
 			expect(record?.statedPurpose).toBe("pay rent to my landlord");
 			expect(record?.judgeModel).toBeUndefined();
+			expect(record?.judgeRawDecision).toBeUndefined();
 			expect(record?.judgeClamped).toBeUndefined();
 			expect(record?.judgeConfidence).toBeUndefined();
 			expect(record?.judgeReasonCodes).toBeUndefined();

@@ -60,6 +60,7 @@ const CREATE_TABLE = `CREATE TABLE IF NOT EXISTS verdicts (
 	evaluated_rules jsonb,
 	deterministic_decision text,
 	judge_model text,
+	judge_raw_decision text,
 	judge_clamped boolean,
 	judge_confidence double precision,
 	judge_reason_codes jsonb,
@@ -85,6 +86,7 @@ const MIGRATIONS = [
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS evaluated_rules jsonb`,
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS deterministic_decision text`,
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS judge_model text`,
+	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS judge_raw_decision text`,
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS judge_clamped boolean`,
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS judge_confidence double precision`,
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS judge_reason_codes jsonb`,
@@ -138,8 +140,8 @@ export function createPgVerdictStore(
 			// DECIDED. Durable persistence makes replay real, so this must be a DB guarantee.
 			await run(
 				`INSERT INTO verdicts
-					(correlation_id, status, decision, reasons, human_explanation, intended_effect, decided_at, user_id, session_id, authenticated_email, intent_source, judge_rationale, stated_purpose, mandate_snapshot, policy_id, policy_version, evaluated_rules, deterministic_decision, judge_model, judge_clamped, judge_confidence, judge_reason_codes)
-				VALUES ($1, 'DECIDED', $2, $3::jsonb, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15, $16::jsonb, $17, $18, $19, $20, $21::jsonb)
+					(correlation_id, status, decision, reasons, human_explanation, intended_effect, decided_at, user_id, session_id, authenticated_email, intent_source, judge_rationale, stated_purpose, mandate_snapshot, policy_id, policy_version, evaluated_rules, deterministic_decision, judge_model, judge_raw_decision, judge_clamped, judge_confidence, judge_reason_codes)
+				VALUES ($1, 'DECIDED', $2, $3::jsonb, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15, $16::jsonb, $17, $18, $19, $20, $21, $22::jsonb)
 				ON CONFLICT (correlation_id) DO NOTHING`,
 				[
 					input.correlationId,
@@ -160,6 +162,7 @@ export function createPgVerdictStore(
 					input.evaluatedRules !== undefined ? JSON.stringify(input.evaluatedRules) : null,
 					input.deterministicDecision ?? null,
 					input.judgeModel ?? null,
+					input.judgeRawDecision ?? null,
 					input.judgeClamped ?? null,
 					input.judgeConfidence ?? null,
 					input.judgeReasonCodes !== undefined ? JSON.stringify(input.judgeReasonCodes) : null,
@@ -274,6 +277,9 @@ function rowToRecord(row: Record<string, unknown>): VerdictRecord {
 		record.deterministicDecision = row.deterministic_decision as string;
 	}
 	if (row.judge_model != null) record.judgeModel = row.judge_model as string;
+	if (row.judge_raw_decision != null) {
+		record.judgeRawDecision = row.judge_raw_decision as string;
+	}
 	if (row.judge_clamped != null) record.judgeClamped = row.judge_clamped as boolean;
 	if (row.judge_confidence != null) {
 		record.judgeConfidence = row.judge_confidence as number;
