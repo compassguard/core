@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { createInMemoryAuditStore } from "./audit/auditStore";
 import { createAuditRoutes } from "./audit/auditRoutes";
 import { createEvaluationService } from "./evaluate/evaluationService";
@@ -82,6 +83,15 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 	const credentialStore = deps.credentialStore ?? createCredentialStoreFromEnv();
 
 	app.onError(hostedErrorHandler);
+	app.use(
+		"*",
+		cors({
+			origin: ["https://compassguard.xyz", "https://www.compassguard.xyz"],
+			allowMethods: ["GET", "POST"],
+			allowHeaders: ["Authorization", "Content-Type"],
+			maxAge: 86400,
+		}),
+	);
 	app.route("/health", createHealthRoutes(deps.health));
 	// POST /signup is public (outside /v1, like /health): a caller mints an email credential
 	// here, then presents it as a Bearer token to /v1/*.

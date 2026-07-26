@@ -6,7 +6,7 @@ compatibility: Anyone with shell access (curl) and, for the optional MCP guard s
 metadata:
   author: Compass
   version: 1.1.0
-  homepage: https://compassguard.xyz
+  homepage: https://api.compassguard.xyz
 ---
 
 # Compass Guard Onboarding
@@ -26,14 +26,14 @@ to a working Compass Guard integration — first a live decision from the `/v1/v
 
 - You want to **test, try, set up, or demo Compass Guard**, or ask "does this transfer pass the
   guard?"
-- You want a public onboarding guide you can follow or share: `https://compassguard.xyz/skill-onboard.md`.
+- You want a public onboarding guide you can follow or share: `https://api.compassguard.xyz/skill-onboard.md`.
 
 **When NOT to use:** building or modifying Compass Guard itself (that's the repo `README.md`), or any task
 unrelated to exercising the hosted `/v1/verify` API or MCP guard.
 
 ## Base URL
 
-`https://compassguard.xyz` — `/signup` and `/health` are public; everything
+`https://api.compassguard.xyz` — `/signup` and `/health` are public; everything
 under `/v1/*` needs a bearer token.
 
 ## Hard rules — do not violate these
@@ -54,7 +54,7 @@ under `/v1/*` needs a bearer token.
 ### Step 1 · Prove the service is reachable (no auth)
 
 ```sh
-curl -s https://compassguard.xyz/health
+curl -s https://api.compassguard.xyz/health
 ```
 
 Expect `{"ok":true,"service":"compass-hosted-guard","dependencies":{...}}`. If you get this, the
@@ -66,7 +66,7 @@ service is live; if not, stop and troubleshoot connectivity first.
 email-scoped API key. Confirm the email you want attached to the key, then:
 
 ```sh
-curl -sX POST https://compassguard.xyz/signup \
+curl -sX POST https://api.compassguard.xyz/signup \
   -H "Content-Type: application/json" \
   -d '{"email":"<your-email>"}'
 # → {"email":"<your-email>","apiKey":"compass_…"}
@@ -119,7 +119,7 @@ so it never signs; it returns a *recommendation*:
 **3a — unknown recipient → `review`:**
 
 ```sh
-curl -sX POST https://compassguard.xyz/v1/verify \
+curl -sX POST https://api.compassguard.xyz/v1/verify \
   -H "Authorization: Bearer $COMPASS_HOSTED_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -157,7 +157,7 @@ flowing through it:
 ```sh
 claude mcp add compass \
   --env COMPASS_HYBRID_GUARD_ENABLED=true \
-  --env COMPASS_HOSTED_API_URL=https://compassguard.xyz \
+  --env COMPASS_HOSTED_API_URL=https://api.compassguard.xyz \
   --env COMPASS_HOSTED_API_KEY=$COMPASS_HOSTED_API_KEY \
   -- npx -y @ramadan04/compass-mcp-guard \
      --downstream-name solana-tools \
@@ -174,7 +174,7 @@ If you executed a transaction you verified, close the loop with the `correlation
 Step 3 and the on-chain signature:
 
 ```sh
-curl -sX POST https://compassguard.xyz/v1/verify/confirm \
+curl -sX POST https://api.compassguard.xyz/v1/verify/confirm \
   -H "Authorization: Bearer $COMPASS_HOSTED_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{ "correlationId": "<from-step-3>", "txSignature": "<solana-tx-signature>" }'
@@ -224,4 +224,4 @@ Recognized `toolName`: `transfer`, `transfer_sol`, `guarded_transfer`, `swap`, `
 
 Wiring the MCP guard (Step 4) and confirm (Step 5) are optional next steps, not required for success.
 
-**Human dev quickstart:** `https://compassguard.xyz/quickstart.md`.
+**Human dev quickstart:** `https://api.compassguard.xyz/quickstart.md`.

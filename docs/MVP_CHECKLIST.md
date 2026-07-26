@@ -44,7 +44,7 @@
 
 | URL | Status |
 |-----|--------|
-| `https://solanahackathon-qf8nkder5-ramirocshubs-projects.vercel.app` | ✅ Ready |
+| `https://api.compassguard.xyz` | ✅ Ready |
 
 ## npm Package
 
@@ -72,7 +72,7 @@ npx -y @ramadan04/compass-mcp-guard \
       ],
       "env": {
         "COMPASS_HYBRID_GUARD_ENABLED": "true",
-        "COMPASS_HOSTED_API_URL": "https://solanahackathon-qf8nkder5-ramirocshubs-projects.vercel.app/api/hosted",
+        "COMPASS_HOSTED_API_URL": "https://api.compassguard.xyz",
         "COMPASS_HOSTED_API_KEY": "compass-hc-3d87d61ea82d"
       }
     }

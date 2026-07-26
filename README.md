@@ -124,7 +124,7 @@ Add this MCP entry to your client config:
       ],
       "env": {
         "COMPASS_HYBRID_GUARD_ENABLED": "true",
-        "COMPASS_HOSTED_API_URL": "https://your-vercel-preview.vercel.app/api/hosted",
+        "COMPASS_HOSTED_API_URL": "https://api.compassguard.xyz",
         "COMPASS_HOSTED_API_KEY": "your-hosted-api-key"
       }
     }
@@ -137,7 +137,7 @@ Replace `@your-downstream/mcp-server` with the MCP server Compass should protect
 For the current verified preview, use:
 
 ```txt
-COMPASS_HOSTED_API_URL=https://solanahackathon-qf8nkder5-ramirocshubs-projects.vercel.app/api/hosted
+COMPASS_HOSTED_API_URL=https://api.compassguard.xyz
 ```
 
 Do not hardcode real API keys in committed config files. Use your MCP client's secret/env handling when available.

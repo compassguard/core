@@ -12,7 +12,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ram4-dev/solana_hackathon.git"
+    "url": "git+https://github.com/compassguard/core.git"
   },
   "keywords": [
     "mcp",
