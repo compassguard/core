@@ -1,4 +1,6 @@
-// Response contract for GET /v1/metrics — frozen in docs/plans/2026-07-26-usage-metrics.md.
+// Metrics response contract — frozen in docs/plans/2026-07-26-usage-metrics.md. Served by
+// the local dashboard launcher (scripts/metrics-dashboard.ts), NOT by the hosted API: it
+// carries every user's email, so it never crosses the internet (2026-07-26-metrics-db-direct.md).
 // Two read-only operator metrics computed from data already persisted (credentials +
 // verdicts): onboarding time (signup → first guarded action / first confirmed tx) and
 // funds secured (USD screened by the firewall, by day and total).

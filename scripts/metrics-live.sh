@@ -1,16 +1,21 @@
 #!/usr/bin/env bash
 #
-# Live smoke test for GET /v1/metrics.
+# Live smoke test for the metrics pipeline.
 #
-# Exercises the real endpoint end-to-end: health -> signup (mint token) ->
-# POST /v1/verify allow -> POST /v1/verify deny -> GET /v1/metrics. Prints
-# each step and a PASS/FAIL summary.
+# health -> signup (mint token) -> POST /v1/verify allow -> POST /v1/verify deny
+# against BASE_URL, then GET the LOCAL dashboard launcher's /v1/metrics (there is
+# no hosted metrics endpoint — it computes from the DB). Prints each step and a
+# PASS/FAIL summary.
+#
+# Start the launcher first, in another shell:
+#   COMPASS_VERDICT_DB_URL='<supabase pooler url>' npm run metrics
 #
 # Usage:
 #   scripts/metrics-live.sh                                  # prod, self-serve a fresh key
 #   BASE_URL=http://localhost:3001 scripts/metrics-live.sh   # local backend (prefix auto-detected)
 #   COMPASS_HOSTED_API_KEY=compass_… scripts/metrics-live.sh # reuse a key (skip signup)
 #   EMAIL=me@example.com scripts/metrics-live.sh             # pick the signup email
+#   METRICS_URL=http://localhost:4401/v1/metrics …           # launcher on another port
 #
 # BASE_URL may point at either the app root (prod / bun server) or a Next.js dev
 # server — the /api/hosted prefix is auto-detected against /health.
@@ -118,14 +123,25 @@ echo -e "\n${INFO} POST /v1/verify — deny (mystery_drain, amountUsd 7)"
 req POST /v1/verify "{\"toolName\":\"mystery_drain\",\"intent\":{\"kind\":\"transfer\"},\"arguments\":{\"amountUsd\":7}}"
 check "unrecognized tool -> deny" "deny" "$(echo "$BODY" | jq -r '.decision // .error.code // empty')"
 
-# ── GET /v1/metrics ───────────────────────────────────────────────────────────
-echo -e "\n${INFO} GET /v1/metrics"
-req GET /v1/metrics "" auth
+# ── Metrics: the LOCAL dashboard launcher, not the hosted API ────────────────
+# There is no hosted /v1/metrics — the dashboard computes from the DB
+# (docs/plans/2026-07-26-metrics-db-direct.md). Start it first, in another shell:
+#   COMPASS_VERDICT_DB_URL='<pooler url>' npm run metrics
+METRICS_URL="${METRICS_URL:-http://localhost:4400/v1/metrics}"
+echo -e "\n${INFO} GET ${METRICS_URL} ${DIM}(local launcher, no auth)${RST}"
+ST="$(curl -s -o /tmp/metrics-live-body.json -w '%{http_code}' "$METRICS_URL" || echo 000)"
+BODY="$(cat /tmp/metrics-live-body.json 2>/dev/null || echo '{}')"
+if [ "$ST" != "200" ]; then
+  echo -e "  ${FAIL} launcher not reachable at ${METRICS_URL} (http ${ST})"
+  echo -e "     ${DIM}Start it: COMPASS_VERDICT_DB_URL='<pooler url>' npm run metrics${RST}"
+  exit 1
+fi
 check "http 200" "200" "$ST"
 
 USERS="$(echo "$BODY" | jq -r '.onboarding.users // 0')"
 check_true "onboarding.users >= 1" "$([ "$USERS" -ge 1 ] && echo true || echo false)" "(got ${USERS})"
 
+# Only meaningful when the launcher and BASE_URL point at the SAME database.
 PER_USER_ENTRY="$(echo "$BODY" | jq -r --arg email "$EMAIL" '.onboarding.perUser[] | select(.email == $email)')"
 if [ -n "$PER_USER_ENTRY" ]; then
   echo -e "  ${PASS} signup email appears in perUser"
@@ -149,25 +165,26 @@ if [ -n "$PER_USER_ENTRY" ]; then
     fail_count=$((fail_count + 1))
   fi
 else
-  echo -e "  ${FAIL} signup email ${EMAIL} not found in onboarding.perUser ${DIM}(skipped signup with a reused key?)${RST}"
-  fail_count=$((fail_count + 1))
+  echo -e "  ${INFO} signup email ${EMAIL} not in perUser ${DIM}(expected when the launcher's DB differs from BASE_URL, or a key was reused)${RST}"
 fi
 
+# The launcher reads the database directly; the /v1/verify calls above went to
+# BASE_URL, which may be a DIFFERENT deployment. So assert shape and internal
+# consistency — not exact sums that would only hold if both point at one DB.
 TOTAL_USD="$(echo "$BODY" | jq -r '.fundsSecured.totals.totalUsd // 0')"
-check_true "fundsSecured.totals.totalUsd >= 12" \
-  "$(awk -v n="$TOTAL_USD" 'BEGIN { print (n >= 12) ? "true" : "false" }')" "(got ${TOTAL_USD})"
+check_true "fundsSecured.totals.totalUsd >= 0" \
+  "$(awk -v n="$TOTAL_USD" 'BEGIN { print (n >= 0) ? "true" : "false" }')" "(got ${TOTAL_USD})"
 
-ALLOW_USD="$(echo "$BODY" | jq -r '.fundsSecured.totals.allowUsd // 0')"
-check_true "fundsSecured.totals.allowUsd >= 5" \
-  "$(awk -v n="$ALLOW_USD" 'BEGIN { print (n >= 5) ? "true" : "false" }')" "(got ${ALLOW_USD})"
-
+REVIEW_USD="$(echo "$BODY" | jq -r '.fundsSecured.totals.reviewUsd // 0')"
 DENY_USD="$(echo "$BODY" | jq -r '.fundsSecured.totals.denyUsd // 0')"
-check_true "fundsSecured.totals.denyUsd >= 7" \
-  "$(awk -v n="$DENY_USD" 'BEGIN { print (n >= 7) ? "true" : "false" }')" "(got ${DENY_USD})"
-
 POSSIBLE_FUNDS_LOST_USD="$(echo "$BODY" | jq -r '.fundsSecured.totals.possibleFundsLostUsd // 0')"
-check_true "fundsSecured.totals.possibleFundsLostUsd >= 7" \
-  "$(awk -v n="$POSSIBLE_FUNDS_LOST_USD" 'BEGIN { print (n >= 7) ? "true" : "false" }')" "(got ${POSSIBLE_FUNDS_LOST_USD})"
+check_true "possibleFundsLostUsd == reviewUsd + denyUsd" \
+  "$(awk -v p="$POSSIBLE_FUNDS_LOST_USD" -v r="$REVIEW_USD" -v d="$DENY_USD" 'BEGIN { print (p == r + d) ? "true" : "false" }')" \
+  "(got ${POSSIBLE_FUNDS_LOST_USD} vs ${REVIEW_USD} + ${DENY_USD})"
+
+FLAGGED_NO_AMOUNT="$(echo "$BODY" | jq -r '.fundsSecured.totals.flaggedWithoutAmount // "missing"')"
+check_true "flaggedWithoutAmount present" \
+  "$([ "$FLAGGED_NO_AMOUNT" != "missing" ] && echo true || echo false)" "(got ${FLAGGED_NO_AMOUNT})"
 
 BY_DAY_LEN="$(echo "$BODY" | jq -r '.fundsSecured.byDay | length')"
 check_true "fundsSecured.byDay non-empty" "$([ "$BY_DAY_LEN" -gt 0 ] && echo true || echo false)" "(got ${BY_DAY_LEN} days)"

@@ -27,7 +27,7 @@ export function validateVerifyActionRequest(
 
 	// A USD amount must be a non-negative finite number. Rejected HERE, at the boundary,
 	// rather than clamped downstream: a negative amount is persisted on the verdict's
-	// intendedEffect and then SUMMED by /v1/metrics, so one caller sending -1000000 drags
+	// intendedEffect and then SUMMED by the metrics dashboard, so one caller sending -1000000 drags
 	// the reported funds-secured / possible-funds-lost totals negative for everyone. The
 	// aliases mirror derivePolicyContext's readNumber keys — a rejection that missed an
 	// alias would be no rejection at all.
