@@ -515,4 +515,52 @@ describe("createHostedApp — per-email credential flow (end-to-end)", () => {
 
 		expect(response.status).toBe(401);
 	});
+
+	// GET /v1/metrics returns every user's email + signup time, so /v1 auth alone is not
+	// enough: /signup mints a credential to anyone, unauthenticated. These four cases pin
+	// the whole caller matrix — only the operator (shared key) may read it.
+	it("403s GET /v1/metrics for a per-email credential — no cross-tenant PII read", async () => {
+		const app = createHostedApp(createDependencies());
+		const { apiKey } = await signup(app);
+
+		const response = await app.request("/v1/metrics", {
+			headers: { Authorization: `Bearer ${apiKey}` },
+		});
+
+		expect(response.status).toBe(403);
+		expect(await response.text()).not.toContain(SIGNUP_EMAIL);
+	});
+
+	it("403s GET /v1/metrics when no shared key is configured (fail closed, not open)", async () => {
+		// No operator can exist without a configured shared key, so no caller is legitimate.
+		// Without the explicit check this falls OPEN: the middleware's `expectedApiKey &&`
+		// short-circuit skips the shared-key path, leaving only credential callers.
+		const stores = createStores();
+		const app = createHostedApp({
+			...createDependencies(stores),
+			auth: { apiKey: undefined },
+		});
+		const { apiKey } = await signup(app);
+
+		const response = await app.request("/v1/metrics", {
+			headers: { Authorization: `Bearer ${apiKey}` },
+		});
+
+		expect(response.status).toBe(403);
+	});
+
+	it("allows GET /v1/metrics for the operator's shared key", async () => {
+		const app = createHostedApp(createDependencies());
+		await signup(app);
+
+		const response = await app.request("/v1/metrics", {
+			headers: { Authorization: "Bearer hosted-secret" },
+		});
+
+		expect(response.status).toBe(200);
+		const metrics = (await response.json()) as {
+			onboarding: { perUser: { email: string }[] };
+		};
+		expect(metrics.onboarding.perUser.map((user) => user.email)).toContain(SIGNUP_EMAIL);
+	});
 });

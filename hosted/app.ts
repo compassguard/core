@@ -91,7 +91,10 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 	app.route("/v1", createMandateRoutes({ mandateStore }));
 	app.route("/v1", createAuditRoutes(auditStore));
 	app.route("/v1", createPolicyRoutes(policyService));
-	app.route("/v1", createMetricsRoutes(metricsService));
+	// Operator-only: the route re-checks the caller because the /v1 middleware admits any
+	// per-email credential and /signup mints those publicly. deps.auth.apiKey is the shared
+	// COMPASS_HOSTED_API_KEY — set by whoever deploys, never returned by any endpoint.
+	app.route("/v1", createMetricsRoutes({ service: metricsService, operatorKey: deps.auth.apiKey }));
 
 	return app;
 }
