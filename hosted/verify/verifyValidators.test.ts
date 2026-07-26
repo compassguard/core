@@ -144,3 +144,48 @@ describe("validateVerifyActionRequest — intent.statedPurpose", () => {
 		}
 	});
 });
+
+// A negative amount is persisted on intendedEffect and then SUMMED by /v1/metrics, so one
+// caller could drag the reported funds totals negative for everyone. Rejected at the boundary.
+describe("validateVerifyActionRequest — USD amount bounds", () => {
+	it.each(["amountUsd", "amount_usd", "usdAmount"])(
+		"rejects a negative %s",
+		(key) => {
+			const result = validateVerifyActionRequest({
+				toolName: "transfer_sol",
+				arguments: { [key]: -1000000 },
+			});
+
+			expect(result.ok).toBe(false);
+			if (result.ok === false) {
+				expect(result.message).toBe(`arguments.${key} must be a non-negative finite number.`);
+			}
+		},
+	);
+
+	it("rejects a non-finite amountUsd", () => {
+		const result = validateVerifyActionRequest({
+			toolName: "transfer_sol",
+			arguments: { amountUsd: Number.POSITIVE_INFINITY },
+		});
+
+		expect(result.ok).toBe(false);
+	});
+
+	it("rejects a non-numeric amountUsd rather than silently ignoring it", () => {
+		const result = validateVerifyActionRequest({
+			toolName: "transfer_sol",
+			arguments: { amountUsd: "500" },
+		});
+
+		expect(result.ok).toBe(false);
+	});
+
+	it("accepts zero and positive amounts, and arguments carrying no amount at all", () => {
+		for (const args of [{ amountUsd: 0 }, { amountUsd: 12.5 }, { recipient: "Friend" }]) {
+			expect(validateVerifyActionRequest({ toolName: "transfer_sol", arguments: args }).ok).toBe(
+				true,
+			);
+		}
+	});
+});

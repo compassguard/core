@@ -2,6 +2,14 @@ import { STATED_PURPOSE_MAX_LENGTH } from "@shared/mandateContracts";
 
 import type { VerifyActionRequestValidationResult } from "./verifyContracts";
 
+/**
+ * Every argument alias derivePolicyContext reads a USD amount from (hosted/policy/
+ * policyContext.ts — readNumber(["amountUsd", "amount_usd", "usdAmount"]) on both the
+ * transfer and swap branches). Kept in sync with that list: an alias missing here is an
+ * unvalidated path to the same intendedEffect.amountUsd field.
+ */
+const USD_AMOUNT_KEYS = ["amountUsd", "amount_usd", "usdAmount"] as const;
+
 export function validateVerifyActionRequest(
 	value: unknown,
 ): VerifyActionRequestValidationResult {
@@ -15,6 +23,25 @@ export function validateVerifyActionRequest(
 
 	if (value.arguments !== undefined && !isRecord(value.arguments)) {
 		return { ok: false, message: "arguments must be an object when provided." };
+	}
+
+	// A USD amount must be a non-negative finite number. Rejected HERE, at the boundary,
+	// rather than clamped downstream: a negative amount is persisted on the verdict's
+	// intendedEffect and then SUMMED by /v1/metrics, so one caller sending -1000000 drags
+	// the reported funds-secured / possible-funds-lost totals negative for everyone. The
+	// aliases mirror derivePolicyContext's readNumber keys — a rejection that missed an
+	// alias would be no rejection at all.
+	if (isRecord(value.arguments)) {
+		for (const key of USD_AMOUNT_KEYS) {
+			const amount = value.arguments[key];
+			if (amount === undefined) continue;
+			if (typeof amount !== "number" || !Number.isFinite(amount) || amount < 0) {
+				return {
+					ok: false,
+					message: `arguments.${key} must be a non-negative finite number.`,
+				};
+			}
+		}
 	}
 
 	if (value.intent !== undefined) {
