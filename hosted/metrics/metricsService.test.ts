@@ -43,13 +43,24 @@ describe("createMetricsService", () => {
 			users: 0,
 			activated: 0,
 			confirmed: 0,
+			flagged: 0,
 			medianSecondsToFirstVerify: null,
 			averageSecondsToFirstVerify: null,
 			medianSecondsToFirstConfirmedTx: null,
+			medianSecondsToFirstFlagged: null,
+			averageSecondsToFirstFlagged: null,
 			perUser: [],
 		});
 		expect(metrics.fundsSecured).toEqual({
-			totals: { verdicts: 0, withAmountUsd: 0, totalUsd: 0, allowUsd: 0, reviewUsd: 0, denyUsd: 0 },
+			totals: {
+				verdicts: 0,
+				withAmountUsd: 0,
+				totalUsd: 0,
+				allowUsd: 0,
+				reviewUsd: 0,
+				denyUsd: 0,
+				possibleFundsLostUsd: 0,
+			},
 			byDay: [],
 		});
 	});
@@ -75,6 +86,7 @@ describe("createMetricsService", () => {
 
 		expect(metrics.onboarding.users).toBe(1);
 		expect(metrics.onboarding.activated).toBe(1);
+		expect(metrics.onboarding.flagged).toBe(0);
 		expect(metrics.onboarding.perUser).toEqual([
 			{
 				email: "alice@example.com",
@@ -83,8 +95,10 @@ describe("createMetricsService", () => {
 				secondsToFirstVerify: 300,
 			},
 		]);
+		expect(metrics.onboarding.perUser[0].firstFlaggedAt).toBeUndefined();
 		expect(metrics.onboarding.medianSecondsToFirstVerify).toBe(300);
 		expect(metrics.onboarding.averageSecondsToFirstVerify).toBe(300);
+		expect(metrics.onboarding.medianSecondsToFirstFlagged).toBeNull();
 		expect(metrics.fundsSecured.totals).toEqual({
 			verdicts: 1,
 			withAmountUsd: 1,
@@ -92,10 +106,11 @@ describe("createMetricsService", () => {
 			allowUsd: 50,
 			reviewUsd: 0,
 			denyUsd: 0,
+			possibleFundsLostUsd: 0,
 		});
 	});
 
-	it("two verdicts for one user → firstVerifyAt is the earlier one", async () => {
+	it("two verdicts for one user (allow at +300s, deny at +600s) → firstVerifyAt is the earlier one; firstFlaggedAt is the deny", async () => {
 		const credentialStore = createInMemoryCredentialStore();
 		const verdictStore = createInMemoryVerdictStore();
 		await credentialStore.issue({
@@ -107,11 +122,13 @@ describe("createMetricsService", () => {
 			correlationId: "corr-later",
 			decidedAt: "2026-07-26T10:10:00.000Z",
 			authenticatedEmail: "alice@example.com",
+			decision: "deny",
 		});
 		await putVerdict(verdictStore, {
 			correlationId: "corr-earlier",
 			decidedAt: "2026-07-26T10:05:00.000Z",
 			authenticatedEmail: "alice@example.com",
+			decision: "allow",
 		});
 
 		const service = createMetricsService({ verdictStore, credentialStore, isoNow: () => FIXED_NOW });
@@ -119,6 +136,10 @@ describe("createMetricsService", () => {
 
 		expect(metrics.onboarding.perUser).toHaveLength(1);
 		expect(metrics.onboarding.perUser[0].firstVerifyAt).toBe("2026-07-26T10:05:00.000Z");
+		expect(metrics.onboarding.perUser[0].secondsToFirstVerify).toBe(300);
+		// The allow verdict (first overall) is NOT flagged; the deny (second) is the first flagged one.
+		expect(metrics.onboarding.perUser[0].firstFlaggedAt).toBe("2026-07-26T10:10:00.000Z");
+		expect(metrics.onboarding.perUser[0].secondsToFirstFlagged).toBe(600);
 	});
 
 	it("shared-key verdict (no authenticatedEmail) → counted in fundsSecured, absent from onboarding", async () => {
@@ -144,6 +165,7 @@ describe("createMetricsService", () => {
 			allowUsd: 0,
 			reviewUsd: 0,
 			denyUsd: 20,
+			possibleFundsLostUsd: 20,
 		});
 	});
 
@@ -241,6 +263,7 @@ describe("createMetricsService", () => {
 				allowUsd: 10,
 				reviewUsd: 0,
 				denyUsd: 5,
+				possibleFundsLostUsd: 5,
 			},
 			{
 				day: "2026-07-27",
@@ -250,8 +273,13 @@ describe("createMetricsService", () => {
 				allowUsd: 0,
 				reviewUsd: 0,
 				denyUsd: 0,
+				possibleFundsLostUsd: 0,
 			},
 		]);
+		// possibleFundsLostUsd is always reviewUsd + denyUsd, in every bucket and in totals.
+		for (const bucket of metrics.fundsSecured.byDay) {
+			expect(bucket.possibleFundsLostUsd).toBe(bucket.reviewUsd + bucket.denyUsd);
+		}
 		expect(metrics.fundsSecured.totals).toEqual({
 			verdicts: 3,
 			withAmountUsd: 2,
@@ -259,6 +287,10 @@ describe("createMetricsService", () => {
 			allowUsd: 10,
 			reviewUsd: 0,
 			denyUsd: 5,
+			possibleFundsLostUsd: 5,
 		});
+		expect(metrics.fundsSecured.totals.possibleFundsLostUsd).toBe(
+			metrics.fundsSecured.totals.reviewUsd + metrics.fundsSecured.totals.denyUsd,
+		);
 	});
 });

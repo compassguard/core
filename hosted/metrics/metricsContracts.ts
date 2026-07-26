@@ -10,6 +10,8 @@ export type OnboardingPerUser = {
 	secondsToFirstVerify?: number;
 	firstConfirmedTxAt?: string;
 	secondsToFirstConfirmedTx?: number;
+	firstFlaggedAt?: string;
+	secondsToFirstFlagged?: number;
 };
 
 export type FundsBucket = {
@@ -19,6 +21,8 @@ export type FundsBucket = {
 	allowUsd: number;
 	reviewUsd: number;
 	denyUsd: number;
+	/** reviewUsd + denyUsd — funds the firewall stopped from moving unchecked. */
+	possibleFundsLostUsd: number;
 };
 
 export type MetricsResponse = {
@@ -27,9 +31,12 @@ export type MetricsResponse = {
 		users: number; // distinct signup emails
 		activated: number; // users with a firstVerifyAt
 		confirmed: number; // users with a firstConfirmedTxAt
+		flagged: number; // users with a firstFlaggedAt
 		medianSecondsToFirstVerify: number | null;
 		averageSecondsToFirstVerify: number | null;
 		medianSecondsToFirstConfirmedTx: number | null;
+		medianSecondsToFirstFlagged: number | null;
+		averageSecondsToFirstFlagged: number | null;
 		perUser: OnboardingPerUser[]; // sorted by signupAt ascending
 	};
 	fundsSecured: {

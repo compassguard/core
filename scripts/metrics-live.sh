@@ -139,6 +139,15 @@ if [ -n "$PER_USER_ENTRY" ]; then
     echo -e "  ${FAIL} secondsToFirstVerify is null for ${EMAIL}"
     fail_count=$((fail_count + 1))
   fi
+  SECONDS_TO_FIRST_FLAGGED="$(echo "$PER_USER_ENTRY" | jq -r '.secondsToFirstFlagged // "null"')"
+  if [ "$SECONDS_TO_FIRST_FLAGGED" != "null" ]; then
+    check_true "secondsToFirstFlagged is numeric" \
+      "$(awk -v n="$SECONDS_TO_FIRST_FLAGGED" 'BEGIN { print (n == n + 0) ? "true" : "false" }')" \
+      "(got ${SECONDS_TO_FIRST_FLAGGED})"
+  else
+    echo -e "  ${FAIL} secondsToFirstFlagged is null for ${EMAIL} ${DIM}(the deny verify should have flagged this user)${RST}"
+    fail_count=$((fail_count + 1))
+  fi
 else
   echo -e "  ${FAIL} signup email ${EMAIL} not found in onboarding.perUser ${DIM}(skipped signup with a reused key?)${RST}"
   fail_count=$((fail_count + 1))
@@ -155,6 +164,10 @@ check_true "fundsSecured.totals.allowUsd >= 5" \
 DENY_USD="$(echo "$BODY" | jq -r '.fundsSecured.totals.denyUsd // 0')"
 check_true "fundsSecured.totals.denyUsd >= 7" \
   "$(awk -v n="$DENY_USD" 'BEGIN { print (n >= 7) ? "true" : "false" }')" "(got ${DENY_USD})"
+
+POSSIBLE_FUNDS_LOST_USD="$(echo "$BODY" | jq -r '.fundsSecured.totals.possibleFundsLostUsd // 0')"
+check_true "fundsSecured.totals.possibleFundsLostUsd >= 7" \
+  "$(awk -v n="$POSSIBLE_FUNDS_LOST_USD" 'BEGIN { print (n >= 7) ? "true" : "false" }')" "(got ${POSSIBLE_FUNDS_LOST_USD})"
 
 BY_DAY_LEN="$(echo "$BODY" | jq -r '.fundsSecured.byDay | length')"
 check_true "fundsSecured.byDay non-empty" "$([ "$BY_DAY_LEN" -gt 0 ] && echo true || echo false)" "(got ${BY_DAY_LEN} days)"

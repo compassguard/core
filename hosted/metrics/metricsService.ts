@@ -30,7 +30,15 @@ function average(values: number[]): number | null {
 }
 
 function emptyFundsBucket(): FundsBucket {
-	return { verdicts: 0, withAmountUsd: 0, totalUsd: 0, allowUsd: 0, reviewUsd: 0, denyUsd: 0 };
+	return {
+		verdicts: 0,
+		withAmountUsd: 0,
+		totalUsd: 0,
+		allowUsd: 0,
+		reviewUsd: 0,
+		denyUsd: 0,
+		possibleFundsLostUsd: 0,
+	};
 }
 
 function addToFundsBucket(
@@ -45,6 +53,13 @@ function addToFundsBucket(
 	if (decision === "allow") bucket.allowUsd += usd;
 	else if (decision === "review") bucket.reviewUsd += usd;
 	else if (decision === "deny") bucket.denyUsd += usd;
+	// Recomputed (not accumulated) so it never drifts from its two inputs.
+	bucket.possibleFundsLostUsd = bucket.reviewUsd + bucket.denyUsd;
+}
+
+// Flagged = review OR deny (the firewall stopped or held the action).
+function isFlagged(decision: HostedDecision): boolean {
+	return decision === "review" || decision === "deny";
 }
 
 /**
@@ -72,10 +87,11 @@ export function createMetricsService(deps: MetricsServiceDependencies): MetricsS
 				}
 			}
 
-			// firstVerifyAt / firstConfirmedTxAt per email — shared-key verdicts (no
-			// authenticatedEmail) are excluded here (no honest join) but still feed fundsSecured.
+			// firstVerifyAt / firstConfirmedTxAt / firstFlaggedAt per email — shared-key verdicts
+			// (no authenticatedEmail) are excluded here (no honest join) but still feed fundsSecured.
 			const firstVerifyByEmail = new Map<string, string>();
 			const firstConfirmedByEmail = new Map<string, string>();
+			const firstFlaggedByEmail = new Map<string, string>();
 			for (const verdict of verdicts) {
 				const email = verdict.authenticatedEmail;
 				if (email === undefined) continue;
@@ -89,6 +105,13 @@ export function createMetricsService(deps: MetricsServiceDependencies): MetricsS
 					const existingConfirmed = firstConfirmedByEmail.get(email);
 					if (existingConfirmed === undefined || verdict.confirmedAt < existingConfirmed) {
 						firstConfirmedByEmail.set(email, verdict.confirmedAt);
+					}
+				}
+
+				if (isFlagged(verdict.decision)) {
+					const existingFlagged = firstFlaggedByEmail.get(email);
+					if (existingFlagged === undefined || verdict.decidedAt < existingFlagged) {
+						firstFlaggedByEmail.set(email, verdict.decidedAt);
 					}
 				}
 			}
@@ -109,6 +132,11 @@ export function createMetricsService(deps: MetricsServiceDependencies): MetricsS
 					row.secondsToFirstConfirmedTx =
 						(Date.parse(firstConfirmedTxAt) - Date.parse(signupAt)) / 1000;
 				}
+				const firstFlaggedAt = firstFlaggedByEmail.get(email);
+				if (firstFlaggedAt !== undefined) {
+					row.firstFlaggedAt = firstFlaggedAt;
+					row.secondsToFirstFlagged = (Date.parse(firstFlaggedAt) - Date.parse(signupAt)) / 1000;
+				}
 				perUser.push(row);
 			}
 			perUser.sort((a, b) => a.signupAt.localeCompare(b.signupAt));
@@ -118,6 +146,9 @@ export function createMetricsService(deps: MetricsServiceDependencies): MetricsS
 				.filter((seconds): seconds is number => seconds !== undefined && seconds >= 0);
 			const confirmedDurations = perUser
 				.map((user) => user.secondsToFirstConfirmedTx)
+				.filter((seconds): seconds is number => seconds !== undefined && seconds >= 0);
+			const flaggedDurations = perUser
+				.map((user) => user.secondsToFirstFlagged)
 				.filter((seconds): seconds is number => seconds !== undefined && seconds >= 0);
 
 			// Funds secured — over ALL verdicts (shared-key included; no email join needed).
@@ -146,9 +177,12 @@ export function createMetricsService(deps: MetricsServiceDependencies): MetricsS
 					users: signupByEmail.size,
 					activated: perUser.filter((user) => user.firstVerifyAt !== undefined).length,
 					confirmed: perUser.filter((user) => user.firstConfirmedTxAt !== undefined).length,
+					flagged: perUser.filter((user) => user.firstFlaggedAt !== undefined).length,
 					medianSecondsToFirstVerify: median(verifyDurations),
 					averageSecondsToFirstVerify: average(verifyDurations),
 					medianSecondsToFirstConfirmedTx: median(confirmedDurations),
+					medianSecondsToFirstFlagged: median(flaggedDurations),
+					averageSecondsToFirstFlagged: average(flaggedDurations),
 					perUser,
 				},
 				fundsSecured: {

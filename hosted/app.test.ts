@@ -469,21 +469,43 @@ describe("createHostedApp — per-email credential flow (end-to-end)", () => {
 		});
 		expect(verifyResponse.status).toBe(200);
 
+		// Deny case: feeds possibleFundsLostUsd + firstFlaggedAt for the same signup email.
+		const denyResponse = await app.request("/v1/verify", {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${apiKey}`,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				toolName: "mystery_drain",
+				intent: { kind: "transfer" },
+				arguments: { amountUsd: 7 },
+			}),
+		});
+		expect(denyResponse.status).toBe(200);
+
 		const metricsResponse = await app.request("/v1/metrics", {
 			headers: { Authorization: "Bearer hosted-secret" },
 		});
 
 		expect(metricsResponse.status).toBe(200);
 		const metrics = (await metricsResponse.json()) as {
-			onboarding: { users: number; activated: number; perUser: { secondsToFirstVerify?: number }[] };
-			fundsSecured: { totals: { totalUsd: number; allowUsd: number } };
+			onboarding: {
+				users: number;
+				activated: number;
+				perUser: { secondsToFirstVerify?: number; secondsToFirstFlagged?: number }[];
+			};
+			fundsSecured: { totals: { totalUsd: number; allowUsd: number; possibleFundsLostUsd: number } };
 		};
 		expect(metrics.onboarding.users).toBe(1);
 		expect(metrics.onboarding.activated).toBe(1);
 		expect(typeof metrics.onboarding.perUser[0].secondsToFirstVerify).toBe("number");
 		expect(metrics.onboarding.perUser[0].secondsToFirstVerify).toBeGreaterThanOrEqual(0);
-		expect(metrics.fundsSecured.totals.totalUsd).toBe(5);
+		expect(typeof metrics.onboarding.perUser[0].secondsToFirstFlagged).toBe("number");
+		expect(metrics.onboarding.perUser[0].secondsToFirstFlagged).toBeGreaterThanOrEqual(0);
+		expect(metrics.fundsSecured.totals.totalUsd).toBe(12);
 		expect(metrics.fundsSecured.totals.allowUsd).toBe(5);
+		expect(metrics.fundsSecured.totals.possibleFundsLostUsd).toBe(7);
 	});
 
 	it("rejects GET /v1/metrics without auth", async () => {

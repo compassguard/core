@@ -174,3 +174,13 @@ two implementations, the contract suite, and ONE inline fake
 
 - No dashboard UI, no public unauthenticated metrics, no Pg-side aggregation
   SQL, no changes to /verify or /signup behavior, no new env vars.
+
+## Addendum (2026-07-26, stakeholder refinement)
+
+'First tx' is additionally reported as first flagged (review/deny) tx —
+`firstFlaggedAt` / `secondsToFirstFlagged` per user, `flagged` /
+`medianSecondsToFirstFlagged` / `averageSecondsToFirstFlagged` in the
+aggregate. The headline money metric is `possibleFundsLostUsd` =
+`reviewUsd + denyUsd` (funds the firewall stopped from moving unchecked),
+on every `FundsBucket` (totals and each `byDay` entry). All existing fields
+are retained unchanged — this is an additive delta only.
