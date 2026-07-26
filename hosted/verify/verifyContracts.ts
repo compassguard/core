@@ -2,9 +2,13 @@ import type {
 	HostedDecision,
 	HostedRiskLevel,
 } from "@shared/evaluationContracts";
+import type { IntentSource } from "@shared/mandateContracts";
 
 export type VerifyIntent = {
 	kind: "transfer" | "swap";
+	/** Caller's UNTRUSTED stated purpose (e.g. "pay vendor Acme for invoice #42");
+	    1..STATED_PURPOSE_MAX_LENGTH chars. Judged against the registered mandate. */
+	statedPurpose?: string;
 };
 
 export type VerifyActionRequest = {
@@ -25,6 +29,9 @@ export type VerifyActionResponse = {
 	riskLevel: HostedRiskLevel;
 	reasons: string[];
 	humanExplanation: string;
+	/** Which check actually ran: "self_report" = the judge ran on stated intent + mandate
+	    (no decode); "none" = deterministic only. "full" is reserved until decode lands. */
+	intentSource: IntentSource;
 };
 
 export type VerifyActionRequestValidationResult =

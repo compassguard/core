@@ -1,3 +1,5 @@
+import { STATED_PURPOSE_MAX_LENGTH } from "@shared/mandateContracts";
+
 import type {
 	VerifyActionRequest,
 	VerifyActionRequestValidationResult,
@@ -27,6 +29,20 @@ export function validateVerifyActionRequest(
 				ok: false,
 				message: 'intent.kind must be "transfer" or "swap".',
 			};
+		}
+		if (value.intent.statedPurpose !== undefined) {
+			if (!isNonEmptyString(value.intent.statedPurpose)) {
+				return {
+					ok: false,
+					message: "intent.statedPurpose must be a non-empty string when provided.",
+				};
+			}
+			if (value.intent.statedPurpose.length > STATED_PURPOSE_MAX_LENGTH) {
+				return {
+					ok: false,
+					message: `intent.statedPurpose must be at most ${STATED_PURPOSE_MAX_LENGTH} characters.`,
+				};
+			}
 		}
 	}
 
@@ -67,7 +83,14 @@ export function validateVerifyActionRequest(
 		request: {
 			toolName: value.toolName,
 			arguments: value.arguments as Record<string, unknown> | undefined,
-			intent: value.intent as VerifyActionRequest["intent"],
+			intent: isRecord(value.intent)
+				? {
+						kind: value.intent.kind as "transfer" | "swap",
+						...(isNonEmptyString(value.intent.statedPurpose)
+							? { statedPurpose: value.intent.statedPurpose }
+							: {}),
+					}
+				: undefined,
 			requestedAt: isNonEmptyString(value.requestedAt)
 				? value.requestedAt
 				: undefined,

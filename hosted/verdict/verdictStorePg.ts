@@ -1,4 +1,5 @@
 import type { HostedDecision } from "@shared/evaluationContracts";
+import type { IntentSource } from "@shared/mandateContracts";
 import type { Discrepancy, IntendedEffect } from "@shared/verdictContracts";
 
 import type {
@@ -50,6 +51,8 @@ const CREATE_TABLE = `CREATE TABLE IF NOT EXISTS verdicts (
 	discrepancies jsonb,
 	confirmed_at text,
 	confirm_outcome text,
+	intent_source text,
+	judge_rationale text,
 	claimed_at double precision
 )`;
 
@@ -63,6 +66,8 @@ const MIGRATIONS = [
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS authenticated_email text`,
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS confirm_outcome text`,
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS claimed_at double precision`,
+	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS intent_source text`,
+	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS judge_rationale text`,
 ];
 
 /**
@@ -113,8 +118,8 @@ export function createPgVerdictStore(
 			// DECIDED. Durable persistence makes replay real, so this must be a DB guarantee.
 			await run(
 				`INSERT INTO verdicts
-					(correlation_id, status, decision, reasons, human_explanation, intended_effect, decided_at, user_id, session_id, authenticated_email)
-				VALUES ($1, 'DECIDED', $2, $3::jsonb, $4, $5::jsonb, $6, $7, $8, $9)
+					(correlation_id, status, decision, reasons, human_explanation, intended_effect, decided_at, user_id, session_id, authenticated_email, intent_source, judge_rationale)
+				VALUES ($1, 'DECIDED', $2, $3::jsonb, $4, $5::jsonb, $6, $7, $8, $9, $10, $11)
 				ON CONFLICT (correlation_id) DO NOTHING`,
 				[
 					input.correlationId,
@@ -126,6 +131,8 @@ export function createPgVerdictStore(
 					input.userId ?? null,
 					input.sessionId ?? null,
 					input.authenticatedEmail ?? null,
+					input.intentSource ?? null,
+					input.judgeRationale ?? null,
 				],
 			);
 		},
@@ -222,5 +229,7 @@ function rowToRecord(row: Record<string, unknown>): VerdictRecord {
 	if (row.confirm_outcome != null) {
 		record.confirmOutcome = row.confirm_outcome as ConfirmOutcome;
 	}
+	if (row.intent_source != null) record.intentSource = row.intent_source as IntentSource;
+	if (row.judge_rationale != null) record.judgeRationale = row.judge_rationale as string;
 	return record;
 }

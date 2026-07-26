@@ -18,6 +18,9 @@ import { createVerifyConfirmService } from "./verify/verifyConfirmService";
 import { createBoundedConfirmedTxFetcher } from "./verify/getConfirmedTx";
 import { deriveActualEffectUnavailable } from "./verify/deriveActualEffect.unavailable";
 import { createVerifyRoutes } from "./verify/verifyRoutes";
+import { createMandateRoutes } from "./mandate/mandateRoutes";
+import { createMandateStoreFromEnv } from "./mandate/mandateStoreFromEnv";
+import { createVerifyJudge, resolveVerifyJudgeConfig } from "./verify/verifyJudge";
 import type { HostedAppDependencies } from "./appContracts";
 
 export function createHostedApp(deps: HostedAppDependencies): Hono {
@@ -43,9 +46,20 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 	let sharedVerdictStore: VerdictStore | undefined = deps.verdictStore;
 	const resolveVerdictStore = (): VerdictStore =>
 		(sharedVerdictStore ??= createVerdictStoreFromEnv());
+	// Mandate store (trusted anchor for the /verify judge) — durable when the shared
+	// pooler env is set, in-memory otherwise. Built BEFORE verifyService: the mandate gate
+	// in the service reads it.
+	const mandateStore = deps.mandateStore ?? createMandateStoreFromEnv();
+
+	// Verify judge (self_report mode): built only when COMPASS_VERIFY_JUDGE_ENABLED — an
+	// absent judge means the mandate gate in verifyService short-circuits with zero noise.
+	const verifyJudgeConfig = resolveVerifyJudgeConfig();
+	const verifyJudge =
+		deps.verifyJudge ??
+		(verifyJudgeConfig.enabled ? createVerifyJudge({ config: verifyJudgeConfig }) : undefined);
 	const verifyService =
 		deps.verifications ??
-		createVerifyService({ verdictStore: resolveVerdictStore() });
+		createVerifyService({ verdictStore: resolveVerdictStore(), mandateStore, verifyJudge });
 	const verifyConfirmService =
 		deps.confirmations ??
 		createVerifyConfirmService({
@@ -66,6 +80,7 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 	app.use("/v1/*", hostedAuthMiddleware(deps.auth, credentialStore));
 	app.route("/v1", createEvaluationRoutes(evaluationService));
 	app.route("/v1", createVerifyRoutes(verifyService, verifyConfirmService));
+	app.route("/v1", createMandateRoutes({ mandateStore }));
 	app.route("/v1", createAuditRoutes(auditStore));
 	app.route("/v1", createPolicyRoutes(policyService));
 

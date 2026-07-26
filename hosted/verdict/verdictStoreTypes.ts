@@ -1,4 +1,5 @@
 import type { HostedDecision } from "@shared/evaluationContracts";
+import type { IntentSource } from "@shared/mandateContracts";
 import type { Discrepancy, IntendedEffect } from "@shared/verdictContracts";
 
 /**
@@ -39,6 +40,11 @@ export type VerdictRecord = {
 	 * existed; readers infer it from status (CONFIRMED_MISMATCH → mismatch) in that case.
 	 */
 	confirmOutcome?: ConfirmOutcome;
+	/** Which check ran for this decision (seam-doc degraded modes). Absent on legacy
+	    records ⇒ readers treat as "none". */
+	intentSource?: IntentSource;
+	/** The mandate judge's rationale, when it ran (audit/flywheel value). */
+	judgeRationale?: string;
 };
 
 export type DecidedInput = {
@@ -53,6 +59,11 @@ export type DecidedInput = {
 	sessionId?: string;
 	/** Credential-derived caller identity (trustworthy); distinct from self-reported userId. */
 	authenticatedEmail?: string;
+	/** Which check ran for this decision (seam-doc degraded modes). Absent on legacy
+	    records ⇒ readers treat as "none". */
+	intentSource?: IntentSource;
+	/** The mandate judge's rationale, when it ran (audit/flywheel value). */
+	judgeRationale?: string;
 };
 
 export type VerdictStore = {

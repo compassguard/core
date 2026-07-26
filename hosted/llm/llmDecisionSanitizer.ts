@@ -40,6 +40,17 @@ export function sanitizeLlmJudgeInput(
 	};
 }
 
+/**
+ * Sanitize an untrusted object for LLM input (sensitive-key redaction, depth/length
+ * truncation) — the same treatment sanitizeLlmJudgeInput applies to rawContext, reusable
+ * by other judge-input builders (the /verify mandate judge).
+ */
+export function sanitizeUntrustedContext(
+	context: Record<string, unknown>,
+): Record<string, unknown> {
+	return sanitizeObject(context, 0);
+}
+
 function isSensitiveKey(key: string): boolean {
 	const lowerKey = key.toLowerCase();
 	return LLM_SENSITIVE_KEY_PATTERNS.some((pattern) =>

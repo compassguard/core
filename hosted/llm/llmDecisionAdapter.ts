@@ -123,6 +123,8 @@ export type LlmProviderFn = (input: {
 	prompt: string;
 	config: LlmJudgeConfig;
 	signal?: AbortSignal;
+	/** Overrides the default advisory-judge system prompt (e.g. the /verify mandate judge). */
+	systemPrompt?: string;
 }) => Promise<unknown>;
 
 const LLM_SYSTEM_PROMPT = [
@@ -136,6 +138,7 @@ export async function callLlmJudge(
 	input: LlmJudgeInput,
 	config: LlmJudgeConfig,
 	providerFn?: LlmProviderFn,
+	systemPrompt?: string,
 ): Promise<LlmGuardOutput | undefined> {
 	if (!isLlmConfigured(config)) {
 		return undefined;
@@ -155,6 +158,7 @@ export async function callLlmJudge(
 			prompt: JSON.stringify(input),
 			config,
 			signal: controller.signal,
+			systemPrompt,
 		});
 		clearTimeout(timeoutId);
 		return validateLlmGuardOutput(raw);
@@ -178,6 +182,7 @@ async function callOpenCodeGoChatCompletions(input: {
 	prompt: string;
 	config: LlmJudgeConfig;
 	signal?: AbortSignal;
+	systemPrompt?: string;
 }): Promise<unknown> {
 	if (!input.config.baseUrl) {
 		return undefined;
@@ -188,6 +193,7 @@ async function callOpenCodeGoChatCompletions(input: {
 		prompt: input.prompt,
 		config: input.config,
 		signal: input.signal,
+		systemPrompt: input.systemPrompt,
 	});
 }
 
@@ -196,6 +202,7 @@ async function callChatCompletionsEndpoint(input: {
 	prompt: string;
 	config: LlmJudgeConfig;
 	signal?: AbortSignal;
+	systemPrompt?: string;
 }): Promise<unknown> {
 	const headers: Record<string, string> = {
 		"Content-Type": "application/json",
@@ -212,7 +219,7 @@ async function callChatCompletionsEndpoint(input: {
 		body: JSON.stringify({
 			model: input.config.model,
 			messages: [
-				{ role: "system", content: LLM_SYSTEM_PROMPT },
+				{ role: "system", content: input.systemPrompt ?? LLM_SYSTEM_PROMPT },
 				{ role: "user", content: input.prompt },
 			],
 			response_format: { type: "json_object" },
@@ -242,12 +249,14 @@ async function callOpenAiResponses(input: {
 	prompt: string;
 	config: LlmJudgeConfig;
 	signal?: AbortSignal;
+	systemPrompt?: string;
 }): Promise<unknown> {
 	return callResponsesEndpoint({
 		url: "https://api.openai.com/v1/responses",
 		prompt: input.prompt,
 		config: input.config,
 		signal: input.signal,
+		systemPrompt: input.systemPrompt,
 	});
 }
 
@@ -256,6 +265,7 @@ async function callResponsesEndpoint(input: {
 	prompt: string;
 	config: LlmJudgeConfig;
 	signal?: AbortSignal;
+	systemPrompt?: string;
 }): Promise<unknown> {
 	const headers: Record<string, string> = {
 		"Content-Type": "application/json",
@@ -272,7 +282,7 @@ async function callResponsesEndpoint(input: {
 		body: JSON.stringify({
 			model: input.config.model,
 			input: [
-				{ role: "system", content: LLM_SYSTEM_PROMPT },
+				{ role: "system", content: input.systemPrompt ?? LLM_SYSTEM_PROMPT },
 				{ role: "user", content: input.prompt },
 			],
 			text: { format: { type: "json_object" } },
