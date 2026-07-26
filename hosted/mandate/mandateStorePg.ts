@@ -61,7 +61,7 @@ export function createPgMandateStore(deps: PgMandateStoreDependencies): MandateS
 				[
 					mandate.ownerId,
 					mandate.mandateText,
-					mandate.allowedRecipients ? JSON.stringify(mandate.allowedRecipients) : null,
+					mandate.allowedRecipients ?? null,
 					mandate.maxAmountUsd ?? null,
 					mandate.updatedAt,
 				],
