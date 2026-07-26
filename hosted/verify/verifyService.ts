@@ -6,7 +6,7 @@ import {
 } from "@back/guardrail/execution/executionGateway";
 import { getPostHogClient } from "@back/posthog/posthogClient";
 import { COMPASS_DECISIONS } from "@shared/executionGatewayContracts";
-import type { IntentSource, MandateStore } from "@shared/mandateContracts";
+import type { IntentSource, Mandate, MandateStore } from "@shared/mandateContracts";
 import type { PolicyEvaluationContext } from "@shared/policyContracts";
 import type { IntendedEffect } from "@shared/verdictContracts";
 
@@ -81,11 +81,12 @@ export function createVerifyService(
 				createdAt: requestedAt,
 				params: args,
 			});
+			const policy = loadDefaultPolicy();
 			const evaluation = evaluateAction({
 				candidate,
 				classification,
 				context,
-				policy: loadDefaultPolicy(),
+				policy,
 			});
 
 			// Mandate judge (self_report mode): runs ONLY when wired AND the caller's identity
@@ -97,6 +98,13 @@ export function createVerifyService(
 			let intentSource: IntentSource = "none";
 			let judgeRationale: string | undefined;
 			let judgeChangedDecision = false;
+			// Reconstruction context (plan 2026-07-26): the mandate the judge saw (or should
+			// have — judge_unavailable included) and the judge call's provenance.
+			let mandateSnapshot: Mandate | undefined;
+			let judgeModel: string | undefined;
+			let judgeClamped: boolean | undefined;
+			let judgeConfidence: number | undefined;
+			let judgeReasonCodes: string[] | undefined;
 
 			const statedPurpose = request.intent?.statedPurpose;
 			if (
@@ -117,6 +125,7 @@ export function createVerifyService(
 							})
 						: undefined;
 				if (mandate !== undefined) {
+					mandateSnapshot = mandate;
 					const judged = await deps
 						.verifyJudge({
 							toolName: request.toolName,
@@ -137,6 +146,10 @@ export function createVerifyService(
 						judgeRationale = judged.rationale;
 						judgeChangedDecision = judged.decision !== evaluation.decision;
 						intentSource = "self_report";
+						judgeModel = judged.model;
+						judgeClamped = judged.clamped;
+						judgeConfidence = judged.confidence;
+						judgeReasonCodes = judged.reasonCodes;
 					} else {
 						// Fail-honest: a structural-only check is never presented as a mandate check.
 						reasons = [...reasons, VERIFY_JUDGE_REASON_UNAVAILABLE];
@@ -183,6 +196,19 @@ export function createVerifyService(
 					authenticatedEmail: caller?.authenticatedEmail,
 					intentSource,
 					...(judgeRationale !== undefined ? { judgeRationale } : {}),
+					// Reconstruction context: enough to re-derive this verdict later — what the
+					// caller claimed, what the mandate said, which policy/rules ran, what the
+					// judge did (plan 2026-07-26).
+					...(statedPurpose !== undefined ? { statedPurpose } : {}),
+					...(mandateSnapshot !== undefined ? { mandateSnapshot } : {}),
+					policyId: evaluation.policyId,
+					policyVersion: policy.version,
+					evaluatedRules: evaluation.evaluatedRules,
+					deterministicDecision: evaluation.decision,
+					...(judgeModel !== undefined ? { judgeModel } : {}),
+					...(judgeClamped !== undefined ? { judgeClamped } : {}),
+					...(judgeConfidence !== undefined ? { judgeConfidence } : {}),
+					...(judgeReasonCodes !== undefined ? { judgeReasonCodes } : {}),
 				});
 			} catch (error) {
 				captureException(error);

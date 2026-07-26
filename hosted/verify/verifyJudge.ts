@@ -60,6 +60,10 @@ export type VerifyJudgeResult =
 			clamped: boolean;
 			reasonCodes: string[];
 			rationale?: string;
+			/** Concrete model id this call used — surfaced for verdict reconstruction. */
+			model: string;
+			/** The judge's self-reported confidence (0..1). */
+			confidence: number;
 	  };
 
 export type VerifyJudge = (
@@ -129,6 +133,8 @@ export function createVerifyJudge(deps: CreateVerifyJudgeDependencies): VerifyJu
 			...(output.rationale
 				? { rationale: output.rationale.slice(0, JUDGE_RATIONALE_MAX_LENGTH) }
 				: {}),
+			model: deps.config.model,
+			confidence: output.confidence,
 		};
 	};
 }

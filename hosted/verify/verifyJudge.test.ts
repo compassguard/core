@@ -57,6 +57,8 @@ describe("createVerifyJudge", () => {
 			clamped: true,
 			reasonCodes: ["off_mandate_recipient"],
 			rationale: "Recipient is not part of the owner's mandate.",
+			model: "test-model",
+			confidence: 0.9,
 		});
 	});
 

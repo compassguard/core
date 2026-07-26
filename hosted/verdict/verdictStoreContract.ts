@@ -228,6 +228,7 @@ export function describeVerdictStoreContract(name: string, makeStore: MakeStore)
 				policyId: "default-conservative",
 				policyVersion: "0.1.0",
 				evaluatedRules: ["transfers.max_usd_without_approval"],
+				deterministicDecision: "REQUIRE_HUMAN_APPROVAL",
 				judgeModel: "kimi-k2.5",
 				judgeClamped: true,
 				judgeConfidence: 0.85,
@@ -240,6 +241,7 @@ export function describeVerdictStoreContract(name: string, makeStore: MakeStore)
 			expect(record?.policyId).toBe("default-conservative");
 			expect(record?.policyVersion).toBe("0.1.0");
 			expect(record?.evaluatedRules).toEqual(["transfers.max_usd_without_approval"]);
+			expect(record?.deterministicDecision).toBe("REQUIRE_HUMAN_APPROVAL");
 			expect(record?.judgeModel).toBe("kimi-k2.5");
 			expect(record?.judgeClamped).toBe(true);
 			expect(record?.judgeConfidence).toBe(0.85);
@@ -264,6 +266,7 @@ export function describeVerdictStoreContract(name: string, makeStore: MakeStore)
 			expect(record?.policyId).toBeUndefined();
 			expect(record?.policyVersion).toBeUndefined();
 			expect(record?.evaluatedRules).toBeUndefined();
+			expect(record?.deterministicDecision).toBeUndefined();
 			expect(record?.judgeModel).toBeUndefined();
 			expect(record?.judgeClamped).toBeUndefined();
 			expect(record?.judgeConfidence).toBeUndefined();

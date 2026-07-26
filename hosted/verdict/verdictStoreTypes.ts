@@ -60,9 +60,19 @@ export type VerdictRecord = {
 	policyVersion?: string;
 	/** The rule paths the policy engine actually evaluated for this decision. */
 	evaluatedRules?: string[];
+	/**
+	 * The policy engine's pre-judge CompassDecision (e.g. REQUIRE_HUMAN_APPROVAL), before
+	 * collapse and before any judge input. With the final `decision`, this attributes the
+	 * outcome: rules-only when they match, judge-tightened when they differ.
+	 */
+	deterministicDecision?: string;
 	/** Concrete LLM model id the judge call used, when it ran. */
 	judgeModel?: string;
-	/** Whether the strictness clamp discarded a loosening attempt by the judge. */
+	/**
+	 * True when the judge's raw decision diverged from the deterministic one — a tighten
+	 * that was honored, or a loosening the strictness clamp discarded (which of the two is
+	 * distinguishable via deterministicDecision vs the final decision).
+	 */
 	judgeClamped?: boolean;
 	/** The judge's self-reported confidence (0..1), when it ran. */
 	judgeConfidence?: number;
@@ -100,9 +110,11 @@ export type DecidedInput = {
 	policyVersion?: string;
 	/** The rule paths the policy engine actually evaluated for this decision. */
 	evaluatedRules?: string[];
+	/** The policy engine's pre-judge CompassDecision (see VerdictRecord). */
+	deterministicDecision?: string;
 	/** Concrete LLM model id the judge call used, when it ran. */
 	judgeModel?: string;
-	/** Whether the strictness clamp discarded a loosening attempt by the judge. */
+	/** True when the judge's raw decision diverged from the deterministic one (see VerdictRecord). */
 	judgeClamped?: boolean;
 	/** The judge's self-reported confidence (0..1), when it ran. */
 	judgeConfidence?: number;

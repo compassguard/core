@@ -132,6 +132,8 @@ describe("createVerifyService", () => {
 			clamped: true,
 			reasonCodes: ["off_mandate_recipient"],
 			rationale: "Recipient is not part of the owner's mandate.",
+			model: "test-model",
+			confidence: 0.9,
 		});
 		const service = createVerifyService({ verdictStore: store, mandateStore, verifyJudge });
 
@@ -158,6 +160,64 @@ describe("createVerifyService", () => {
 				deterministicDecision: COMPASS_DECISIONS.ALLOW,
 			}),
 		);
+		// Reconstruction context: everything the decision saw is on the record.
+		expect(record?.statedPurpose).toBe("pay vendor Acme invoice #42");
+		expect(record?.mandateSnapshot).toEqual({
+			ownerId: "alice@example.com",
+			mandateText: "Only pay approved vendors.",
+			updatedAt: "2026-07-20T00:00:00.000Z",
+		});
+		expect(record?.policyId).toBe("default-conservative");
+		expect(record?.policyVersion).toBe("0.1.0");
+		expect(record?.evaluatedRules?.length).toBeGreaterThan(0);
+		expect(record?.deterministicDecision).toBe(COMPASS_DECISIONS.ALLOW);
+		expect(record?.judgeModel).toBe("test-model");
+		expect(record?.judgeClamped).toBe(true);
+		expect(record?.judgeConfidence).toBe(0.9);
+		expect(record?.judgeReasonCodes).toEqual(["off_mandate_recipient"]);
+	});
+
+	it("persists policy identity and statedPurpose on a deterministic-only verdict, no judge fields", async () => {
+		const store = createInMemoryVerdictStore();
+		const service = createVerifyService({ verdictStore: store });
+
+		const res = await service.verifyAction({
+			toolName: "transfer_sol",
+			intent: { kind: "transfer", statedPurpose: "pay vendor Acme" },
+			arguments: { recipient: "RcpT111", amountUsd: 5, recipientKnown: true },
+		});
+
+		const record = await store.getByCorrelationId(res.correlationId);
+		expect(record?.policyId).toBe("default-conservative");
+		expect(record?.policyVersion).toBe("0.1.0");
+		expect(record?.evaluatedRules?.length).toBeGreaterThan(0);
+		expect(record?.deterministicDecision).toBe(COMPASS_DECISIONS.ALLOW);
+		expect(record?.statedPurpose).toBe("pay vendor Acme");
+		expect(record?.mandateSnapshot).toBeUndefined();
+		expect(record?.judgeModel).toBeUndefined();
+		expect(record?.judgeClamped).toBeUndefined();
+		expect(record?.judgeConfidence).toBeUndefined();
+		expect(record?.judgeReasonCodes).toBeUndefined();
+	});
+
+	it("snapshots the mandate even when the judge fails (what it SHOULD have judged against)", async () => {
+		const store = createInMemoryVerdictStore();
+		const { mandateStore, verifyJudge } = await MANDATE_DEPS({ ran: false });
+		const service = createVerifyService({ verdictStore: store, mandateStore, verifyJudge });
+
+		const res = await service.verifyAction(
+			{
+				toolName: "transfer_sol",
+				intent: { kind: "transfer", statedPurpose: "pay vendor" },
+				arguments: { recipient: "RcpT111", amountUsd: 5 },
+			},
+			{ authenticatedEmail: "alice@example.com" },
+		);
+
+		const record = await store.getByCorrelationId(res.correlationId);
+		expect(record?.mandateSnapshot?.mandateText).toBe("Only pay approved vendors.");
+		expect(record?.statedPurpose).toBe("pay vendor");
+		expect(record?.judgeModel).toBeUndefined(); // the judge never ran
 	});
 
 	it("never consults the judge on a deterministic DENY (Tier-1 is final)", async () => {
