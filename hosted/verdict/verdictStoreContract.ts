@@ -211,5 +211,63 @@ export function describeVerdictStoreContract(name: string, makeStore: MakeStore)
 			expect(record?.intentSource).toBeUndefined();
 			expect(record?.judgeRationale).toBeUndefined();
 		});
+
+		it("round-trips the full decision-time context (reconstruction fields)", async () => {
+			const store = await makeStore();
+			const mandateSnapshot = {
+				ownerId: "alice@example.com",
+				mandateText: "Pay approved vendors only, never more than $50.",
+				allowedRecipients: ["RcpT111"],
+				maxAmountUsd: 50,
+				updatedAt: "2026-07-01T00:00:00.000Z",
+			};
+			await store.putDecided({
+				...decided("c11"),
+				statedPurpose: "pay vendor Acme for invoice #42",
+				mandateSnapshot,
+				policyId: "default-conservative",
+				policyVersion: "0.1.0",
+				evaluatedRules: ["transfers.max_usd_without_approval"],
+				judgeModel: "kimi-k2.5",
+				judgeClamped: true,
+				judgeConfidence: 0.85,
+				judgeReasonCodes: ["MANDATE_RECIPIENT_MISMATCH"],
+			});
+
+			const record = await store.getByCorrelationId("c11");
+			expect(record?.statedPurpose).toBe("pay vendor Acme for invoice #42");
+			expect(record?.mandateSnapshot).toEqual(mandateSnapshot);
+			expect(record?.policyId).toBe("default-conservative");
+			expect(record?.policyVersion).toBe("0.1.0");
+			expect(record?.evaluatedRules).toEqual(["transfers.max_usd_without_approval"]);
+			expect(record?.judgeModel).toBe("kimi-k2.5");
+			expect(record?.judgeClamped).toBe(true);
+			expect(record?.judgeConfidence).toBe(0.85);
+			expect(record?.judgeReasonCodes).toEqual(["MANDATE_RECIPIENT_MISMATCH"]);
+		});
+
+		it("judgeClamped false round-trips as false, not absent (tri-state column)", async () => {
+			const store = await makeStore();
+			await store.putDecided({ ...decided("c12"), judgeClamped: false });
+
+			const record = await store.getByCorrelationId("c12");
+			expect(record?.judgeClamped).toBe(false);
+		});
+
+		it("reconstruction fields stay absent when the decision carried none", async () => {
+			const store = await makeStore();
+			await store.putDecided(decided("c13"));
+
+			const record = await store.getByCorrelationId("c13");
+			expect(record?.statedPurpose).toBeUndefined();
+			expect(record?.mandateSnapshot).toBeUndefined();
+			expect(record?.policyId).toBeUndefined();
+			expect(record?.policyVersion).toBeUndefined();
+			expect(record?.evaluatedRules).toBeUndefined();
+			expect(record?.judgeModel).toBeUndefined();
+			expect(record?.judgeClamped).toBeUndefined();
+			expect(record?.judgeConfidence).toBeUndefined();
+			expect(record?.judgeReasonCodes).toBeUndefined();
+		});
 	});
 }

@@ -1,5 +1,5 @@
 import type { HostedDecision } from "@shared/evaluationContracts";
-import type { IntentSource } from "@shared/mandateContracts";
+import type { IntentSource, Mandate } from "@shared/mandateContracts";
 import type { Discrepancy, IntendedEffect } from "@shared/verdictContracts";
 
 import type {
@@ -53,6 +53,15 @@ const CREATE_TABLE = `CREATE TABLE IF NOT EXISTS verdicts (
 	confirm_outcome text,
 	intent_source text,
 	judge_rationale text,
+	stated_purpose text,
+	mandate_snapshot jsonb,
+	policy_id text,
+	policy_version text,
+	evaluated_rules jsonb,
+	judge_model text,
+	judge_clamped boolean,
+	judge_confidence double precision,
+	judge_reason_codes jsonb,
 	claimed_at double precision
 )`;
 
@@ -68,6 +77,15 @@ const MIGRATIONS = [
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS claimed_at double precision`,
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS intent_source text`,
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS judge_rationale text`,
+	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS stated_purpose text`,
+	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS mandate_snapshot jsonb`,
+	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS policy_id text`,
+	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS policy_version text`,
+	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS evaluated_rules jsonb`,
+	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS judge_model text`,
+	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS judge_clamped boolean`,
+	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS judge_confidence double precision`,
+	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS judge_reason_codes jsonb`,
 ];
 
 /**
@@ -118,8 +136,8 @@ export function createPgVerdictStore(
 			// DECIDED. Durable persistence makes replay real, so this must be a DB guarantee.
 			await run(
 				`INSERT INTO verdicts
-					(correlation_id, status, decision, reasons, human_explanation, intended_effect, decided_at, user_id, session_id, authenticated_email, intent_source, judge_rationale)
-				VALUES ($1, 'DECIDED', $2, $3::jsonb, $4, $5::jsonb, $6, $7, $8, $9, $10, $11)
+					(correlation_id, status, decision, reasons, human_explanation, intended_effect, decided_at, user_id, session_id, authenticated_email, intent_source, judge_rationale, stated_purpose, mandate_snapshot, policy_id, policy_version, evaluated_rules, judge_model, judge_clamped, judge_confidence, judge_reason_codes)
+				VALUES ($1, 'DECIDED', $2, $3::jsonb, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15, $16::jsonb, $17, $18, $19, $20::jsonb)
 				ON CONFLICT (correlation_id) DO NOTHING`,
 				[
 					input.correlationId,
@@ -133,6 +151,15 @@ export function createPgVerdictStore(
 					input.authenticatedEmail ?? null,
 					input.intentSource ?? null,
 					input.judgeRationale ?? null,
+					input.statedPurpose ?? null,
+					input.mandateSnapshot !== undefined ? JSON.stringify(input.mandateSnapshot) : null,
+					input.policyId ?? null,
+					input.policyVersion ?? null,
+					input.evaluatedRules !== undefined ? JSON.stringify(input.evaluatedRules) : null,
+					input.judgeModel ?? null,
+					input.judgeClamped ?? null,
+					input.judgeConfidence ?? null,
+					input.judgeReasonCodes !== undefined ? JSON.stringify(input.judgeReasonCodes) : null,
 				],
 			);
 		},
@@ -231,5 +258,22 @@ function rowToRecord(row: Record<string, unknown>): VerdictRecord {
 	}
 	if (row.intent_source != null) record.intentSource = row.intent_source as IntentSource;
 	if (row.judge_rationale != null) record.judgeRationale = row.judge_rationale as string;
+	if (row.stated_purpose != null) record.statedPurpose = row.stated_purpose as string;
+	if (row.mandate_snapshot != null) {
+		record.mandateSnapshot = parseJsonb<Mandate>(row.mandate_snapshot);
+	}
+	if (row.policy_id != null) record.policyId = row.policy_id as string;
+	if (row.policy_version != null) record.policyVersion = row.policy_version as string;
+	if (row.evaluated_rules != null) {
+		record.evaluatedRules = parseJsonb<string[]>(row.evaluated_rules);
+	}
+	if (row.judge_model != null) record.judgeModel = row.judge_model as string;
+	if (row.judge_clamped != null) record.judgeClamped = row.judge_clamped as boolean;
+	if (row.judge_confidence != null) {
+		record.judgeConfidence = row.judge_confidence as number;
+	}
+	if (row.judge_reason_codes != null) {
+		record.judgeReasonCodes = parseJsonb<string[]>(row.judge_reason_codes);
+	}
 	return record;
 }

@@ -1,5 +1,5 @@
 import type { HostedDecision } from "@shared/evaluationContracts";
-import type { IntentSource } from "@shared/mandateContracts";
+import type { IntentSource, Mandate } from "@shared/mandateContracts";
 import type { Discrepancy, IntendedEffect } from "@shared/verdictContracts";
 
 /**
@@ -45,6 +45,32 @@ export type VerdictRecord = {
 	intentSource?: IntentSource;
 	/** The mandate judge's rationale, when it ran (audit/flywheel value). */
 	judgeRationale?: string;
+	/** The caller's untrusted stated purpose, verbatim from the /verify request. */
+	statedPurpose?: string;
+	/**
+	 * The mandate as it read at decision time. The mandate store overwrites in place
+	 * (latest-wins upsert), so without this snapshot a verdict judged under an
+	 * since-edited mandate is unreconstructable. Present whenever a mandate was found —
+	 * including the judge_unavailable path (what the judge SHOULD have judged against).
+	 */
+	mandateSnapshot?: Mandate;
+	/** Identity of the policy that evaluated this verdict (CompassPolicy.policy_id). */
+	policyId?: string;
+	/** CompassPolicy.version at decision time. */
+	policyVersion?: string;
+	/** The rule paths the policy engine actually evaluated for this decision. */
+	evaluatedRules?: string[];
+	/** Concrete LLM model id the judge call used, when it ran. */
+	judgeModel?: string;
+	/** Whether the strictness clamp discarded a loosening attempt by the judge. */
+	judgeClamped?: boolean;
+	/** The judge's self-reported confidence (0..1), when it ran. */
+	judgeConfidence?: number;
+	/**
+	 * The judge's own reason codes — its contribution to the merged `reasons`.
+	 * Deterministic reasons are derivable as (reasons minus judgeReasonCodes).
+	 */
+	judgeReasonCodes?: string[];
 };
 
 export type DecidedInput = {
@@ -64,6 +90,24 @@ export type DecidedInput = {
 	intentSource?: IntentSource;
 	/** The mandate judge's rationale, when it ran (audit/flywheel value). */
 	judgeRationale?: string;
+	/** The caller's untrusted stated purpose, verbatim from the /verify request. */
+	statedPurpose?: string;
+	/** The mandate as it read at decision time (see VerdictRecord.mandateSnapshot). */
+	mandateSnapshot?: Mandate;
+	/** Identity of the policy that evaluated this verdict (CompassPolicy.policy_id). */
+	policyId?: string;
+	/** CompassPolicy.version at decision time. */
+	policyVersion?: string;
+	/** The rule paths the policy engine actually evaluated for this decision. */
+	evaluatedRules?: string[];
+	/** Concrete LLM model id the judge call used, when it ran. */
+	judgeModel?: string;
+	/** Whether the strictness clamp discarded a loosening attempt by the judge. */
+	judgeClamped?: boolean;
+	/** The judge's self-reported confidence (0..1), when it ran. */
+	judgeConfidence?: number;
+	/** The judge's own reason codes — its contribution to the merged `reasons`. */
+	judgeReasonCodes?: string[];
 };
 
 export type VerdictStore = {
