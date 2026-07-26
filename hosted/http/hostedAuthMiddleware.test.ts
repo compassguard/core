@@ -119,6 +119,7 @@ describe("hostedAuthMiddleware", () => {
 				throw resolveError;
 			},
 			revokeByEmail: async () => 0,
+			listIssued: async () => [],
 		} satisfies CredentialStore;
 		const captureException = vi.fn();
 		const app = createApp(throwingStore, captureException);

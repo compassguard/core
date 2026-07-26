@@ -13,10 +13,14 @@ export type IssueCredentialInput = {
 	createdAt: string;
 };
 
+export type IssuedCredential = { email: string; createdAt: string };
+
 export type CredentialStore = {
 	issue(input: IssueCredentialInput): Promise<void>;
 	resolveActive(tokenHash: string): Promise<CredentialIdentity | undefined>;
 	revokeByEmail(email: string): Promise<number>;
+	/** Every credential ever issued, revoked or not — revocation does not erase signup time. */
+	listIssued(): Promise<IssuedCredential[]>;
 };
 
 export type CredentialStoreOptions = {
@@ -72,6 +76,13 @@ export function createInMemoryCredentialStore(
 				}
 			}
 			return disabled;
+		},
+
+		async listIssued(): Promise<IssuedCredential[]> {
+			return [...records.values()].map((record) => ({
+				email: record.email,
+				createdAt: record.createdAt,
+			}));
 		},
 	};
 }

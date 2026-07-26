@@ -118,5 +118,37 @@ export function describeCredentialStoreContract(name: string, makeStore: MakeSto
 			expect(await store.resolveActive("hash-2")).toBeUndefined();
 			expect(await store.resolveActive("hash-3")).toEqual({ email: "bob@example.com" });
 		});
+
+		it("listIssued returns every credential ever issued, including revoked ones", async () => {
+			const store = await makeStore();
+			await store.issue({
+				email: "alice@example.com",
+				tokenHash: "hash-1",
+				createdAt: "2026-07-03T00:00:00.000Z",
+			});
+			await store.issue({
+				email: "alice@example.com",
+				tokenHash: "hash-2",
+				createdAt: "2026-07-03T01:00:00.000Z",
+			});
+			await store.issue({
+				email: "bob@example.com",
+				tokenHash: "hash-3",
+				createdAt: "2026-07-03T02:00:00.000Z",
+			});
+			await store.revokeByEmail("alice@example.com");
+
+			const issued = await store.listIssued();
+			const sorted = [...issued].sort((a, b) =>
+				a.email === b.email
+					? a.createdAt.localeCompare(b.createdAt)
+					: a.email.localeCompare(b.email),
+			);
+			expect(sorted).toEqual([
+				{ email: "alice@example.com", createdAt: "2026-07-03T00:00:00.000Z" },
+				{ email: "alice@example.com", createdAt: "2026-07-03T01:00:00.000Z" },
+				{ email: "bob@example.com", createdAt: "2026-07-03T02:00:00.000Z" },
+			]);
+		});
 	});
 }
