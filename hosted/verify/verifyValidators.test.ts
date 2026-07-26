@@ -145,7 +145,7 @@ describe("validateVerifyActionRequest — intent.statedPurpose", () => {
 	});
 });
 
-// A negative amount is persisted on intendedEffect and then SUMMED by /v1/metrics, so one
+// A negative amount is persisted on intendedEffect and then SUMMED by the metrics dashboard, so one
 // caller could drag the reported funds totals negative for everyone. Rejected at the boundary.
 describe("validateVerifyActionRequest — USD amount bounds", () => {
 	it.each(["amountUsd", "amount_usd", "usdAmount"])(

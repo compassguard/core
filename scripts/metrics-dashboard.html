@@ -200,16 +200,8 @@
       <p class="hero-copy">Onboarding time from signup to first guarded transaction, and every dollar the firewall screened — held, blocked, or waved through.</p>
     </header>
 
-    <!-- ── Key gate ─────────────────────────────────────────────── -->
-    <section id="connect" class="connect container">
-      <h3>Connect with your API key</h3>
-      <p>Metrics are read straight from <span class="mono">GET /v1/metrics</span>. Paste any active Compass key — it stays in this browser only.</p>
-      <form id="key-form">
-        <input id="key-input" type="password" placeholder="compass_…" autocomplete="off" spellcheck="false" aria-label="Compass API key" />
-        <button type="submit">View metrics</button>
-      </form>
-      <p id="connect-error" class="connect-error"></p>
-    </section>
+    <!-- Error slot: no key gate — the local launcher reads the database directly. -->
+    <p id="connect-error" class="connect-error container"></p>
 
     <!-- ── Dashboard ────────────────────────────────────────────── -->
     <section id="dash" class="dash container" aria-live="polite">
@@ -217,7 +209,6 @@
         <span class="mono" id="as-of"></span>
         <span class="spacer"></span>
         <button class="ghost-btn" id="refresh-btn" type="button">Refresh</button>
-        <button class="ghost-btn" id="key-btn" type="button">Change key</button>
       </div>
 
       <div class="kpi-grid">
@@ -303,14 +294,8 @@
   <script>
     "use strict";
     (function () {
-      var KEY_STORAGE = "compass-metrics-key";
-      var BASE_STORAGE = "compass-metrics-base";
-      // Same-origin first (prod: vercel.json rewrites /v1/* → /api/hosted/v1/*);
-      // the /api/hosted prefix covers `next dev`, which has no rewrites.
-      var BASE_CANDIDATES = ["", "/api/hosted"];
-
       var $ = function (id) { return document.getElementById(id); };
-      var connectEl = $("connect"), dashEl = $("dash"), errorEl = $("connect-error");
+      var dashEl = $("dash"), errorEl = $("connect-error");
 
       function fmtUsd(value) {
         if (value >= 1e9) return "$" + (value / 1e9).toFixed(1) + "B";
@@ -331,50 +316,21 @@
       }
       function fmtStamp(iso) { return iso ? iso.slice(0, 16).replace("T", " ") : "—"; }
 
-      function fetchMetrics(key, base) {
-        return fetch(base + "/v1/metrics", { headers: { Authorization: "Bearer " + key } });
-      }
-
-      // Resolve the API base via the public /health probe (unambiguous — a wrong base
-      // can 500 or 404 depending on the server, so probing /v1/metrics directly can't
-      // tell "wrong base" from a real API error), then fetch metrics once.
-      function resolveBase() {
-        var stored = sessionStorage.getItem(BASE_STORAGE);
-        if (stored !== null) return Promise.resolve(stored);
-        var attempt = function (index) {
-          if (index >= BASE_CANDIDATES.length) return Promise.reject(new Error("Could not reach the Compass API from this page."));
-          var base = BASE_CANDIDATES[index];
-          return fetch(base + "/health").then(function (response) {
-            return response.ok ? response.json() : Promise.reject();
-          }).then(function (health) {
-            if (health && health.ok === true) {
-              sessionStorage.setItem(BASE_STORAGE, base);
-              return base;
-            }
-            return attempt(index + 1);
-          }, function () { return attempt(index + 1); });
-        };
-        return attempt(0);
-      }
-
-      function resolveAndFetch(key) {
-        return resolveBase().then(function (base) { return fetchMetrics(key, base); });
-      }
-
       function showError(message) {
         errorEl.textContent = message;
         errorEl.style.display = "block";
       }
 
-      function load(key) {
-        return resolveAndFetch(key).then(function (response) {
-          if (response.status === 401) throw new Error("That key was rejected (401). Check it, or mint a fresh one via POST /signup.");
-          if (!response.ok) throw new Error("Metrics request failed with HTTP " + response.status + ".");
+      // Same-origin, no auth: the local launcher (scripts/metrics-dashboard.ts) computes
+      // these from the database and serves them on this very origin. There is no API base
+      // to resolve and no key to present — that is the point of the DB-direct topology.
+      function load() {
+        return fetch("/v1/metrics").then(function (response) {
+          if (!response.ok) throw new Error("Metrics request failed with HTTP " + response.status + ". Is the launcher still running?");
           return response.json();
         }).then(function (data) {
-          localStorage.setItem(KEY_STORAGE, key);
+          errorEl.style.display = "none";
           render(data);
-          connectEl.style.display = "none";
           dashEl.style.display = "block";
         });
       }
@@ -582,33 +538,14 @@
       }
 
       /* ── Wiring ─────────────────────────────────────────────────── */
-      $("key-form").addEventListener("submit", function (event) {
-        event.preventDefault();
-        errorEl.style.display = "none";
-        var key = $("key-input").value.trim();
-        if (key === "") return showError("Paste a key first.");
-        load(key).catch(function (error) { showError(error.message); });
-      });
       $("refresh-btn").addEventListener("click", function () {
-        var key = localStorage.getItem(KEY_STORAGE);
-        if (key) load(key).catch(function (error) {
+        load().catch(function (error) {
           dashEl.style.display = "none";
-          connectEl.style.display = "block";
           showError(error.message);
         });
       });
-      $("key-btn").addEventListener("click", function () {
-        localStorage.removeItem(KEY_STORAGE);
-        dashEl.style.display = "none";
-        connectEl.style.display = "block";
-        $("key-input").value = "";
-        $("key-input").focus();
-      });
 
-      var savedKey = localStorage.getItem(KEY_STORAGE);
-      if (savedKey) {
-        load(savedKey).catch(function () { localStorage.removeItem(KEY_STORAGE); });
-      }
+      load().catch(function (error) { showError(error.message); });
     })();
   </script>
 </body>

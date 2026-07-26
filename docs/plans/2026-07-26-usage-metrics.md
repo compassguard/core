@@ -233,3 +233,24 @@ five corrections. All are additive to the contract above except where noted.
 - **#15 guard extended.** Injecting verify services without `verdictStore` gave
   metrics a different fallback store — reporting zeros, a silent failure. Now
   throws.
+
+## Addendum 4 (2026-07-26, transport superseded — DB-direct)
+
+T3's `GET /v1/metrics` route and Addendum 3's operator-only auth gate are
+REMOVED. The dashboard now computes metrics locally from the database
+(`scripts/metrics-dashboard.ts`, run via `npm run metrics`); there is no hosted
+metrics endpoint and no metrics auth surface.
+
+Reason: whoever reads this dashboard already holds Supabase access (operator,
+2026-07-26), so the endpoint's API key granted nothing they did not already have
+— while the endpoint itself was a public surface needing a correct auth gate
+forever, and that gate was subtly fail-open once already.
+
+The metric definitions, `MetricsResponse` (including Addendum 3's
+`flaggedWithoutAmount`), `createMetricsService`, and its tests are UNCHANGED —
+the service takes stores, not a connection, so this was a transport swap only.
+The `#15` guard in `app.ts` is retained as a general consistency check on
+injected verify services.
+
+Full rationale, tasks, and the precondition that would void this (a consumer
+needing metrics over HTTP without DB access): `2026-07-26-metrics-db-direct.md`.

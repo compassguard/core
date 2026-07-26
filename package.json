@@ -40,6 +40,7 @@
     "test:back": "vitest --config vitest.back.config.ts --run",
     "test:watch": "vitest --config vitest.back.config.ts",
     "hosted:dev": "bun hosted/server.ts",
+    "metrics": "tsx scripts/metrics-dashboard.ts",
     "mcp:dev": "tsx back/services/mcp/server/mcpServer.ts",
     "mcp:install:opencode": "node scripts/install-opencode-mcp.mjs",
     "test:e2e": "node scripts/e2e-pipeline-test.mjs",

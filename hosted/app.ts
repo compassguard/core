@@ -21,8 +21,6 @@ import { createVerifyRoutes } from "./verify/verifyRoutes";
 import { createMandateRoutes } from "./mandate/mandateRoutes";
 import { createMandateStoreFromEnv } from "./mandate/mandateStoreFromEnv";
 import { createVerifyJudge, resolveVerifyJudgeConfig } from "./verify/verifyJudge";
-import { createMetricsService } from "./metrics/metricsService";
-import { createMetricsRoutes } from "./metrics/metricsRoutes";
 import type { HostedAppDependencies } from "./appContracts";
 
 export function createHostedApp(deps: HostedAppDependencies): Hono {
@@ -42,13 +40,13 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 			"createHostedApp: inject BOTH verifications and confirmations, or neither — they must share a single verdict store.",
 		);
 	}
-	// #15 (metrics extension): injected verify services hold a store this factory cannot see,
-	// so resolveVerdictStore() below would hand METRICS a fresh fallback store instead — and a
-	// metrics endpoint reading the wrong store reports zeros, i.e. fails SILENTLY rather than
-	// loudly. Require the store explicitly whenever the services are injected.
+	// #15 (consistency): injected verify services hold a verdict store this factory cannot see,
+	// so any later reader built here would silently get a DIFFERENT fallback store — reporting
+	// empty state rather than failing loudly. Require the store explicitly whenever the
+	// services are injected, so what this factory resolves IS what /verify writes to.
 	if (deps.verifications !== undefined && deps.verdictStore === undefined) {
 		throw new Error(
-			"createHostedApp: inject verdictStore alongside verifications/confirmations — metrics must read the same verdict store as /verify.",
+			"createHostedApp: inject verdictStore alongside verifications/confirmations — readers built here must share the store /verify writes to.",
 		);
 	}
 	// Build the fallback verdict store lazily and at most once — only if a verify service is not
@@ -82,14 +80,6 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 	// Per-email credential store (D13): env-selected durable Supabase or in-memory fallback,
 	// built once and shared by the /v1 auth middleware and the public signup endpoint.
 	const credentialStore = deps.credentialStore ?? createCredentialStoreFromEnv();
-	// Metrics MUST read the same verdict store instance as /verify (#15 family) — hence
-	// resolveVerdictStore(), which the guard above makes sufficient: when verify services are
-	// injected, deps.verdictStore is required and is exactly what this resolves to.
-	// Construction happens after credentialStore exists.
-	const metricsService = createMetricsService({
-		verdictStore: resolveVerdictStore(),
-		credentialStore,
-	});
 
 	app.onError(hostedErrorHandler);
 	app.route("/health", createHealthRoutes(deps.health));
@@ -102,10 +92,11 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 	app.route("/v1", createMandateRoutes({ mandateStore }));
 	app.route("/v1", createAuditRoutes(auditStore));
 	app.route("/v1", createPolicyRoutes(policyService));
-	// Operator-only: the route re-checks the caller because the /v1 middleware admits any
-	// per-email credential and /signup mints those publicly. deps.auth.apiKey is the shared
-	// COMPASS_HOSTED_API_KEY — set by whoever deploys, never returned by any endpoint.
-	app.route("/v1", createMetricsRoutes({ service: metricsService, operatorKey: deps.auth.apiKey }));
+	// NOTE: metrics are deliberately NOT served here. The dashboard computes them locally
+	// from the DB (scripts/metrics-dashboard.ts) — see
+	// docs/plans/2026-07-26-metrics-db-direct.md. Re-adding an HTTP route means re-adding an
+	// operator-only auth gate: the /v1 middleware admits any per-email credential, and
+	// /signup mints those publicly, so /v1 auth alone would expose every user's email.
 
 	return app;
 }
