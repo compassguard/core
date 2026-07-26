@@ -42,8 +42,8 @@ next request.
 Other paths:
 
 - **Shared key:** a single `COMPASS_HOSTED_API_KEY` also gates `/v1/*` (this is what the MCP proxy
-  uses). Message **[@Satoshi0101](https://t.me/Satoshi0101) on Telegram** if you need the shared key
-  rather than your own.
+  uses) — on a deployment you run yourself, see below. On the hosted service it is a deployment
+  secret held by the operator, not a user credential: signup above is the way in.
 - **Local backend:** run it yourself — signup mints keys against your instance, or set a shared
   `COMPASS_HOSTED_API_KEY` (any string) on both server and client:
   ```sh

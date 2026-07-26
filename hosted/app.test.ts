@@ -316,6 +316,21 @@ describe("createHostedApp", () => {
 		expect(() => createHostedApp(partial)).toThrow(/share a single verdict store/);
 	});
 
+	// #15 metrics extension: injected verify services hold a store this factory cannot see, so
+	// metrics would silently get a DIFFERENT fallback store and report zeros. Fail loudly.
+	it("throws when verify services are injected without the verdict store metrics must read", () => {
+		const withoutStore = {
+			...createDependencies(),
+			verdictStore: undefined,
+			verifications: { verifyAction: vi.fn() },
+			confirmations: { confirmAction: vi.fn() },
+		} as unknown as HostedAppDependencies;
+
+		expect(() => createHostedApp(withoutStore)).toThrow(
+			/inject verdictStore alongside verifications/,
+		);
+	});
+
 	it("consults the mandate judge on /v1/verify when a mandate + statedPurpose are present", async () => {
 		const mandateStore = createInMemoryMandateStore();
 		const verifyJudge = async () => ({
@@ -447,5 +462,120 @@ describe("createHostedApp — per-email credential flow (end-to-end)", () => {
 		});
 
 		expect(response.status).toBe(401);
+	});
+
+	it("GET /v1/metrics reflects a signup + verify through the same stores", async () => {
+		const stores = createStores();
+		const app = createHostedApp(createDependencies(stores));
+
+		const { apiKey } = await signup(app);
+
+		const verifyResponse = await app.request("/v1/verify", {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${apiKey}`,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				toolName: "transfer_sol",
+				intent: { kind: "transfer" },
+				arguments: { recipient: "Friend", amountUsd: 5, recipientKnown: true },
+			}),
+		});
+		expect(verifyResponse.status).toBe(200);
+
+		// Deny case: feeds possibleFundsLostUsd + firstFlaggedAt for the same signup email.
+		const denyResponse = await app.request("/v1/verify", {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${apiKey}`,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				toolName: "mystery_drain",
+				intent: { kind: "transfer" },
+				arguments: { amountUsd: 7 },
+			}),
+		});
+		expect(denyResponse.status).toBe(200);
+
+		const metricsResponse = await app.request("/v1/metrics", {
+			headers: { Authorization: "Bearer hosted-secret" },
+		});
+
+		expect(metricsResponse.status).toBe(200);
+		const metrics = (await metricsResponse.json()) as {
+			onboarding: {
+				users: number;
+				activated: number;
+				perUser: { secondsToFirstVerify?: number; secondsToFirstFlagged?: number }[];
+			};
+			fundsSecured: { totals: { totalUsd: number; allowUsd: number; possibleFundsLostUsd: number } };
+		};
+		expect(metrics.onboarding.users).toBe(1);
+		expect(metrics.onboarding.activated).toBe(1);
+		expect(typeof metrics.onboarding.perUser[0].secondsToFirstVerify).toBe("number");
+		expect(metrics.onboarding.perUser[0].secondsToFirstVerify).toBeGreaterThanOrEqual(0);
+		expect(typeof metrics.onboarding.perUser[0].secondsToFirstFlagged).toBe("number");
+		expect(metrics.onboarding.perUser[0].secondsToFirstFlagged).toBeGreaterThanOrEqual(0);
+		expect(metrics.fundsSecured.totals.totalUsd).toBe(12);
+		expect(metrics.fundsSecured.totals.allowUsd).toBe(5);
+		expect(metrics.fundsSecured.totals.possibleFundsLostUsd).toBe(7);
+	});
+
+	it("rejects GET /v1/metrics without auth", async () => {
+		const app = createHostedApp(createDependencies());
+
+		const response = await app.request("/v1/metrics");
+
+		expect(response.status).toBe(401);
+	});
+
+	// GET /v1/metrics returns every user's email + signup time, so /v1 auth alone is not
+	// enough: /signup mints a credential to anyone, unauthenticated. These four cases pin
+	// the whole caller matrix — only the operator (shared key) may read it.
+	it("403s GET /v1/metrics for a per-email credential — no cross-tenant PII read", async () => {
+		const app = createHostedApp(createDependencies());
+		const { apiKey } = await signup(app);
+
+		const response = await app.request("/v1/metrics", {
+			headers: { Authorization: `Bearer ${apiKey}` },
+		});
+
+		expect(response.status).toBe(403);
+		expect(await response.text()).not.toContain(SIGNUP_EMAIL);
+	});
+
+	it("403s GET /v1/metrics when no shared key is configured (fail closed, not open)", async () => {
+		// No operator can exist without a configured shared key, so no caller is legitimate.
+		// Without the explicit check this falls OPEN: the middleware's `expectedApiKey &&`
+		// short-circuit skips the shared-key path, leaving only credential callers.
+		const stores = createStores();
+		const app = createHostedApp({
+			...createDependencies(stores),
+			auth: { apiKey: undefined },
+		});
+		const { apiKey } = await signup(app);
+
+		const response = await app.request("/v1/metrics", {
+			headers: { Authorization: `Bearer ${apiKey}` },
+		});
+
+		expect(response.status).toBe(403);
+	});
+
+	it("allows GET /v1/metrics for the operator's shared key", async () => {
+		const app = createHostedApp(createDependencies());
+		await signup(app);
+
+		const response = await app.request("/v1/metrics", {
+			headers: { Authorization: "Bearer hosted-secret" },
+		});
+
+		expect(response.status).toBe(200);
+		const metrics = (await response.json()) as {
+			onboarding: { perUser: { email: string }[] };
+		};
+		expect(metrics.onboarding.perUser.map((user) => user.email)).toContain(SIGNUP_EMAIL);
 	});
 });
