@@ -206,3 +206,30 @@ branch). It lives in `scripts/`:
   and `/v1/metrics` to the target API — needed because the hosted API sends
   no CORS headers, and the fix must not be adding permissive CORS to a
   public API for an internal tool.
+
+## Addendum 3 (2026-07-26, review fixes)
+
+Code review of the branch (findings verified by execution, not reading) produced
+five corrections. All are additive to the contract above except where noted.
+
+- **Auth (was: any signed-up user could read every user's email).** `/v1` auth
+  admits any per-email credential and `POST /signup` mints those publicly, so the
+  frozen "existing `/v1` middleware, no new auth surface" was not sufficient for a
+  response carrying `perUser` emails. `GET /v1/metrics` is now **operator-only**:
+  it requires a configured shared key AND a caller who used it (the shared-key
+  path sets no `authenticatedEmail`; a credential always does). Both conditions —
+  the identity check alone falls open when no shared key is configured.
+- **Negative amounts.** `verifyValidators` now rejects negative / non-finite /
+  non-numeric `amountUsd` (and its `amount_usd` / `usdAmount` aliases) at the
+  boundary. Previously one caller could drive `possibleFundsLostUsd` to −999,500.
+- **Timestamps are compared as INSTANTS, not strings.** `/verify` accepts any
+  `Date.parse`-able `requestedAt`, so offsets (`+02:00`) reach the store. All
+  first-occurrence minima, the `perUser` sort, and the day bucket now normalize to
+  UTC. Supersedes the frozen `decidedAt.slice(0, 10)` day rule.
+- **`flaggedWithoutAmount` added to `FundsBucket`** (totals and each `byDay`):
+  flagged verdicts carrying no USD amount. `/verify` only derives `amountUsd` from
+  the three USD aliases, so a SOL-denominated block contributes nothing — the
+  money figure is a LOWER BOUND whenever this is > 0, and the dashboard says so.
+- **#15 guard extended.** Injecting verify services without `verdictStore` gave
+  metrics a different fallback store — reporting zeros, a silent failure. Now
+  throws.

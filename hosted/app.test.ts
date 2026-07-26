@@ -316,6 +316,21 @@ describe("createHostedApp", () => {
 		expect(() => createHostedApp(partial)).toThrow(/share a single verdict store/);
 	});
 
+	// #15 metrics extension: injected verify services hold a store this factory cannot see, so
+	// metrics would silently get a DIFFERENT fallback store and report zeros. Fail loudly.
+	it("throws when verify services are injected without the verdict store metrics must read", () => {
+		const withoutStore = {
+			...createDependencies(),
+			verdictStore: undefined,
+			verifications: { verifyAction: vi.fn() },
+			confirmations: { confirmAction: vi.fn() },
+		} as unknown as HostedAppDependencies;
+
+		expect(() => createHostedApp(withoutStore)).toThrow(
+			/inject verdictStore alongside verifications/,
+		);
+	});
+
 	it("consults the mandate judge on /v1/verify when a mandate + statedPurpose are present", async () => {
 		const mandateStore = createInMemoryMandateStore();
 		const verifyJudge = async () => ({

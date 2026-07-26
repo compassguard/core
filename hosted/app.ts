@@ -42,6 +42,15 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 			"createHostedApp: inject BOTH verifications and confirmations, or neither — they must share a single verdict store.",
 		);
 	}
+	// #15 (metrics extension): injected verify services hold a store this factory cannot see,
+	// so resolveVerdictStore() below would hand METRICS a fresh fallback store instead — and a
+	// metrics endpoint reading the wrong store reports zeros, i.e. fails SILENTLY rather than
+	// loudly. Require the store explicitly whenever the services are injected.
+	if (deps.verifications !== undefined && deps.verdictStore === undefined) {
+		throw new Error(
+			"createHostedApp: inject verdictStore alongside verifications/confirmations — metrics must read the same verdict store as /verify.",
+		);
+	}
 	// Build the fallback verdict store lazily and at most once — only if a verify service is not
 	// injected, and only after the guard above so a rejected partial injection has no side effects
 	// (no stray pooler client, no logging). Both fallback services share the SAME instance (#15).
@@ -74,7 +83,9 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 	// built once and shared by the /v1 auth middleware and the public signup endpoint.
 	const credentialStore = deps.credentialStore ?? createCredentialStoreFromEnv();
 	// Metrics MUST read the same verdict store instance as /verify (#15 family) — hence
-	// resolveVerdictStore() — and construction happens after credentialStore exists.
+	// resolveVerdictStore(), which the guard above makes sufficient: when verify services are
+	// injected, deps.verdictStore is required and is exactly what this resolves to.
+	// Construction happens after credentialStore exists.
 	const metricsService = createMetricsService({
 		verdictStore: resolveVerdictStore(),
 		credentialStore,
