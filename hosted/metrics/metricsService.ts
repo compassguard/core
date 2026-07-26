@@ -15,6 +15,50 @@ export type MetricsServiceDependencies = {
 	isoNow?: () => string;
 };
 
+/**
+ * Instant of an ISO timestamp, or undefined when unparseable.
+ *
+ * Timestamps reaching here are NOT all `…Z`: /verify accepts any Date.parse-able
+ * `requestedAt` (verifyValidators), so `2026-07-26T10:00:00+02:00` is valid input. Ordering
+ * such values as raw strings compares the local wall clock, not the instant — "09:00Z" sorts
+ * before "10:00+02:00" though the latter is 08:00Z and genuinely earlier. Every ordering and
+ * bucketing decision below therefore goes through this, never through string compare.
+ */
+function epochMs(iso: string): number | undefined {
+	const parsed = Date.parse(iso);
+	return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+/** True when `candidate` is strictly earlier than `incumbent` as an INSTANT. */
+function isEarlier(candidate: string, incumbent: string): boolean {
+	const candidateMs = epochMs(candidate);
+	const incumbentMs = epochMs(incumbent);
+	// An unorderable candidate never displaces a parseable incumbent; an unparseable
+	// incumbent yields to anything parseable.
+	if (candidateMs === undefined) return false;
+	if (incumbentMs === undefined) return true;
+	return candidateMs < incumbentMs;
+}
+
+/**
+ * UTC calendar day (YYYY-MM-DD) of an ISO timestamp. Normalizes offsets first: a
+ * `2026-07-27T00:30:00+02:00` verdict happened on the 26th in UTC, and slicing the raw
+ * string would file it under the 27th. Falls back to the raw prefix for an unparseable
+ * value so a corrupt legacy row buckets oddly rather than throwing RangeError.
+ */
+function utcDay(iso: string): string {
+	const ms = epochMs(iso);
+	return ms === undefined ? iso.slice(0, 10) : new Date(ms).toISOString().slice(0, 10);
+}
+
+/** Elapsed seconds between two ISO timestamps; undefined when either is unparseable. */
+function secondsBetween(from: string, to: string): number | undefined {
+	const fromMs = epochMs(from);
+	const toMs = epochMs(to);
+	if (fromMs === undefined || toMs === undefined) return undefined;
+	return (toMs - fromMs) / 1000;
+}
+
 // Median: sort ascending; odd count → middle; even count → mean of the two middle
 // values; empty → null.
 function median(values: number[]): number | null {
@@ -38,6 +82,7 @@ function emptyFundsBucket(): FundsBucket {
 		reviewUsd: 0,
 		denyUsd: 0,
 		possibleFundsLostUsd: 0,
+		flaggedWithoutAmount: 0,
 	};
 }
 
@@ -53,6 +98,9 @@ function addToFundsBucket(
 	if (decision === "allow") bucket.allowUsd += usd;
 	else if (decision === "review") bucket.reviewUsd += usd;
 	else if (decision === "deny") bucket.denyUsd += usd;
+	// A flagged verdict with no amount is worth an UNKNOWN sum, not zero — counted so the
+	// figure below can be read as the lower bound it is.
+	if (!hadAmount && isFlagged(decision)) bucket.flaggedWithoutAmount += 1;
 	// Recomputed (not accumulated) so it never drifts from its two inputs.
 	bucket.possibleFundsLostUsd = bucket.reviewUsd + bucket.denyUsd;
 }
@@ -82,7 +130,7 @@ export function createMetricsService(deps: MetricsServiceDependencies): MetricsS
 			const signupByEmail = new Map<string, string>();
 			for (const credential of issued) {
 				const existing = signupByEmail.get(credential.email);
-				if (existing === undefined || credential.createdAt < existing) {
+				if (existing === undefined || isEarlier(credential.createdAt, existing)) {
 					signupByEmail.set(credential.email, credential.createdAt);
 				}
 			}
@@ -97,20 +145,20 @@ export function createMetricsService(deps: MetricsServiceDependencies): MetricsS
 				if (email === undefined) continue;
 
 				const existingVerify = firstVerifyByEmail.get(email);
-				if (existingVerify === undefined || verdict.decidedAt < existingVerify) {
+				if (existingVerify === undefined || isEarlier(verdict.decidedAt, existingVerify)) {
 					firstVerifyByEmail.set(email, verdict.decidedAt);
 				}
 
 				if (verdict.txSignature !== undefined && verdict.confirmedAt !== undefined) {
 					const existingConfirmed = firstConfirmedByEmail.get(email);
-					if (existingConfirmed === undefined || verdict.confirmedAt < existingConfirmed) {
+					if (existingConfirmed === undefined || isEarlier(verdict.confirmedAt, existingConfirmed)) {
 						firstConfirmedByEmail.set(email, verdict.confirmedAt);
 					}
 				}
 
 				if (isFlagged(verdict.decision)) {
 					const existingFlagged = firstFlaggedByEmail.get(email);
-					if (existingFlagged === undefined || verdict.decidedAt < existingFlagged) {
+					if (existingFlagged === undefined || isEarlier(verdict.decidedAt, existingFlagged)) {
 						firstFlaggedByEmail.set(email, verdict.decidedAt);
 					}
 				}
@@ -123,23 +171,30 @@ export function createMetricsService(deps: MetricsServiceDependencies): MetricsS
 				if (firstVerifyAt !== undefined) {
 					row.firstVerifyAt = firstVerifyAt;
 					// decidedAt can be caller-supplied (requestedAt), so this can be negative —
-					// the raw value is kept here; aggregates below exclude negatives.
-					row.secondsToFirstVerify = (Date.parse(firstVerifyAt) - Date.parse(signupAt)) / 1000;
+					// the raw value is kept here; aggregates below exclude negatives. An
+					// unparseable pair leaves the seconds field absent rather than NaN.
+					const seconds = secondsBetween(signupAt, firstVerifyAt);
+					if (seconds !== undefined) row.secondsToFirstVerify = seconds;
 				}
 				const firstConfirmedTxAt = firstConfirmedByEmail.get(email);
 				if (firstConfirmedTxAt !== undefined) {
 					row.firstConfirmedTxAt = firstConfirmedTxAt;
-					row.secondsToFirstConfirmedTx =
-						(Date.parse(firstConfirmedTxAt) - Date.parse(signupAt)) / 1000;
+					const seconds = secondsBetween(signupAt, firstConfirmedTxAt);
+					if (seconds !== undefined) row.secondsToFirstConfirmedTx = seconds;
 				}
 				const firstFlaggedAt = firstFlaggedByEmail.get(email);
 				if (firstFlaggedAt !== undefined) {
 					row.firstFlaggedAt = firstFlaggedAt;
-					row.secondsToFirstFlagged = (Date.parse(firstFlaggedAt) - Date.parse(signupAt)) / 1000;
+					const seconds = secondsBetween(signupAt, firstFlaggedAt);
+					if (seconds !== undefined) row.secondsToFirstFlagged = seconds;
 				}
 				perUser.push(row);
 			}
-			perUser.sort((a, b) => a.signupAt.localeCompare(b.signupAt));
+			// Sort by signup INSTANT (contract says "sorted by signupAt ascending"); a raw
+			// string sort would misorder rows whose timestamps carry different offsets.
+			perUser.sort(
+				(a, b) => (epochMs(a.signupAt) ?? 0) - (epochMs(b.signupAt) ?? 0),
+			);
 
 			const verifyDurations = perUser
 				.map((user) => user.secondsToFirstVerify)
@@ -159,7 +214,7 @@ export function createMetricsService(deps: MetricsServiceDependencies): MetricsS
 				const usd = verdict.intendedEffect.amountUsd ?? 0;
 				addToFundsBucket(totals, verdict.decision, usd, hadAmount);
 
-				const day = verdict.decidedAt.slice(0, 10);
+				const day = utcDay(verdict.decidedAt);
 				let dayBucket = byDayMap.get(day);
 				if (dayBucket === undefined) {
 					dayBucket = emptyFundsBucket();
