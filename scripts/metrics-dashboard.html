@@ -384,7 +384,15 @@
         var lostEl = $("kpi-lost");
         lostEl.textContent = fmtUsd(totals.possibleFundsLostUsd);
         lostEl.classList.toggle("zero", totals.possibleFundsLostUsd === 0);
-        $("kpi-lost-sub").textContent = fmtUsd(totals.reviewUsd) + " held for review · " + fmtUsd(totals.denyUsd) + " blocked outright";
+        // A flagged verdict with no USD amount contributes nothing to the figure above, so
+        // with any of those present the number is a LOWER BOUND — say so rather than letting
+        // an under-count read as complete.
+        var lostSub = fmtUsd(totals.reviewUsd) + " held for review · " + fmtUsd(totals.denyUsd) + " blocked outright";
+        if (totals.flaggedWithoutAmount > 0) {
+          lostSub += " · at least — " + totals.flaggedWithoutAmount + " flagged tx" +
+            (totals.flaggedWithoutAmount === 1 ? "" : "s") + " carried no USD amount";
+        }
+        $("kpi-lost-sub").textContent = lostSub;
 
         $("kpi-total").textContent = fmtUsd(totals.totalUsd);
         $("kpi-total-sub").textContent = totals.verdicts + " verdict" + (totals.verdicts === 1 ? "" : "s") + " · " + totals.withAmountUsd + " carried a USD amount";

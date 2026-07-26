@@ -23,6 +23,14 @@ export type FundsBucket = {
 	denyUsd: number;
 	/** reviewUsd + denyUsd — funds the firewall stopped from moving unchecked. */
 	possibleFundsLostUsd: number;
+	/**
+	 * Flagged (review/deny) verdicts carrying NO usd amount, so their value is unknown, not
+	 * zero. possibleFundsLostUsd is a LOWER BOUND whenever this is > 0: /verify only derives
+	 * amountUsd from amountUsd/amount_usd/usdAmount, so a blocked transfer denominated in SOL
+	 * contributes nothing. Readers must show this alongside the figure rather than presenting
+	 * an under-count as complete.
+	 */
+	flaggedWithoutAmount: number;
 };
 
 export type MetricsResponse = {
