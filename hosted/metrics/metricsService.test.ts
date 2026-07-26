@@ -29,6 +29,38 @@ async function putVerdict(
 }
 
 describe("createMetricsService", () => {
+	it("loads verdicts before credentials so lazy Pg schema setup stays serial", async () => {
+		const verdictStore = createInMemoryVerdictStore();
+		const credentialStore = createInMemoryCredentialStore();
+		const events: string[] = [];
+		let releaseVerdicts: () => void;
+		const service = createMetricsService({
+			verdictStore: {
+				...verdictStore,
+				list: async () => {
+					events.push("verdicts-start");
+					await new Promise<void>((resolve) => { releaseVerdicts = resolve; });
+					events.push("verdicts-end");
+					return [];
+				},
+			},
+			credentialStore: {
+				...credentialStore,
+				listIssued: async () => {
+					events.push("credentials");
+					return [];
+				},
+			},
+		});
+
+		const pending = service.computeMetrics();
+		await Promise.resolve();
+		expect(events).toEqual(["verdicts-start"]);
+		releaseVerdicts!();
+		await pending;
+		expect(events).toEqual(["verdicts-start", "verdicts-end", "credentials"]);
+	});
+
 	it("empty stores → zeros, nulls, empty arrays", async () => {
 		const service = createMetricsService({
 			verdictStore: createInMemoryVerdictStore(),

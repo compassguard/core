@@ -120,10 +120,10 @@ export function createMetricsService(deps: MetricsServiceDependencies): MetricsS
 
 	return {
 		async computeMetrics(): Promise<MetricsResponse> {
-			const [verdicts, issued] = await Promise.all([
-				deps.verdictStore.list(),
-				deps.credentialStore.listIssued(),
-			]);
+			// Both Pg stores lazily ensure their schema. Keep that DDL serial on the
+			// transaction-pooler connection; concurrent setup can wait indefinitely.
+			const verdicts = await deps.verdictStore.list();
+			const issued = await deps.credentialStore.listIssued();
 
 			// signupAt per email = min(createdAt) across that email's credentials — revoked
 			// credentials still mark signup.
