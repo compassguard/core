@@ -1,9 +1,6 @@
 import { STATED_PURPOSE_MAX_LENGTH } from "@shared/mandateContracts";
 
-import type {
-	VerifyActionRequest,
-	VerifyActionRequestValidationResult,
-} from "./verifyContracts";
+import type { VerifyActionRequestValidationResult } from "./verifyContracts";
 
 export function validateVerifyActionRequest(
 	value: unknown,
