@@ -318,12 +318,16 @@
         if (value >= 1e4) return "$" + (value / 1e3).toFixed(1) + "K";
         return "$" + value.toLocaleString("en-US", { maximumFractionDigits: 2 });
       }
+      // Round to whole seconds ONCE, then divide — rounding each remainder separately
+      // carries a unit past its base while the higher unit is already floored
+      // (7199.5s rendered as "1h 60m" instead of "2h 0m").
       function fmtSeconds(s) {
         if (s == null) return "—";
         if (s < 0) return "n/a";
-        if (s < 60) return Math.round(s) + "s";
-        if (s < 3600) return Math.floor(s / 60) + "m " + Math.round(s % 60) + "s";
-        return Math.floor(s / 3600) + "h " + Math.round((s % 3600) / 60) + "m";
+        var total = Math.round(s);
+        if (total < 60) return total + "s";
+        if (total < 3600) return Math.floor(total / 60) + "m " + (total % 60) + "s";
+        return Math.floor(total / 3600) + "h " + Math.floor((total % 3600) / 60) + "m";
       }
       function fmtStamp(iso) { return iso ? iso.slice(0, 16).replace("T", " ") : "—"; }
 
