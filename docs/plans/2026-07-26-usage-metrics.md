@@ -185,15 +185,24 @@ aggregate. The headline money metric is `possibleFundsLostUsd` =
 on every `FundsBucket` (totals and each `byDay` entry). All existing fields
 are retained unchanged — this is an additive delta only.
 
-## Addendum 2 (2026-07-26, dashboard)
+## Addendum 2 (2026-07-26, dashboard — internal-only)
 
-Metrics must be *viewable*, not just fetchable: `/metrics` serves a static
-dashboard page (`metrics.html` via `app/metrics/route.ts`, the same
-readFileSync pattern as `/demo`). The page asks for an API key (stored in
-localStorage, never sent anywhere but the API), resolves the API base by
-probing `/health` (same-origin first, then `/api/hosted` for `next dev`),
-and renders `GET /v1/metrics`: possible-funds-lost hero figure, KPI tiles,
-a stacked funds-by-day column chart (allow/review/deny, validated decision
-palette — review is `#C08A28`, snapped from house bronze for chroma + CVD
-separation), and the per-user onboarding table. No framework, no chart
-library — plain DOM, house visual style.
+Metrics must be *viewable*, not just fetchable — but the dashboard is an
+INTERNAL operator tool, not a page on the public site (operator decision
+2026-07-26; an earlier `/metrics` Next.js route was removed in the same
+branch). It lives in `scripts/`:
+
+- `scripts/metrics-dashboard.html` — the static page (house visual style,
+  plain DOM, no framework/chart library). Asks for an API key (stored in
+  localStorage, sent only as the Bearer header), resolves the API base by
+  probing `/health`, then renders `GET /v1/metrics`: possible-funds-lost
+  hero figure, KPI tiles, a stacked funds-by-day column chart
+  (allow/review/deny; validated decision palette — review is `#C08A28`,
+  snapped from house bronze for chroma + CVD separation), and the per-user
+  onboarding table.
+- `scripts/metrics-dashboard.mjs` — local launcher:
+  `node scripts/metrics-dashboard.mjs` (env: `BASE_URL` defaults to prod,
+  `PORT` to 4400). Serves the page on localhost and proxies ONLY `/health`
+  and `/v1/metrics` to the target API — needed because the hosted API sends
+  no CORS headers, and the fix must not be adding permissive CORS to a
+  public API for an internal tool.
