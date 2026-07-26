@@ -448,4 +448,49 @@ describe("createHostedApp — per-email credential flow (end-to-end)", () => {
 
 		expect(response.status).toBe(401);
 	});
+
+	it("GET /v1/metrics reflects a signup + verify through the same stores", async () => {
+		const stores = createStores();
+		const app = createHostedApp(createDependencies(stores));
+
+		const { apiKey } = await signup(app);
+
+		const verifyResponse = await app.request("/v1/verify", {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${apiKey}`,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				toolName: "transfer_sol",
+				intent: { kind: "transfer" },
+				arguments: { recipient: "Friend", amountUsd: 5, recipientKnown: true },
+			}),
+		});
+		expect(verifyResponse.status).toBe(200);
+
+		const metricsResponse = await app.request("/v1/metrics", {
+			headers: { Authorization: "Bearer hosted-secret" },
+		});
+
+		expect(metricsResponse.status).toBe(200);
+		const metrics = (await metricsResponse.json()) as {
+			onboarding: { users: number; activated: number; perUser: { secondsToFirstVerify?: number }[] };
+			fundsSecured: { totals: { totalUsd: number; allowUsd: number } };
+		};
+		expect(metrics.onboarding.users).toBe(1);
+		expect(metrics.onboarding.activated).toBe(1);
+		expect(typeof metrics.onboarding.perUser[0].secondsToFirstVerify).toBe("number");
+		expect(metrics.onboarding.perUser[0].secondsToFirstVerify).toBeGreaterThanOrEqual(0);
+		expect(metrics.fundsSecured.totals.totalUsd).toBe(5);
+		expect(metrics.fundsSecured.totals.allowUsd).toBe(5);
+	});
+
+	it("rejects GET /v1/metrics without auth", async () => {
+		const app = createHostedApp(createDependencies());
+
+		const response = await app.request("/v1/metrics");
+
+		expect(response.status).toBe(401);
+	});
 });

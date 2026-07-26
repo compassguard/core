@@ -21,6 +21,8 @@ import { createVerifyRoutes } from "./verify/verifyRoutes";
 import { createMandateRoutes } from "./mandate/mandateRoutes";
 import { createMandateStoreFromEnv } from "./mandate/mandateStoreFromEnv";
 import { createVerifyJudge, resolveVerifyJudgeConfig } from "./verify/verifyJudge";
+import { createMetricsService } from "./metrics/metricsService";
+import { createMetricsRoutes } from "./metrics/metricsRoutes";
 import type { HostedAppDependencies } from "./appContracts";
 
 export function createHostedApp(deps: HostedAppDependencies): Hono {
@@ -71,6 +73,12 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 	// Per-email credential store (D13): env-selected durable Supabase or in-memory fallback,
 	// built once and shared by the /v1 auth middleware and the public signup endpoint.
 	const credentialStore = deps.credentialStore ?? createCredentialStoreFromEnv();
+	// Metrics MUST read the same verdict store instance as /verify (#15 family) — hence
+	// resolveVerdictStore() — and construction happens after credentialStore exists.
+	const metricsService = createMetricsService({
+		verdictStore: resolveVerdictStore(),
+		credentialStore,
+	});
 
 	app.onError(hostedErrorHandler);
 	app.route("/health", createHealthRoutes(deps.health));
@@ -83,6 +91,7 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 	app.route("/v1", createMandateRoutes({ mandateStore }));
 	app.route("/v1", createAuditRoutes(auditStore));
 	app.route("/v1", createPolicyRoutes(policyService));
+	app.route("/v1", createMetricsRoutes(metricsService));
 
 	return app;
 }
