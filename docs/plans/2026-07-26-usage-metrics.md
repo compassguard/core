@@ -172,8 +172,8 @@ two implementations, the contract suite, and ONE inline fake
 
 ## Non-goals
 
-- No dashboard UI, no public unauthenticated metrics, no Pg-side aggregation
-  SQL, no changes to /verify or /signup behavior, no new env vars.
+- No public unauthenticated metrics, no Pg-side aggregation SQL, no changes
+  to /verify or /signup behavior, no new env vars.
 
 ## Addendum (2026-07-26, stakeholder refinement)
 
@@ -184,3 +184,16 @@ aggregate. The headline money metric is `possibleFundsLostUsd` =
 `reviewUsd + denyUsd` (funds the firewall stopped from moving unchecked),
 on every `FundsBucket` (totals and each `byDay` entry). All existing fields
 are retained unchanged — this is an additive delta only.
+
+## Addendum 2 (2026-07-26, dashboard)
+
+Metrics must be *viewable*, not just fetchable: `/metrics` serves a static
+dashboard page (`metrics.html` via `app/metrics/route.ts`, the same
+readFileSync pattern as `/demo`). The page asks for an API key (stored in
+localStorage, never sent anywhere but the API), resolves the API base by
+probing `/health` (same-origin first, then `/api/hosted` for `next dev`),
+and renders `GET /v1/metrics`: possible-funds-lost hero figure, KPI tiles,
+a stacked funds-by-day column chart (allow/review/deny, validated decision
+palette — review is `#C08A28`, snapped from house bronze for chroma + CVD
+separation), and the per-user onboarding table. No framework, no chart
+library — plain DOM, house visual style.

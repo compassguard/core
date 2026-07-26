@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Metrics · Compass Guard</title>
+  <meta name="description" content="Live operator metrics for Compass Guard: onboarding time from signup to first guarded transaction, and funds screened by the execution firewall." />
+  <link rel="icon" type="image/png" href="/compass-tab-logo.png" />
+  <link rel="apple-touch-icon" href="/compass-brand-logo.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=Inter:wght@400;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    * { margin: 0; }
+    :root {
+      --fortress-900: #0D1F17;
+      --fortress-800: #12382E;
+      --compass-600: #0EA37A;
+      --compass-400: #5FD3BC;
+      --stone-200: #DBD2C3;
+      --stone-100: #F4F0E6;
+      --bronze-500: #B08A4E;
+      --steel-500: #6B7280;
+      --blocked: #B0443E;
+      --ink: #14231D;
+      --line: rgba(13, 31, 23, .16);
+      --line-soft: rgba(13, 31, 23, .09);
+      --radius: 18px;
+      /* Decision palette — validated (dataviz six checks, light surface #fff):
+         allow = house compass, review = amber snapped from house bronze (chroma floor
+         + CVD separation), deny = house blocked. Status-semantic: always paired with
+         a label, never color alone. */
+      --d-allow: #0EA37A;
+      --d-review: #C08A28;
+      --d-deny: #B0443E;
+      --card: rgba(255, 255, 255, .62);
+      --grid-hairline: rgba(13, 31, 23, .08);
+    }
+    html { scroll-behavior: smooth; background: var(--stone-100); }
+    body {
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      background:
+        linear-gradient(rgba(13, 31, 23, .045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(13, 31, 23, .045) 1px, transparent 1px),
+        radial-gradient(circle at 82% 5%, rgba(14, 163, 122, .18), transparent 32rem),
+        radial-gradient(circle at 6% 24%, rgba(176, 138, 78, .18), transparent 28rem),
+        var(--stone-100);
+      background-size: 42px 42px, 42px 42px, auto, auto, auto;
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.55;
+      overflow-x: hidden;
+    }
+    a { color: inherit; text-decoration: none; }
+    .container { width: min(1120px, calc(100% - 40px)); margin: 0 auto; position: relative; z-index: 1; }
+    .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+    .nav { position: sticky; top: 0; z-index: 20; border-bottom: 1px solid var(--line-soft); background: rgba(244, 240, 230, .74); backdrop-filter: blur(14px); }
+    .nav-inner { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+    .brand { display: inline-flex; align-items: center; gap: 12px; font-family: Sora, sans-serif; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+    .brand-logo { width: 72px; height: 72px; display: block; object-fit: contain; }
+    .nav-links { display: flex; align-items: center; gap: 24px; color: var(--steel-500); font-size: 13px; font-weight: 600; }
+    .nav-links a:hover { color: var(--fortress-900); }
+    .nav-cta { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; padding: 0 18px; border-radius: 999px; border: 1px solid var(--fortress-900); font-weight: 700; font-size: 13px; color: var(--stone-100); background: var(--fortress-900); transition: background .3s ease, border-color .3s ease; }
+    .nav-cta:hover { background: var(--compass-600); border-color: var(--compass-600); }
+    .eyebrow { font-family: "IBM Plex Mono", monospace; color: var(--compass-600); font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+    h1, h2, h3 { font-family: Sora, Inter, sans-serif; letter-spacing: -.035em; }
+
+    .hero { padding: 52px 0 8px; }
+    h1 { margin-top: 14px; font-size: clamp(28px, 3.6vw, 44px); line-height: 1.06; color: var(--fortress-900); }
+    h1 span { color: var(--compass-600); }
+    .hero-copy { margin-top: 14px; max-width: 640px; color: rgba(20, 35, 29, .76); font-size: 15px; }
+
+    /* ── Connect card ─────────────────────────────────────────────── */
+    .connect { margin: 28px 0 80px; padding: 26px; border-radius: var(--radius); border: 1px solid var(--line-soft); background: var(--card); max-width: 560px; }
+    .connect h3 { font-size: 16px; color: var(--fortress-900); }
+    .connect p { margin-top: 6px; font-size: 13px; color: rgba(20, 35, 29, .68); }
+    .connect form { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .connect input {
+      flex: 1 1 260px; min-height: 44px; padding: 0 14px;
+      border-radius: 12px; border: 1px solid var(--line); background: rgba(255, 255, 255, .8);
+      font-family: "IBM Plex Mono", monospace; font-size: 13px; color: var(--ink);
+    }
+    .connect input:focus { outline: 2px solid var(--compass-600); outline-offset: 1px; border-color: transparent; }
+    .connect button {
+      min-height: 44px; padding: 0 22px; border-radius: 999px; border: 1px solid var(--fortress-900);
+      background: var(--fortress-900); color: var(--stone-100); font-weight: 700; font-size: 13px; cursor: pointer;
+      transition: background .3s ease, border-color .3s ease;
+    }
+    .connect button:hover { background: var(--compass-600); border-color: var(--compass-600); }
+    .connect-error { margin-top: 12px; font-size: 13px; color: var(--blocked); display: none; }
+
+    /* ── Dashboard ────────────────────────────────────────────────── */
+    .dash { display: none; padding: 10px 0 88px; }
+    .dash-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 18px 0 20px; color: var(--steel-500); font-size: 12px; }
+    .dash-meta .spacer { flex: 1; }
+    .ghost-btn {
+      min-height: 36px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--line);
+      background: rgba(244, 240, 230, .68); color: var(--fortress-900); font-weight: 700; font-size: 12px; cursor: pointer;
+      transition: border-color .3s ease, background .3s ease;
+    }
+    .ghost-btn:hover { border-color: var(--bronze-500); background: rgba(219, 210, 195, .6); }
+
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
+    .tile {
+      padding: 18px 20px; border-radius: var(--radius); border: 1px solid var(--line-soft); background: var(--card);
+    }
+    .tile-label { font-size: 12px; font-weight: 600; color: var(--steel-500); }
+    .tile-value { margin-top: 6px; font-family: Sora, Inter, sans-serif; font-weight: 600; font-size: 28px; letter-spacing: -.03em; color: var(--fortress-900); }
+    .tile-sub { margin-top: 4px; font-size: 12px; color: rgba(20, 35, 29, .6); }
+
+    .hero-tile { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 22px; padding: 24px 26px; }
+    .hero-tile .tile-value { font-size: 52px; }
+    .hero-tile .tile-value.zero { color: var(--steel-500); }
+    .badge { padding: 2px 10px; border-radius: 999px; font-family: "IBM Plex Mono", monospace; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--blocked); background: rgba(176, 68, 62, .1); border: 1px solid rgba(176, 68, 62, .28); }
+
+    .panel { margin-top: 22px; padding: 22px 24px; border-radius: var(--radius); border: 1px solid var(--line-soft); background: var(--card); }
+    .panel-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 10px; }
+    .panel h2 { font-size: 18px; color: var(--fortress-900); }
+    .panel-sub { font-size: 12px; color: var(--steel-500); }
+
+    .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 12px; color: rgba(20, 35, 29, .72); }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+    .chart { margin-top: 18px; display: flex; gap: 10px; }
+    .y-axis { display: flex; flex-direction: column; justify-content: space-between; text-align: right; font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--steel-500); padding-bottom: 22px; font-variant-numeric: tabular-nums; }
+    .plot-wrap { flex: 1; min-width: 0; }
+    .plot { position: relative; height: 220px; border-bottom: 1px solid var(--stone-200); }
+    .gridline { position: absolute; left: 0; right: 0; height: 1px; background: var(--grid-hairline); }
+    .cols { position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: space-around; gap: 8px; overflow: visible; }
+    .col-band { flex: 0 1 64px; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; cursor: default; position: relative; }
+    .col-cap { font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 600; color: rgba(20, 35, 29, .72); margin-bottom: 4px; font-variant-numeric: tabular-nums; }
+    .col-stack { width: 24px; display: flex; flex-direction: column-reverse; }
+    .seg { width: 100%; }
+    .seg + .seg { margin-bottom: 2px; } /* 2px surface gap between touching segments */
+    .seg.first { border-radius: 0; }
+    .seg.top { border-radius: 4px 4px 0 0; } /* rounded data-end, square baseline */
+    .x-labels { display: flex; justify-content: space-around; gap: 8px; margin-top: 6px; }
+    .x-label { flex: 0 1 64px; text-align: center; font-family: "IBM Plex Mono", monospace; font-size: 11px; color: var(--steel-500); }
+    .chart-empty { padding: 48px 0 64px; text-align: center; color: var(--steel-500); font-size: 13px; }
+
+    .tooltip {
+      position: fixed; z-index: 50; display: none; pointer-events: none;
+      padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line);
+      background: rgba(255, 255, 255, .96); box-shadow: 0 12px 28px rgba(13, 31, 23, .14);
+      font-size: 12px; color: var(--ink); min-width: 170px;
+    }
+    .tooltip .tt-day { font-family: "IBM Plex Mono", monospace; font-weight: 700; font-size: 11px; color: var(--steel-500); margin-bottom: 6px; }
+    .tooltip .tt-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+    .tooltip .tt-row + .tt-row { margin-top: 3px; }
+    .tooltip .tt-key { display: inline-flex; align-items: center; gap: 6px; color: rgba(20, 35, 29, .72); }
+    .tooltip .tt-val { font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; font-weight: 600; }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 13px; }
+    th { text-align: left; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--steel-500); padding: 8px 12px; border-bottom: 1px solid var(--line); }
+    td { padding: 9px 12px; border-bottom: 1px solid var(--line-soft); }
+    td.num, th.num { text-align: right; font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; }
+    td.email { font-family: "IBM Plex Mono", monospace; font-size: 12px; word-break: break-all; }
+    .pill { display: inline-block; padding: 1px 9px; border-radius: 999px; font-family: "IBM Plex Mono", monospace; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .pill-flagged { color: var(--d-deny); background: rgba(176, 68, 62, .1); border: 1px solid rgba(176, 68, 62, .28); }
+    .pill-clean { color: var(--compass-600); background: rgba(14, 163, 122, .12); border: 1px solid rgba(14, 163, 122, .3); }
+    .table-empty { padding: 22px 12px; color: var(--steel-500); font-size: 13px; }
+    .table-scroll { overflow-x: auto; }
+
+    .footer { border-top: 1px solid var(--line-soft); padding: 26px 0; color: var(--steel-500); font-size: 13px; }
+    .footer-inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+    .footer a:hover { color: var(--fortress-900); }
+
+    @media (max-width: 720px) {
+      .brand-logo { width: 52px; height: 52px; }
+      .nav-links { gap: 14px; font-size: 12px; }
+      .nav-links a:not(.nav-cta) { display: none; }
+      .hero { padding: 36px 0 8px; }
+      .hero-tile .tile-value { font-size: 40px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      * { transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="nav" aria-label="Main navigation">
+    <div class="container nav-inner">
+      <a class="brand" href="/" aria-label="Compass Guard home"><img class="brand-logo" src="/compass-brand-logo.png" alt="" /><span>Compass Guard</span></a>
+      <div class="nav-links">
+        <a href="/demo">Demo</a>
+        <a href="/docs">Docs</a>
+        <a href="/launch" class="nav-cta">Open guard</a>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <header class="hero container">
+      <span class="eyebrow">Operator metrics</span>
+      <h1>The firewall, <span>measured</span>.</h1>
+      <p class="hero-copy">Onboarding time from signup to first guarded transaction, and every dollar the firewall screened — held, blocked, or waved through.</p>
+    </header>
+
+    <!-- ── Key gate ─────────────────────────────────────────────── -->
+    <section id="connect" class="connect container">
+      <h3>Connect with your API key</h3>
+      <p>Metrics are read straight from <span class="mono">GET /v1/metrics</span>. Paste any active Compass key — it stays in this browser only.</p>
+      <form id="key-form">
+        <input id="key-input" type="password" placeholder="compass_…" autocomplete="off" spellcheck="false" aria-label="Compass API key" />
+        <button type="submit">View metrics</button>
+      </form>
+      <p id="connect-error" class="connect-error"></p>
+    </section>
+
+    <!-- ── Dashboard ────────────────────────────────────────────── -->
+    <section id="dash" class="dash container" aria-live="polite">
+      <div class="dash-meta">
+        <span class="mono" id="as-of"></span>
+        <span class="spacer"></span>
+        <button class="ghost-btn" id="refresh-btn" type="button">Refresh</button>
+        <button class="ghost-btn" id="key-btn" type="button">Change key</button>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="tile hero-tile">
+          <div>
+            <div class="tile-label">Possible funds lost — stopped by the firewall <span class="badge">held + blocked</span></div>
+            <div class="tile-value" id="kpi-lost">—</div>
+            <div class="tile-sub" id="kpi-lost-sub"></div>
+          </div>
+        </div>
+        <div class="tile">
+          <div class="tile-label">Funds screened, total</div>
+          <div class="tile-value" id="kpi-total">—</div>
+          <div class="tile-sub" id="kpi-total-sub"></div>
+        </div>
+        <div class="tile">
+          <div class="tile-label">Users signed up</div>
+          <div class="tile-value" id="kpi-users">—</div>
+          <div class="tile-sub" id="kpi-users-sub"></div>
+        </div>
+        <div class="tile">
+          <div class="tile-label">Median time to first tx</div>
+          <div class="tile-value" id="kpi-ttfv">—</div>
+          <div class="tile-sub">signup → first guarded action</div>
+        </div>
+        <div class="tile">
+          <div class="tile-label">Median time to first flag</div>
+          <div class="tile-value" id="kpi-ttff">—</div>
+          <div class="tile-sub">signup → first held / blocked tx</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>Funds screened by day</h2>
+            <div class="panel-sub">USD volume per decision, UTC days</div>
+          </div>
+          <div class="legend" aria-hidden="false">
+            <span><i class="swatch" style="background:var(--d-allow)"></i>Allowed</span>
+            <span><i class="swatch" style="background:var(--d-review)"></i>Held for review</span>
+            <span><i class="swatch" style="background:var(--d-deny)"></i>Blocked</span>
+          </div>
+        </div>
+        <div id="chart-area"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>Onboarding, per user</h2>
+            <div class="panel-sub">signed-up users and their first guarded transaction</div>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table id="user-table">
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Signed up (UTC)</th>
+                <th class="num">To first tx</th>
+                <th class="num">To first flag</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="user-rows"></tbody>
+          </table>
+        </div>
+        <div id="table-empty" class="table-empty" style="display:none">No signed-up users yet — mint a key via <span class="mono">POST /signup</span> and send a first <span class="mono">/v1/verify</span>.</div>
+      </div>
+    </section>
+  </main>
+
+  <div id="tooltip" class="tooltip" role="tooltip"></div>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <span>© 2026 Compass Guard — the execution firewall for Solana AI agents.</span>
+      <a class="mono" href="/docs">/docs</a>
+    </div>
+  </footer>
+
+  <script>
+    "use strict";
+    (function () {
+      var KEY_STORAGE = "compass-metrics-key";
+      var BASE_STORAGE = "compass-metrics-base";
+      // Same-origin first (prod: vercel.json rewrites /v1/* → /api/hosted/v1/*);
+      // the /api/hosted prefix covers `next dev`, which has no rewrites.
+      var BASE_CANDIDATES = ["", "/api/hosted"];
+
+      var $ = function (id) { return document.getElementById(id); };
+      var connectEl = $("connect"), dashEl = $("dash"), errorEl = $("connect-error");
+
+      function fmtUsd(value) {
+        if (value >= 1e9) return "$" + (value / 1e9).toFixed(1) + "B";
+        if (value >= 1e6) return "$" + (value / 1e6).toFixed(1) + "M";
+        if (value >= 1e4) return "$" + (value / 1e3).toFixed(1) + "K";
+        return "$" + value.toLocaleString("en-US", { maximumFractionDigits: 2 });
+      }
+      function fmtSeconds(s) {
+        if (s == null) return "—";
+        if (s < 0) return "n/a";
+        if (s < 60) return Math.round(s) + "s";
+        if (s < 3600) return Math.floor(s / 60) + "m " + Math.round(s % 60) + "s";
+        return Math.floor(s / 3600) + "h " + Math.round((s % 3600) / 60) + "m";
+      }
+      function fmtStamp(iso) { return iso ? iso.slice(0, 16).replace("T", " ") : "—"; }
+
+      function fetchMetrics(key, base) {
+        return fetch(base + "/v1/metrics", { headers: { Authorization: "Bearer " + key } });
+      }
+
+      // Resolve the API base via the public /health probe (unambiguous — a wrong base
+      // can 500 or 404 depending on the server, so probing /v1/metrics directly can't
+      // tell "wrong base" from a real API error), then fetch metrics once.
+      function resolveBase() {
+        var stored = sessionStorage.getItem(BASE_STORAGE);
+        if (stored !== null) return Promise.resolve(stored);
+        var attempt = function (index) {
+          if (index >= BASE_CANDIDATES.length) return Promise.reject(new Error("Could not reach the Compass API from this page."));
+          var base = BASE_CANDIDATES[index];
+          return fetch(base + "/health").then(function (response) {
+            return response.ok ? response.json() : Promise.reject();
+          }).then(function (health) {
+            if (health && health.ok === true) {
+              sessionStorage.setItem(BASE_STORAGE, base);
+              return base;
+            }
+            return attempt(index + 1);
+          }, function () { return attempt(index + 1); });
+        };
+        return attempt(0);
+      }
+
+      function resolveAndFetch(key) {
+        return resolveBase().then(function (base) { return fetchMetrics(key, base); });
+      }
+
+      function showError(message) {
+        errorEl.textContent = message;
+        errorEl.style.display = "block";
+      }
+
+      function load(key) {
+        return resolveAndFetch(key).then(function (response) {
+          if (response.status === 401) throw new Error("That key was rejected (401). Check it, or mint a fresh one via POST /signup.");
+          if (!response.ok) throw new Error("Metrics request failed with HTTP " + response.status + ".");
+          return response.json();
+        }).then(function (data) {
+          localStorage.setItem(KEY_STORAGE, key);
+          render(data);
+          connectEl.style.display = "none";
+          dashEl.style.display = "block";
+        });
+      }
+
+      function render(data) {
+        var totals = data.fundsSecured.totals;
+        var onboarding = data.onboarding;
+
+        $("as-of").textContent = "as of " + fmtStamp(data.generatedAt) + " UTC";
+
+        var lostEl = $("kpi-lost");
+        lostEl.textContent = fmtUsd(totals.possibleFundsLostUsd);
+        lostEl.classList.toggle("zero", totals.possibleFundsLostUsd === 0);
+        $("kpi-lost-sub").textContent = fmtUsd(totals.reviewUsd) + " held for review · " + fmtUsd(totals.denyUsd) + " blocked outright";
+
+        $("kpi-total").textContent = fmtUsd(totals.totalUsd);
+        $("kpi-total-sub").textContent = totals.verdicts + " verdict" + (totals.verdicts === 1 ? "" : "s") + " · " + totals.withAmountUsd + " carried a USD amount";
+
+        $("kpi-users").textContent = String(onboarding.users);
+        $("kpi-users-sub").textContent = onboarding.activated + " sent a first tx · " + onboarding.flagged + " got flagged";
+
+        $("kpi-ttfv").textContent = fmtSeconds(onboarding.medianSecondsToFirstVerify);
+        $("kpi-ttff").textContent = fmtSeconds(onboarding.medianSecondsToFirstFlagged);
+
+        renderChart(data.fundsSecured.byDay);
+        renderTable(onboarding.perUser);
+      }
+
+      /* Stacked columns: allow (baseline) / review / deny per day. Plain DOM —
+         column-reverse stack, 2px surface gaps, 24px marks, rounded top cap. */
+      function renderChart(byDay) {
+        var area = $("chart-area");
+        area.textContent = "";
+        var days = byDay.filter(function (d) { return d.totalUsd > 0; });
+        if (days.length === 0) {
+          var empty = document.createElement("div");
+          empty.className = "chart-empty";
+          empty.textContent = "No screened volume yet — verdicts will appear here per UTC day.";
+          area.appendChild(empty);
+          return;
+        }
+        days = days.slice(-30);
+
+        var max = 0;
+        days.forEach(function (d) { max = Math.max(max, d.totalUsd); });
+        var tick = niceCeil(max);
+
+        var chart = document.createElement("div");
+        chart.className = "chart";
+
+        var yAxis = document.createElement("div");
+        yAxis.className = "y-axis";
+        [tick, tick / 2, 0].forEach(function (v) {
+          var label = document.createElement("span");
+          label.textContent = fmtUsd(v);
+          yAxis.appendChild(label);
+        });
+
+        var plotWrap = document.createElement("div");
+        plotWrap.className = "plot-wrap";
+        var plot = document.createElement("div");
+        plot.className = "plot";
+        [0, 50].forEach(function (pct) {
+          var line = document.createElement("div");
+          line.className = "gridline";
+          line.style.top = pct + "%";
+          plot.appendChild(line);
+        });
+
+        var cols = document.createElement("div");
+        cols.className = "cols";
+        var xLabels = document.createElement("div");
+        xLabels.className = "x-labels";
+
+        var SERIES = [
+          { key: "allowUsd", name: "Allowed", varName: "--d-allow" },
+          { key: "reviewUsd", name: "Held for review", varName: "--d-review" },
+          { key: "denyUsd", name: "Blocked", varName: "--d-deny" }
+        ];
+
+        days.forEach(function (d) {
+          var band = document.createElement("div");
+          band.className = "col-band";
+
+          var cap = document.createElement("div");
+          cap.className = "col-cap";
+          cap.textContent = fmtUsd(d.totalUsd);
+          band.appendChild(cap);
+
+          var stack = document.createElement("div");
+          stack.className = "col-stack";
+          var present = SERIES.filter(function (s) { return d[s.key] > 0; });
+          present.forEach(function (s, i) {
+            var seg = document.createElement("div");
+            // 198px usable (220 − cap line); floor 3px so a tiny segment stays visible.
+            var h = Math.max(3, Math.round((d[s.key] / tick) * 198));
+            seg.className = "seg" + (i === present.length - 1 ? " top" : "");
+            seg.style.height = h + "px";
+            seg.style.background = "var(" + s.varName + ")";
+            stack.appendChild(seg);
+          });
+          band.appendChild(stack);
+
+          band.addEventListener("mousemove", function (event) { showTooltip(event, d, SERIES); });
+          band.addEventListener("mouseleave", hideTooltip);
+          cols.appendChild(band);
+
+          var x = document.createElement("div");
+          x.className = "x-label";
+          x.textContent = d.day.slice(5); // MM-DD
+          xLabels.appendChild(x);
+        });
+
+        plot.appendChild(cols);
+        plotWrap.appendChild(plot);
+        plotWrap.appendChild(xLabels);
+        chart.appendChild(yAxis);
+        chart.appendChild(plotWrap);
+        area.appendChild(chart);
+      }
+
+      function niceCeil(value) {
+        if (value <= 0) return 1;
+        var pow = Math.pow(10, Math.floor(Math.log10(value)));
+        var unit = value / pow;
+        var nice = unit <= 1 ? 1 : unit <= 2 ? 2 : unit <= 5 ? 5 : 10;
+        return nice * pow;
+      }
+
+      var tooltipEl = $("tooltip");
+      function showTooltip(event, d, series) {
+        tooltipEl.textContent = "";
+        var day = document.createElement("div");
+        day.className = "tt-day";
+        day.textContent = d.day + " · " + d.verdicts + " verdict" + (d.verdicts === 1 ? "" : "s");
+        tooltipEl.appendChild(day);
+        series.forEach(function (s) {
+          var row = document.createElement("div");
+          row.className = "tt-row";
+          var key = document.createElement("span");
+          key.className = "tt-key";
+          var sw = document.createElement("i");
+          sw.className = "swatch";
+          sw.style.background = "var(" + s.varName + ")";
+          key.appendChild(sw);
+          key.appendChild(document.createTextNode(s.name));
+          var val = document.createElement("span");
+          val.className = "tt-val";
+          val.textContent = fmtUsd(d[s.key]);
+          row.appendChild(key);
+          row.appendChild(val);
+          tooltipEl.appendChild(row);
+        });
+        tooltipEl.style.display = "block";
+        var x = Math.min(event.clientX + 14, window.innerWidth - tooltipEl.offsetWidth - 12);
+        var y = Math.min(event.clientY + 14, window.innerHeight - tooltipEl.offsetHeight - 12);
+        tooltipEl.style.left = x + "px";
+        tooltipEl.style.top = y + "px";
+      }
+      function hideTooltip() { tooltipEl.style.display = "none"; }
+
+      function renderTable(perUser) {
+        var rows = $("user-rows");
+        rows.textContent = "";
+        $("table-empty").style.display = perUser.length === 0 ? "block" : "none";
+        $("user-table").style.display = perUser.length === 0 ? "none" : "table";
+        perUser.forEach(function (user) {
+          var tr = document.createElement("tr");
+          tr.appendChild(cell(user.email, "email"));
+          tr.appendChild(cell(fmtStamp(user.signupAt)));
+          tr.appendChild(cell(fmtSeconds(user.secondsToFirstVerify), "num"));
+          tr.appendChild(cell(fmtSeconds(user.secondsToFirstFlagged), "num"));
+          var status = document.createElement("td");
+          var pill = document.createElement("span");
+          if (user.firstFlaggedAt !== undefined) {
+            pill.className = "pill pill-flagged";
+            pill.textContent = "flagged";
+          } else if (user.firstVerifyAt !== undefined) {
+            pill.className = "pill pill-clean";
+            pill.textContent = "clean";
+          } else {
+            pill.className = "pill";
+            pill.textContent = "no tx yet";
+            pill.style.color = "var(--steel-500)";
+            pill.style.border = "1px solid var(--line)";
+          }
+          status.appendChild(pill);
+          tr.appendChild(status);
+          rows.appendChild(tr);
+        });
+        function cell(text, className) {
+          var td = document.createElement("td");
+          if (className) td.className = className;
+          td.textContent = text;
+          return td;
+        }
+      }
+
+      /* ── Wiring ─────────────────────────────────────────────────── */
+      $("key-form").addEventListener("submit", function (event) {
+        event.preventDefault();
+        errorEl.style.display = "none";
+        var key = $("key-input").value.trim();
+        if (key === "") return showError("Paste a key first.");
+        load(key).catch(function (error) { showError(error.message); });
+      });
+      $("refresh-btn").addEventListener("click", function () {
+        var key = localStorage.getItem(KEY_STORAGE);
+        if (key) load(key).catch(function (error) {
+          dashEl.style.display = "none";
+          connectEl.style.display = "block";
+          showError(error.message);
+        });
+      });
+      $("key-btn").addEventListener("click", function () {
+        localStorage.removeItem(KEY_STORAGE);
+        dashEl.style.display = "none";
+        connectEl.style.display = "block";
+        $("key-input").value = "";
+        $("key-input").focus();
+      });
+
+      var savedKey = localStorage.getItem(KEY_STORAGE);
+      if (savedKey) {
+        load(savedKey).catch(function () { localStorage.removeItem(KEY_STORAGE); });
+      }
+    })();
+  </script>
+</body>
+</html>
