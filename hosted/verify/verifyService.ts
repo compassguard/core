@@ -201,6 +201,8 @@ export function createVerifyService(
 					// Reconstruction context: enough to re-derive this verdict later — what the
 					// caller claimed, what the mandate said, which policy/rules ran, what the
 					// judge did (plan 2026-07-26).
+					toolName: request.toolName,
+					policyContext: context,
 					...(statedPurpose !== undefined ? { statedPurpose } : {}),
 					...(mandateSnapshot !== undefined ? { mandateSnapshot } : {}),
 					policyId: evaluation.policyId,

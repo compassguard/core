@@ -223,6 +223,8 @@ export function describeVerdictStoreContract(name: string, makeStore: MakeStore)
 			};
 			await store.putDecided({
 				...decided("c11"),
+				toolName: "transfer_sol",
+				policyContext: { amount_usd: 42, recipient_address: "RcpT111", recipient_known: true },
 				statedPurpose: "pay vendor Acme for invoice #42",
 				mandateSnapshot,
 				policyId: "default-conservative",
@@ -237,6 +239,12 @@ export function describeVerdictStoreContract(name: string, makeStore: MakeStore)
 			});
 
 			const record = await store.getByCorrelationId("c11");
+			expect(record?.toolName).toBe("transfer_sol");
+			expect(record?.policyContext).toEqual({
+				amount_usd: 42,
+				recipient_address: "RcpT111",
+				recipient_known: true,
+			});
 			expect(record?.statedPurpose).toBe("pay vendor Acme for invoice #42");
 			expect(record?.mandateSnapshot).toEqual(mandateSnapshot);
 			expect(record?.policyId).toBe("default-conservative");
@@ -263,6 +271,8 @@ export function describeVerdictStoreContract(name: string, makeStore: MakeStore)
 			await store.putDecided(decided("c13"));
 
 			const record = await store.getByCorrelationId("c13");
+			expect(record?.toolName).toBeUndefined();
+			expect(record?.policyContext).toBeUndefined();
 			expect(record?.statedPurpose).toBeUndefined();
 			expect(record?.mandateSnapshot).toBeUndefined();
 			expect(record?.policyId).toBeUndefined();

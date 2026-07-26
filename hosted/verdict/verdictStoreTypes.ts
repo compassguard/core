@@ -1,5 +1,6 @@
 import type { HostedDecision } from "@shared/evaluationContracts";
 import type { IntentSource, Mandate } from "@shared/mandateContracts";
+import type { PolicyEvaluationContext } from "@shared/policyContracts";
 import type { Discrepancy, IntendedEffect } from "@shared/verdictContracts";
 
 /**
@@ -45,6 +46,14 @@ export type VerdictRecord = {
 	intentSource?: IntentSource;
 	/** The mandate judge's rationale, when it ran (audit/flywheel value). */
 	judgeRationale?: string;
+	/** The tool name the caller invoked — the classification input for deterministic replay. */
+	toolName?: string;
+	/**
+	 * The derived PolicyEvaluationContext the rules evaluated (typed, bounded — never raw
+	 * args). With toolName + policyId/policyVersion this makes the deterministic leg of the
+	 * verdict replayable from the row alone.
+	 */
+	policyContext?: PolicyEvaluationContext;
 	/** The caller's untrusted stated purpose, verbatim from the /verify request. */
 	statedPurpose?: string;
 	/**
@@ -107,6 +116,10 @@ export type DecidedInput = {
 	intentSource?: IntentSource;
 	/** The mandate judge's rationale, when it ran (audit/flywheel value). */
 	judgeRationale?: string;
+	/** The tool name the caller invoked (see VerdictRecord). */
+	toolName?: string;
+	/** The derived PolicyEvaluationContext the rules evaluated (see VerdictRecord). */
+	policyContext?: PolicyEvaluationContext;
 	/** The caller's untrusted stated purpose, verbatim from the /verify request. */
 	statedPurpose?: string;
 	/** The mandate as it read at decision time (see VerdictRecord.mandateSnapshot). */
