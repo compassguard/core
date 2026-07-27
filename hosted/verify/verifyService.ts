@@ -18,7 +18,10 @@ import { derivePolicyContext } from "../policy/policyContext";
 import { evaluateAction } from "../policy/policyEngine";
 import { loadDefaultPolicy } from "../policy/loadPolicy";
 import type { VerdictStore } from "../verdict/verdictStoreTypes";
-import { buildHumanExplanation } from "./humanExplanation";
+import {
+	composeVerdictExplanation,
+	mergeJudgeReasons,
+} from "./humanExplanation";
 import { VERIFY_JUDGE_REASON_UNAVAILABLE } from "./verifyJudge";
 import type { VerifyJudge } from "./verifyJudge";
 import type {
@@ -143,7 +146,7 @@ export function createVerifyService(
 						});
 					if (judged.ran) {
 						compassDecision = judged.decision;
-						reasons = [...reasons, ...judged.reasonCodes];
+						reasons = mergeJudgeReasons(reasons, judged.reasonCodes);
 						judgeRationale = judged.rationale;
 						judgeChangedDecision = judged.decision !== evaluation.decision;
 						intentSource = "self_report";
@@ -161,10 +164,10 @@ export function createVerifyService(
 
 			const decision = collapseToHostedDecision(compassDecision);
 			const riskLevel = hostedRiskLevelFor(compassDecision);
-			let humanExplanation = buildHumanExplanation(decision, reasons);
-			if (judgeChangedDecision && judgeRationale !== undefined) {
-				humanExplanation = `${humanExplanation} Mandate judge: ${judgeRationale}`;
-			}
+			const humanExplanation = composeVerdictExplanation(decision, reasons, {
+				changedDecision: judgeChangedDecision,
+				...(judgeRationale !== undefined ? { rationale: judgeRationale } : {}),
+			});
 			// SEAM (D4-v2 / R2): native intended dimensions — lamports / tokenAmount /
 			// mint — are populated here once a verify-side decode source (Fran's
 			// decodeTransaction, injection ①) is wired. There is no such source in

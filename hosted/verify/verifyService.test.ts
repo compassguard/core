@@ -179,6 +179,92 @@ describe("createVerifyService", () => {
 		expect(record?.judgeReasonCodes).toEqual(["off_mandate_recipient"]);
 	});
 
+	it("dedupes a judge-echoed deterministic code in the response reasons; judgeReasonCodes stays verbatim", async () => {
+		const store = createInMemoryVerdictStore();
+		const { mandateStore, verifyJudge } = await MANDATE_DEPS({
+			ran: true,
+			decision: COMPASS_DECISIONS.DENY,
+			clamped: true,
+			reasonCodes: ["TRANSFER_WITHIN_LIMIT_KNOWN_RECIPIENT", "off_mandate_recipient"],
+			rationale: "Recipient is not part of the owner's mandate.",
+			model: "test-model",
+			confidence: 0.9,
+			rawDecision: "DENY",
+		});
+		const service = createVerifyService({ verdictStore: store, mandateStore, verifyJudge });
+
+		const res = await service.verifyAction(
+			{
+				toolName: "transfer_sol",
+				intent: { kind: "transfer", statedPurpose: "pay vendor Acme invoice #42" },
+				arguments: { recipient: "RcpT111", amountUsd: 5, recipientKnown: true },
+			},
+			{ authenticatedEmail: "alice@example.com" },
+		);
+
+		expect(
+			res.reasons.filter((r) => r === "TRANSFER_WITHIN_LIMIT_KNOWN_RECIPIENT"),
+		).toHaveLength(1);
+		const record = await store.getByCorrelationId(res.correlationId);
+		expect(record?.judgeReasonCodes).toEqual([
+			"TRANSFER_WITHIN_LIMIT_KNOWN_RECIPIENT",
+			"off_mandate_recipient",
+		]);
+	});
+
+	it("dedupes a judge-internal duplicate reason code in the merged reasons", async () => {
+		const store = createInMemoryVerdictStore();
+		const { mandateStore, verifyJudge } = await MANDATE_DEPS({
+			ran: true,
+			decision: COMPASS_DECISIONS.DENY,
+			clamped: true,
+			reasonCodes: ["off_mandate_recipient", "off_mandate_recipient"],
+			rationale: "Recipient is not part of the owner's mandate.",
+			model: "test-model",
+			confidence: 0.9,
+			rawDecision: "DENY",
+		});
+		const service = createVerifyService({ verdictStore: store, mandateStore, verifyJudge });
+
+		const res = await service.verifyAction(
+			{
+				toolName: "transfer_sol",
+				intent: { kind: "transfer", statedPurpose: "pay vendor Acme invoice #42" },
+				arguments: { recipient: "RcpT111", amountUsd: 5, recipientKnown: true },
+			},
+			{ authenticatedEmail: "alice@example.com" },
+		);
+
+		expect(res.reasons.filter((r) => r === "off_mandate_recipient")).toHaveLength(1);
+	});
+
+	it("attributes a tightened verdict with the fixed sentence when the judge gives no rationale", async () => {
+		const store = createInMemoryVerdictStore();
+		const { mandateStore, verifyJudge } = await MANDATE_DEPS({
+			ran: true,
+			decision: COMPASS_DECISIONS.DENY,
+			clamped: true,
+			reasonCodes: ["off_mandate_recipient"],
+			model: "test-model",
+			confidence: 0.9,
+			rawDecision: "DENY",
+		});
+		const service = createVerifyService({ verdictStore: store, mandateStore, verifyJudge });
+
+		const res = await service.verifyAction(
+			{
+				toolName: "transfer_sol",
+				intent: { kind: "transfer", statedPurpose: "pay vendor Acme invoice #42" },
+				arguments: { recipient: "RcpT111", amountUsd: 5, recipientKnown: true },
+			},
+			{ authenticatedEmail: "alice@example.com" },
+		);
+
+		expect(res.decision).toBe("deny");
+		expect(res.humanExplanation).toMatch(/tightened by the mandate judge/i);
+		expect(res.humanExplanation.startsWith("Denied by policy.")).toBe(true);
+	});
+
 	it("persists policy identity and statedPurpose on a deterministic-only verdict, no judge fields", async () => {
 		const store = createInMemoryVerdictStore();
 		const service = createVerifyService({ verdictStore: store });

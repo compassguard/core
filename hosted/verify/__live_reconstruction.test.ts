@@ -111,10 +111,12 @@ describe.runIf(LIVE)("live reconstruction fields (real LLM via codex shim + Pg s
 			expect(record?.judgeConfidence).toBeGreaterThanOrEqual(0);
 			expect(record?.judgeConfidence).toBeLessThanOrEqual(1);
 			expect(Array.isArray(record?.judgeReasonCodes)).toBe(true);
-			// Attribution invariant: the merged reasons END with the judge's contribution.
-			expect(record?.reasons.slice(-(record?.judgeReasonCodes?.length ?? 0))).toEqual(
-				record?.judgeReasonCodes,
+			// Dedup-true invariant: every judge reason code lands in the merged reasons, and
+			// the merged reasons carry no duplicate entries (an echoed code collapses to one).
+			expect(record?.reasons).toEqual(
+				expect.arrayContaining(record?.judgeReasonCodes ?? []),
 			);
+			expect(new Set(record?.reasons).size).toBe(record?.reasons.length);
 
 			// Substrate check: the raw Postgres row carries the new columns (not just the
 			// mapped record) — reconstruction survives at the SQL altitude.

@@ -31,7 +31,10 @@ import {
 	collapseToHostedDecision,
 	hostedRiskLevelFor,
 } from "../evaluate/hostedDecision";
-import { buildHumanExplanation } from "../verify/humanExplanation";
+import {
+	composeVerdictExplanation,
+	mergeJudgeReasons,
+} from "../verify/humanExplanation";
 import { createVerifyService } from "../verify/verifyService";
 import { createInMemoryMandateStore } from "../mandate/mandateStore";
 import { evaluateAction } from "../policy/policyEngine";
@@ -97,17 +100,19 @@ function replayVerdict(record: VerdictRecord) {
 		);
 		compassDecision = clamped.decision;
 		judgeClamped = clamped.clamped;
-		reasons = [...reasons, ...recordedOutput.reasonCodes];
+		reasons = mergeJudgeReasons(reasons, recordedOutput.reasonCodes);
 	}
 
 	const decision = collapseToHostedDecision(compassDecision);
-	let humanExplanation = buildHumanExplanation(decision, reasons);
 	const judgeChangedDecision =
 		record.judgeRawDecision !== undefined &&
 		compassDecision !== (record.deterministicDecision as CompassDecision);
-	if (judgeChangedDecision && record.judgeRationale !== undefined) {
-		humanExplanation = `${humanExplanation} Mandate judge: ${record.judgeRationale}`;
-	}
+	const humanExplanation = composeVerdictExplanation(decision, reasons, {
+		changedDecision: judgeChangedDecision,
+		...(record.judgeRationale !== undefined
+			? { rationale: record.judgeRationale }
+			: {}),
+	});
 
 	return {
 		deterministicDecision: evaluation.decision as string,

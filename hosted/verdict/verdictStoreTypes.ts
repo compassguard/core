@@ -94,7 +94,8 @@ export type VerdictRecord = {
 	judgeConfidence?: number;
 	/**
 	 * The judge's own reason codes — its contribution to the merged `reasons`.
-	 * Deterministic reasons are derivable as (reasons minus judgeReasonCodes).
+	 * judgeReasonCodes is the judge's verbatim output; codes it shares with the
+	 * deterministic set appear once in the merged reasons (deduped at the merge point).
 	 */
 	judgeReasonCodes?: string[];
 };
