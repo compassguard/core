@@ -29,9 +29,11 @@ Every gap is a value that already exists in-flight at the persistence moment
   (`judge_unavailable`) path: reconstruction must show what the judge *should have* judged
   against. No mandate found ⇒ field absent.
 - **[D3] Attribution is additive: persist `judgeReasonCodes` (the judge's contribution)
-  alongside the unchanged merged `reasons`.** Deterministic reasons are derivable (merged minus
-  judge). The `/v1` response contract does not change. Rejected: restructuring `reasons` into
-  tagged objects (breaks the frozen response shape and every reader).
+  alongside the unchanged merged `reasons`.** judgeReasonCodes records the judge's verbatim
+  contribution; codes it shares with the deterministic set appear once in the merged reasons
+  (deduped at the merge point). The `/v1` response contract does not change. Rejected:
+  restructuring `reasons` into tagged objects (breaks the frozen response shape and every
+  reader).
 - **[D4] Policy identity on every verdict** (`policyId`, `policyVersion`, `evaluatedRules`) —
   every verdict is a policy evaluation, judged or not.
 - **[D5] Judge fields only when the judge ran**: `judgeModel`, `judgeClamped`,

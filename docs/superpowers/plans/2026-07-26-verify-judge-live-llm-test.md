@@ -13,7 +13,7 @@
 - Work on branch `feat/verify-mandate-judge` in `/Users/lilly/code/solana_hackathon`. Do not merge or deploy.
 - NEVER commit or print API keys. `.env` is the only place a key may be written; verify `.env` is gitignored before writing it (`git check-ignore .env` must print `.env`).
 - All `/v1/*` calls need `Authorization: Bearer dev-local-key` (the shared key we launch the server with).
-- Stores are **in-memory** without DB envs: after EVERY server restart, re-register the mandate (Task 4) before any judged call.
+- Stores are **in-memory** without DB envs: after EVERY server restart OR hot-recompile — any `✓ Compiled` line in the dev-server log means the in-memory stores were wiped — re-register the mandate (Task 4) before any judged call and treat any in-flight case's results as invalid. Do NOT edit source files during a live run (an edit triggers a hot-recompile and silently wipes state mid-case). To sidestep the hazard entirely, use a production server (`npm run build && npm run start` — no HMR) or set `COMPASS_VERDICT_DB_URL` for durable stores.
 - Distinguish two assertion classes on every judged case:
   - **MUST** (code-guaranteed — a failure is a bug): decision never looser than the floor; `intentSource` ∈ {`self_report`, `none`} and truthful; deterministic reason codes always present; `judge_unavailable` appended exactly when a due judge could not run.
   - **SHOULD** (model quality — a failure is calibration data, not a code bug): tighten on mandate violations, keep on compliant claims. Record actuals; do not "fix" code for SHOULD misses.
@@ -198,7 +198,7 @@ Expected: `healthy` within ~20s, body `{"ok":true,"service":"compass-hosted-guar
 ### Task 4: Register the test mandate
 
 **Interfaces:**
-- Produces: mandate for `ownerId=lilly-live-test` that Tasks 5–9 depend on. **Re-run this task after every server restart** (in-memory store).
+- Produces: mandate for `ownerId=lilly-live-test` that Tasks 5–9 depend on. **Re-run this task after every server restart OR hot-recompile — any `✓ Compiled` dev-log line** (in-memory store).
 
 - [ ] **Step 1: Register**
 
@@ -396,7 +396,7 @@ COMPASS_LLM_API_KEY=definitely-not-a-key \
 npm run dev
 ```
 
-Wait for health (Task 3 Step 2), **re-register the mandate (Task 4 — in-memory store was wiped)**, then run Case A's curl verbatim.
+Wait for health (Task 3 Step 2), **re-register the mandate (Task 4 — in-memory store was wiped)**, and re-register again if any `✓ Compiled` hot-recompile appears in the dev log before your next case, then run Case A's curl verbatim.
 
 Expected: `{"decision":"allow","intentSource":"none","reasons":["TRANSFER_WITHIN_LIMIT_KNOWN_RECIPIENT","judge_unavailable"]}` — deterministic result stands, degradation labeled, never a 5xx.
 
@@ -410,11 +410,11 @@ COMPASS_LLM_TIMEOUT_MS=1 \
 npm run dev
 ```
 
-Wait for health, re-register mandate, run Case A verbatim.
+Wait for health, re-register mandate, run Case A verbatim (same hot-recompile rule).
 
 Expected: same shape as Case I — `judge_unavailable`, `intentSource":"none"`, and the response must return promptly (the 1ms abort fires; total time ≈ deterministic baseline).
 
-- [ ] **Restore: restart with the normal Task 3 command (no override, no tiny timeout); re-register the mandate. Fill rows I–J.**
+- [ ] **Restore: restart with the normal Task 3 command (no override, no tiny timeout); re-register the mandate (and after any subsequent hot-recompile). Fill rows I–J.**
 
 ---
 
