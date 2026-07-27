@@ -62,3 +62,40 @@ export function buildHumanExplanation(
 
 	return DECISION_FALLBACK[decision];
 }
+
+/**
+ * Merge the deterministic reason codes with the judge's own codes,
+ * deduplicating so an echoed (or judge-internally repeated) code appears
+ * only once. Deterministic codes keep their original order; judge
+ * additions are appended in first-occurrence order.
+ */
+export function mergeJudgeReasons(
+	deterministic: string[],
+	judgeCodes: string[],
+): string[] {
+	return [...new Set([...deterministic, ...judgeCodes])];
+}
+
+/**
+ * Compose the final human-readable explanation for a verdict. When the
+ * judge tightened the decision, the explanation opens with the
+ * decision-keyed fallback sentence (so it agrees with the final outcome)
+ * followed by the judge's attribution — its rationale when present, else a
+ * fixed attribution sentence. Otherwise (no judge, or the judge kept the
+ * deterministic floor), this is byte-identical to buildHumanExplanation.
+ */
+export function composeVerdictExplanation(
+	decision: HostedDecision,
+	reasons: string[],
+	judge?: { changedDecision: boolean; rationale?: string },
+): string {
+	if (judge?.changedDecision) {
+		const attribution =
+			judge.rationale !== undefined
+				? ` Mandate judge: ${judge.rationale}`
+				: " Tightened by the mandate judge.";
+		return `${buildHumanExplanation(decision, [])}${attribution}`;
+	}
+
+	return buildHumanExplanation(decision, reasons);
+}
