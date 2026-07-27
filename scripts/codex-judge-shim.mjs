@@ -238,7 +238,7 @@ const server = createServer((req, res) => {
 	});
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, "127.0.0.1", () => {
 	process.stdout.write(
 		`codex-judge-shim listening on http://127.0.0.1:${PORT} (model=${CODEX_MODEL || "codex-default"}, failMode=${FAIL_MODE || "none"})\n`,
 	);
