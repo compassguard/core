@@ -8,7 +8,7 @@ The canonical product source is `docs/PRODUCT_CONSTITUTION.md`.
 
 High-level active architecture:
 
-- `app/`: minimal Next.js entrypoints for the public landing, `/landing` redirect, and `/launch` WIP page.
+- `app/`: minimal Next.js entrypoints for the API JSON root, the `/landing` public-site redirect, `/demo` and `/launch`, and hosted API routes.
 - `back/`: MCP Guard server-side services, execution gateway, policy, transfer/swap/conditional guards, audit, on-chain approval, shared providers, and Anchor programs.
 
 ## Documentation Source Of Truth

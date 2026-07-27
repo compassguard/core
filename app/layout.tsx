@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import { Analytics } from '@vercel/analytics/next';
-// The public landing at `/` is served by app/route.ts from landing.html with
-// inline CSS, so no global stylesheet is needed here.
+// The API root at `/` is served by app/route.ts, so no global stylesheet is needed here.
 
 export const metadata: Metadata = {
   title: 'Compass · The execution firewall for Solana AI agents',
