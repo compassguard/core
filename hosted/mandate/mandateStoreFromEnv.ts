@@ -16,7 +16,8 @@ export function createMandateStoreFromEnv(
 	if (!sql) {
 		console.warn(
 			"mandate store: in-memory (non-durable) — set COMPASS_VERDICT_DB_URL " +
-				"(Supabase transaction-pooler URL) to persist across serverless invocations",
+				"(Supabase transaction-pooler URL) to persist across serverless invocations; " +
+				"without a durable store the /verify mandate judge never fires (no mandate is ever found)",
 		);
 		return createInMemoryMandateStore();
 	}
