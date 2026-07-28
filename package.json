@@ -47,7 +47,9 @@
     "test:e2e:verbose": "node scripts/e2e-pipeline-test.mjs --verbose",
     "ticket:process": "tsx scripts/ticket-orchestrator.ts process",
     "ticket:approve": "tsx scripts/ticket-orchestrator.ts approve",
-    "ticket:status": "tsx scripts/ticket-orchestrator.ts status"
+    "ticket:status": "tsx scripts/ticket-orchestrator.ts status",
+    "preflight:magicblock-devnet": "node scripts/verify-magicblock-preflight-dependency-closure.mjs && vitest --config vitest.back.config.ts --run back/services/__tests__/magicBlockDevnetPreflight.test.ts",
+    "preflight:magicblock-devnet:strategic-gate": "node scripts/verify-magicblock-preflight-approval.mjs"
   },
   "dependencies": {
     "@coral-xyz/anchor": "~0.32.1",

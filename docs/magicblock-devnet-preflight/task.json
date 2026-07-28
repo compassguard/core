@@ -1,0 +1,63 @@
+{
+  "change": "magicblock-devnet-preflight",
+  "status": "local_slice_complete_strategic_gate_blocked",
+  "scope": "local_devnet_audit_only",
+  "decisionNeededBeforeApply": false,
+  "strategicDecisionGate": {
+    "status": "blocked",
+    "owner": "Board",
+    "reviewerId": "Board",
+    "request": "Separately approve or reject any future checkpoint trust anchor, authority/custody/rotation model, registry ownership, revocation, privacy, permissions, and external activation after security review.",
+    "sentinel": "npm run preflight:magicblock-devnet:strategic-gate",
+    "sentinelExpectedStatus": "blocked until independently verifiable immutable Board approval evidence exists"
+  },
+  "guardText": [
+    "The implemented slice is local, devnet-only, disabled by default, non-custodial, audit-only, and fail closed.",
+    "No signing, submission, delegation, simulation, authorization, Solana RPC, base-layer effect, checkpoint, trust-anchor, registry, key/custody, or production activation is included.",
+    "The strategic checkpoint and registry remain future and blocked."
+  ],
+  "tasks": [
+    {
+      "id": "MBP-LOCAL-1",
+      "title": "Implement the local MagicBlock devnet evidence-and-audit preflight",
+      "status": "completed",
+      "acceptanceCriteria": [
+        "The producer accepts only a closed opaque internal-candidate reference, resolves through an injected immutable source, validates devnet/canonical public keys/closed fields, persists the candidate and decoded-plan bindings through an injected immutable store, and returns only an opaque trusted-plan reference.",
+        "Resolution recomputes candidate, decoded-plan, every account digest, and every security flag before evidence is used.",
+        "The disabled-by-default injected adapter makes zero calls while disabled and, when enabled, can POST only to https://devnet-router.magicblock.app/ with getDelegationStatus and redirects rejected.",
+        "The transport receives a mandatory 16384-byte streaming cap; the adapter rechecks UTF-8 bytes and enforces fixed parser depth/token limits before duplicate-safe closed JSON parsing.",
+        "Each collect uses a unique evaluation ID, and every request ID binds it with observedAt, candidateId, candidateDigest, and accountDigest; responses from another concurrent or prior evaluation fail closed without claiming chain-tip freshness.",
+        "The injected append-only ledger atomically persists only a private deep-frozen closed/redacted snapshot and digest, then returns only auditEventId and attestationDigest; caller mutation after validation cannot affect materialization.",
+        "The writer derives review_required/confirmed only from all-delegated evidence and incompatible/incompatible only when any account is base_layer; callers cannot supply outcome/rationale and unavailable never creates an audit.",
+        "The integration returns only review_required, incompatible, or unavailable audit outcomes and has no authorization/execution import or input.",
+        "AST-based dependency closure treats all six feature modules as roots, traverses the full local closure from every protected boundary, rejects direct or transitive protected parse/CommonJS/unresolved/nonliteral/out-of-root imports, bidirectional and sibling-bridge protected reachability, external feature dependencies, non-crypto builtins, direct network/process capabilities, and feature local imports outside source roots without failing on ordinary unrelated bare packages.",
+        "Focused runtime and guard tests pass."
+      ]
+    },
+    {
+      "id": "MBP-STRATEGIC-1",
+      "title": "Obtain the future checkpoint and registry trust decision",
+      "status": "blocked",
+      "dependsOn": ["MBP-LOCAL-1"],
+      "acceptanceCriteria": [
+        "Only independently verifiable immutable Board approval after security review can select the strategic baseline.",
+        "A separate proposal and implementation cover trust anchor, predecessor-authorized rotation, durable replay and revocation state, checkpoint authority, registry ownership, signing/custody, privacy, permissions, tests, rollout, and rollback.",
+        "No checkpoint or registry evidence can authorize or enable execution."
+      ]
+    }
+  ],
+  "verification": {
+    "commands": [
+      "npm run preflight:magicblock-devnet",
+      "npm run preflight:magicblock-devnet:strategic-gate (expected blocked)",
+      "./node_modules/.bin/tsc --noEmit --pretty false (repo-wide currently blocked by the pre-existing missing ../mcp/mcpProxyContracts import in mcpProxyDispatcher.test.ts)"
+    ],
+    "evidence": "docs/magicblock-devnet-preflight/verify-report.md"
+  },
+  "rollout": {
+    "environment": "local devnet evidence only",
+    "default": "disabled",
+    "rollback": "Disable or remove composition; no on-chain state exists.",
+    "strategicActivation": "blocked"
+  }
+}
