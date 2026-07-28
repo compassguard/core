@@ -23,6 +23,8 @@ import { createMandateRoutes } from "./mandate/mandateRoutes";
 import { createMandateStoreFromEnv } from "./mandate/mandateStoreFromEnv";
 import { createVerifyJudge, resolveVerifyJudgeConfig } from "./verify/verifyJudge";
 import type { HostedAppDependencies } from "./appContracts";
+import { createSqlExecutorFromEnv } from "./db/sqlExecutorFromEnv";
+import { createBetaClickRoutes } from "./events/betaClickRoutes";
 
 export function createHostedApp(deps: HostedAppDependencies): Hono {
 	const app = new Hono();
@@ -93,6 +95,7 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 		}),
 	);
 	app.route("/health", createHealthRoutes(deps.health));
+	app.route("/", createBetaClickRoutes(createSqlExecutorFromEnv()));
 	// POST /signup is public (outside /v1, like /health): a caller mints an email credential
 	// here, then presents it as a Bearer token to /v1/*.
 	app.route("/", createSignupRoutes(createSignupService({ credentialStore })));
