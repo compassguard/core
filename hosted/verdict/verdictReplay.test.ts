@@ -4,10 +4,12 @@
  * reconstructable": not that the fields round-trip (the contract suite covers that), but
  * that the row alone carries enough to RE-DERIVE the verdict.
  *
- * Deterministic leg: row.toolName + row.policyContext → classifyToolCall + evaluateAction
- *   must reproduce row.deterministicDecision, the deterministic reasons prefix, and
- *   row.evaluatedRules — after asserting the current policy IS the row's policy
- *   (policyId + policyVersion match; a version bump makes replay honestly refuse).
+ * Deterministic leg: row.toolName + row.policyContext + row.policySnapshot →
+ *   classifyToolCall + evaluateAction must reproduce row.deterministicDecision, the
+ *   deterministic reasons prefix, and row.evaluatedRules. The rulebook comes from the ROW:
+ *   policyId/policyVersion NAME the policy, only policySnapshot carries its contents, and
+ *   since the default policy is a compiled-in constant editable without a version bump, an
+ *   identity check cannot detect drift.
  * Judge leg: the LLM call itself is not re-run (it is a recorded actor, not a replayable
  *   function) — but its recorded output (judgeRawDecision/confidence/reasonCodes/rationale)
  *   re-enters the REAL clamp, which must reproduce the stored post-judge decision,
@@ -25,6 +27,7 @@ import {
 } from "@back/guardrail/execution/executionGateway";
 import type { LlmGuardDecision, LlmGuardOutput } from "@shared/llmDecisionContracts";
 import type { CompassDecision } from "@shared/executionGatewayContracts";
+import type { CompassPolicy } from "@shared/policyContracts";
 
 import { clampLlmDecision } from "../llm/llmDecisionAdapter";
 import {
@@ -58,15 +61,15 @@ function replayVerdict(record: VerdictRecord) {
 	if (record.toolName === undefined || record.policyContext === undefined) {
 		throw new Error("row predates reconstruction fields — not replayable");
 	}
-	const policy = loadDefaultPolicy();
-	if (policy.policy_id !== record.policyId || policy.version !== record.policyVersion) {
-		// Honest refusal: replaying under a different policy would "reconstruct" a verdict
-		// that never happened.
-		throw new Error(
-			`policy drift: row decided under ${record.policyId}@${record.policyVersion}, ` +
-				`current is ${policy.policy_id}@${policy.version}`,
-		);
+	// The rulebook comes from the ROW, not from the current build. Replaying against
+	// loadDefaultPolicy() re-reads a compiled-in constant that may have been edited since
+	// the decision — and because an edit need not bump `version`, an identity check cannot
+	// detect it. The snapshot is the only thing that makes "re-derive from the stored row
+	// alone" true rather than "re-derive if nobody touched defaultPolicy.ts".
+	if (record.policySnapshot === undefined) {
+		throw new Error("row predates the policy snapshot — not replayable");
 	}
+	const policy = record.policySnapshot;
 
 	const evaluation = evaluateAction({
 		candidate: createActionCandidate({
@@ -241,9 +244,40 @@ describe("verdict replay from the stored row (reconstruction proof)", () => {
 		expect(replayed.humanExplanation).toBe(record.humanExplanation);
 	});
 
-	it("refuses to replay under a drifted policy (honest failure, not silent wrongness)", async () => {
+	it("replays against the row's OWN policy, not the current build's", async () => {
+		// The regression this guards: a threshold edited in defaultPolicy.ts WITHOUT a version
+		// bump. Identity still matches, so an identity-only guard waves it through and replay
+		// silently re-derives a decision that never happened (a $5 transfer decided ALLOW
+		// replaying as REQUIRE_HUMAN_APPROVAL under a lowered cap). Reading the rulebook from
+		// the row makes the current build's contents irrelevant.
+		const { record, replayed } = await decideAndReplay({ ran: false }, undefined);
+		expect(record.deterministicDecision).toBe("ALLOW"); // sanity: $5 is under the cap
+		expect(replayed.deterministicDecision).toBe("ALLOW");
+
+		const live = loadDefaultPolicy();
+		const editedRulebook: CompassPolicy = {
+			...live,
+			// Same policy_id, same version string — only the number moved.
+			transfers: { ...live.transfers, max_usd_without_approval: 3 },
+		};
+		const rowUnderEditedBuild: VerdictRecord = {
+			...record,
+			policySnapshot: editedRulebook,
+		};
+		// Proof the edit is decision-changing: replayed through the edited rulebook, the
+		// same row yields the other outcome.
+		expect(replayVerdict(rowUnderEditedBuild).deterministicDecision).toBe(
+			"REQUIRE_HUMAN_APPROVAL",
+		);
+		// ...and the untouched row still reproduces itself, because it carries its own.
+		expect(replayVerdict(record).deterministicDecision).toBe(record.deterministicDecision);
+		expect(replayVerdict(record).evaluatedRules).toEqual(record.evaluatedRules);
+	});
+
+	it("refuses to replay a row that predates the policy snapshot", async () => {
 		const { record } = await decideAndReplay({ ran: false }, undefined);
-		const drifted: VerdictRecord = { ...record, policyVersion: "0.0.9-old" };
-		expect(() => replayVerdict(drifted)).toThrow(/policy drift/);
+		const legacy: VerdictRecord = { ...record };
+		delete legacy.policySnapshot;
+		expect(() => replayVerdict(legacy)).toThrow(/predates the policy snapshot/);
 	});
 });

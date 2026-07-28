@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { COMPASS_DECISIONS } from "@shared/executionGatewayContracts";
+import { DEFAULT_POLICY } from "../policy/defaultPolicy";
 import { createInMemoryMandateStore } from "../mandate/mandateStore";
 import { createInMemoryVerdictStore } from "../verdict/verdictStore";
 import { createVerifyService } from "./verifyService";
@@ -170,6 +171,9 @@ describe("createVerifyService", () => {
 		});
 		expect(record?.policyId).toBe("default-conservative");
 		expect(record?.policyVersion).toBe("0.1.0");
+		// The rulebook's contents, not just its name — policyId/policyVersion cannot detect
+		// a threshold edited without a version bump.
+		expect(record?.policySnapshot).toEqual(DEFAULT_POLICY);
 		expect(record?.evaluatedRules?.length).toBeGreaterThan(0);
 		expect(record?.deterministicDecision).toBe(COMPASS_DECISIONS.ALLOW);
 		expect(record?.judgeModel).toBe("test-model");
@@ -278,6 +282,9 @@ describe("createVerifyService", () => {
 		const record = await store.getByCorrelationId(res.correlationId);
 		expect(record?.policyId).toBe("default-conservative");
 		expect(record?.policyVersion).toBe("0.1.0");
+		// The rulebook's contents, not just its name — policyId/policyVersion cannot detect
+		// a threshold edited without a version bump.
+		expect(record?.policySnapshot).toEqual(DEFAULT_POLICY);
 		expect(record?.evaluatedRules?.length).toBeGreaterThan(0);
 		expect(record?.deterministicDecision).toBe(COMPASS_DECISIONS.ALLOW);
 		expect(record?.statedPurpose).toBe("pay vendor Acme");

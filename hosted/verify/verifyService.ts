@@ -210,6 +210,11 @@ export function createVerifyService(
 					...(mandateSnapshot !== undefined ? { mandateSnapshot } : {}),
 					policyId: evaluation.policyId,
 					policyVersion: policy.version,
+					// The rulebook's CONTENT, not just its identity: the default policy is a
+					// compiled-in constant editable without a version bump, so policyId+version
+					// cannot detect drift (an edited threshold replays a verdict that never
+					// happened). Same reasoning as mandateSnapshot above.
+					policySnapshot: policy,
 					evaluatedRules: evaluation.evaluatedRules,
 					deterministicDecision: evaluation.decision,
 					...(judgeModel !== undefined ? { judgeModel } : {}),

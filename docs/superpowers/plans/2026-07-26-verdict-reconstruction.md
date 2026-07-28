@@ -36,6 +36,16 @@ Every gap is a value that already exists in-flight at the persistence moment
   reader).
 - **[D4] Policy identity on every verdict** (`policyId`, `policyVersion`, `evaluatedRules`) —
   every verdict is a policy evaluation, judged or not.
+- **[D4a] Policy SNAPSHOT on every verdict** (`policySnapshot`), amending D4 after external
+  review (gpt-5.5 via Codex, 2026-07-28). D4 persisted the rulebook's identity but not its
+  contents, and `loadDefaultPolicy()` reads a compiled-in constant
+  (`hosted/policy/defaultPolicy.ts`) that can be edited without a version bump — so an
+  identity check cannot detect drift. Demonstrated: a $5 transfer decided ALLOW replays as
+  REQUIRE_HUMAN_APPROVAL after `transfers.max_usd_without_approval` moves 10 → 3 under an
+  unchanged `0.1.0`, and `evaluatedRules` silently shrinks from 2 entries to 1. This is D1's
+  rule ("an audit row records what the decider saw") applied to the policy; the asymmetry
+  with `mandateSnapshot` was an oversight, not a decision. Replay now evaluates against
+  `record.policySnapshot` and refuses rows that predate it.
 - **[D5] Judge fields only when the judge ran**: `judgeModel`, `judgeClamped`,
   `judgeConfidence`, `judgeReasonCodes` — same presence rule as the existing `judgeRationale`.
 - **[D6] Persistence-only slice.** `VerifyActionResponse` unchanged; no new read surface. The
@@ -53,6 +63,7 @@ Every gap is a value that already exists in-flight at the persistence moment
 | `mandateSnapshot?: Mandate` | `mandate_snapshot jsonb` |
 | `policyId?: string` | `policy_id text` |
 | `policyVersion?: string` | `policy_version text` |
+| `policySnapshot?: CompassPolicy` | `policy_snapshot jsonb` (D4a) |
 | `evaluatedRules?: string[]` | `evaluated_rules jsonb` |
 | `judgeModel?: string` | `judge_model text` |
 | `judgeClamped?: boolean` | `judge_clamped boolean` |

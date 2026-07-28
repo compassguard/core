@@ -25,7 +25,19 @@ function stringifyingJsonbExecutor(db: PGlite): SqlExecutor {
 		const rows = await base(text, params);
 		return rows.map((row) => {
 			const out = { ...row };
-			for (const col of ["reasons", "intended_effect", "discrepancies"]) {
+			// EVERY jsonb column, not just the original three: the driver stringifies by
+			// column type, so a reconstruction column left out here would be "covered" by a
+			// sim that never exercises its parse path.
+			for (const col of [
+				"reasons",
+				"intended_effect",
+				"discrepancies",
+				"policy_context",
+				"mandate_snapshot",
+				"policy_snapshot",
+				"evaluated_rules",
+				"judge_reason_codes",
+			]) {
 				if (out[col] != null && typeof out[col] !== "string") {
 					out[col] = JSON.stringify(out[col]);
 				}
@@ -223,5 +235,40 @@ describe("createPgVerdictStore — durable-specific (cross-instance + schema ens
 		failing = false;
 		// The memo was cleared on failure, so the next op re-attempts ensure, which now succeeds.
 		expect(await b.getByCorrelationId("c1")).toBeUndefined();
+	});
+
+	// Postgres validates JSON syntax, never JSON shape. The typed writer cannot produce these
+	// rows, so these guard against out-of-band writes, hand-run migrations, and future second
+	// writers — reached only by writing raw SQL, as below.
+	it("a jsonb string[] column holding the wrong shape fails loud, naming column and row", async () => {
+		const db = new PGlite();
+		const store = createPgVerdictStore({ sql: executor(db) });
+		await store.putDecided({ ...decided("c-bad"), judgeReasonCodes: ["OK_CODE"] });
+
+		// An object where a string[] belongs — parses as valid JSON, then breaks a caller far
+		// away (mergeJudgeReasons spreads it: "bad is not iterable").
+		await db.query(
+			`UPDATE verdicts SET judge_reason_codes = '{"code":"X"}'::jsonb WHERE correlation_id = $1`,
+			["c-bad"],
+		);
+
+		await expect(store.getByCorrelationId("c-bad")).rejects.toThrow(
+			/verdicts\.judge_reason_codes for c-bad is not a string\[\]/,
+		);
+	});
+
+	it("a jsonb string[] column holding non-string elements fails loud", async () => {
+		const db = new PGlite();
+		const store = createPgVerdictStore({ sql: executor(db) });
+		await store.putDecided({ ...decided("c-bad2"), evaluatedRules: ["transfers.cap"] });
+
+		await db.query(
+			`UPDATE verdicts SET evaluated_rules = '[1, 2]'::jsonb WHERE correlation_id = $1`,
+			["c-bad2"],
+		);
+
+		await expect(store.getByCorrelationId("c-bad2")).rejects.toThrow(
+			/verdicts\.evaluated_rules for c-bad2 is not a string\[\]/,
+		);
 	});
 });

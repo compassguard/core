@@ -1,6 +1,6 @@
 import type { HostedDecision } from "@shared/evaluationContracts";
 import type { IntentSource, Mandate } from "@shared/mandateContracts";
-import type { PolicyEvaluationContext } from "@shared/policyContracts";
+import type { CompassPolicy, PolicyEvaluationContext } from "@shared/policyContracts";
 import type { Discrepancy, IntendedEffect } from "@shared/verdictContracts";
 
 import type {
@@ -60,6 +60,7 @@ const CREATE_TABLE = `CREATE TABLE IF NOT EXISTS verdicts (
 	mandate_snapshot jsonb,
 	policy_id text,
 	policy_version text,
+	policy_snapshot jsonb,
 	evaluated_rules jsonb,
 	deterministic_decision text,
 	judge_model text,
@@ -88,6 +89,7 @@ const MIGRATIONS = [
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS mandate_snapshot jsonb`,
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS policy_id text`,
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS policy_version text`,
+	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS policy_snapshot jsonb`,
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS evaluated_rules jsonb`,
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS deterministic_decision text`,
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS judge_model text`,
@@ -145,8 +147,8 @@ export function createPgVerdictStore(
 			// DECIDED. Durable persistence makes replay real, so this must be a DB guarantee.
 			await run(
 				`INSERT INTO verdicts
-					(correlation_id, status, decision, reasons, human_explanation, intended_effect, decided_at, user_id, session_id, authenticated_email, intent_source, judge_rationale, tool_name, policy_context, stated_purpose, mandate_snapshot, policy_id, policy_version, evaluated_rules, deterministic_decision, judge_model, judge_raw_decision, judge_clamped, judge_confidence, judge_reason_codes)
-				VALUES ($1, 'DECIDED', $2, $3::jsonb, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15::jsonb, $16, $17, $18::jsonb, $19, $20, $21, $22, $23, $24::jsonb)
+					(correlation_id, status, decision, reasons, human_explanation, intended_effect, decided_at, user_id, session_id, authenticated_email, intent_source, judge_rationale, tool_name, policy_context, stated_purpose, mandate_snapshot, policy_id, policy_version, policy_snapshot, evaluated_rules, deterministic_decision, judge_model, judge_raw_decision, judge_clamped, judge_confidence, judge_reason_codes)
+				VALUES ($1, 'DECIDED', $2, $3::jsonb, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15::jsonb, $16, $17, $18::jsonb, $19::jsonb, $20, $21, $22, $23, $24, $25::jsonb)
 				ON CONFLICT (correlation_id) DO NOTHING`,
 				[
 					input.correlationId,
@@ -166,6 +168,7 @@ export function createPgVerdictStore(
 					input.mandateSnapshot !== undefined ? JSON.stringify(input.mandateSnapshot) : null,
 					input.policyId ?? null,
 					input.policyVersion ?? null,
+					input.policySnapshot !== undefined ? JSON.stringify(input.policySnapshot) : null,
 					input.evaluatedRules !== undefined ? JSON.stringify(input.evaluatedRules) : null,
 					input.deterministicDecision ?? null,
 					input.judgeModel ?? null,
@@ -245,12 +248,34 @@ function parseJsonb<T>(value: unknown): T {
 	return typeof value === "string" ? (JSON.parse(value) as T) : (value as T);
 }
 
+/**
+ * Shape guard for jsonb columns. Postgres guarantees valid JSON *syntax*, never the right
+ * *shape*: a column holding `{"code":"X"}` where `["X"]` belongs parses fine and then breaks
+ * a caller far away (a non-iterable spread in mergeJudgeReasons, silently non-array
+ * evaluatedRules). Today's writer is typed and cannot produce these, so this is a guard
+ * against out-of-band writes, hand-run migrations, and future second writers.
+ *
+ * Fails LOUD rather than coercing to undefined: this is an audit surface, and a record that
+ * silently drops its judge reason codes is the exact "looks right but isn't" failure the
+ * reconstruction work exists to prevent. The message names the column and the row.
+ */
+function parseJsonbArray(value: unknown, column: string, correlationId: unknown): string[] {
+	const parsed = parseJsonb<unknown>(value);
+	if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== "string")) {
+		throw new Error(
+			`verdicts.${column} for ${String(correlationId)} is not a string[]: ` +
+				`${JSON.stringify(parsed)?.slice(0, 120) ?? typeof parsed}`,
+		);
+	}
+	return parsed as string[];
+}
+
 /** Map a stored row to a VerdictRecord; NULL optional columns become absent fields. */
 function rowToRecord(row: Record<string, unknown>): VerdictRecord {
 	const record: VerdictRecord = {
 		correlationId: row.correlation_id as string,
 		decision: row.decision as HostedDecision,
-		reasons: parseJsonb<string[]>(row.reasons),
+		reasons: parseJsonbArray(row.reasons, "reasons", row.correlation_id),
 		humanExplanation: row.human_explanation as string,
 		intendedEffect: parseJsonb<IntendedEffect>(row.intended_effect),
 		status: row.status as VerdictStatus,
@@ -281,8 +306,15 @@ function rowToRecord(row: Record<string, unknown>): VerdictRecord {
 	}
 	if (row.policy_id != null) record.policyId = row.policy_id as string;
 	if (row.policy_version != null) record.policyVersion = row.policy_version as string;
+	if (row.policy_snapshot != null) {
+		record.policySnapshot = parseJsonb<CompassPolicy>(row.policy_snapshot);
+	}
 	if (row.evaluated_rules != null) {
-		record.evaluatedRules = parseJsonb<string[]>(row.evaluated_rules);
+		record.evaluatedRules = parseJsonbArray(
+			row.evaluated_rules,
+			"evaluated_rules",
+			row.correlation_id,
+		);
 	}
 	if (row.deterministic_decision != null) {
 		record.deterministicDecision = row.deterministic_decision as string;
@@ -296,7 +328,11 @@ function rowToRecord(row: Record<string, unknown>): VerdictRecord {
 		record.judgeConfidence = row.judge_confidence as number;
 	}
 	if (row.judge_reason_codes != null) {
-		record.judgeReasonCodes = parseJsonb<string[]>(row.judge_reason_codes);
+		record.judgeReasonCodes = parseJsonbArray(
+			row.judge_reason_codes,
+			"judge_reason_codes",
+			row.correlation_id,
+		);
 	}
 	return record;
 }

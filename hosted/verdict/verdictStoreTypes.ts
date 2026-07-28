@@ -1,6 +1,6 @@
 import type { HostedDecision } from "@shared/evaluationContracts";
 import type { IntentSource, Mandate } from "@shared/mandateContracts";
-import type { PolicyEvaluationContext } from "@shared/policyContracts";
+import type { CompassPolicy, PolicyEvaluationContext } from "@shared/policyContracts";
 import type { Discrepancy, IntendedEffect } from "@shared/verdictContracts";
 
 /**
@@ -67,6 +67,16 @@ export type VerdictRecord = {
 	policyId?: string;
 	/** CompassPolicy.version at decision time. */
 	policyVersion?: string;
+	/**
+	 * The policy CONTENT as it read at decision time — the thresholds and rule values the
+	 * engine actually compared against, not just its identity. policyId/policyVersion name
+	 * the rulebook; only this snapshot carries what was written in it. The default policy is
+	 * a compiled-in constant (hosted/policy/defaultPolicy.ts) that can be edited without a
+	 * version bump, so identity alone cannot detect drift: an edited threshold under an
+	 * unchanged version replays a verdict that never happened. Same principle as
+	 * mandateSnapshot (plan D1: an audit row records what the decider saw).
+	 */
+	policySnapshot?: CompassPolicy;
 	/** The rule paths the policy engine actually evaluated for this decision. */
 	evaluatedRules?: string[];
 	/**
@@ -129,6 +139,8 @@ export type DecidedInput = {
 	policyId?: string;
 	/** CompassPolicy.version at decision time. */
 	policyVersion?: string;
+	/** The policy content as it read at decision time (see VerdictRecord.policySnapshot). */
+	policySnapshot?: CompassPolicy;
 	/** The rule paths the policy engine actually evaluated for this decision. */
 	evaluatedRules?: string[];
 	/** The policy engine's pre-judge CompassDecision (see VerdictRecord). */

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import type { IntendedEffect } from "@shared/verdictContracts";
+
+import { DEFAULT_POLICY } from "../policy/defaultPolicy";
 import type {
 	DecidedInput,
 	VerdictStore,
@@ -229,6 +231,7 @@ export function describeVerdictStoreContract(name: string, makeStore: MakeStore)
 				mandateSnapshot,
 				policyId: "default-conservative",
 				policyVersion: "0.1.0",
+				policySnapshot: DEFAULT_POLICY,
 				evaluatedRules: ["transfers.max_usd_without_approval"],
 				deterministicDecision: "REQUIRE_HUMAN_APPROVAL",
 				judgeModel: "kimi-k2.5",
@@ -249,6 +252,12 @@ export function describeVerdictStoreContract(name: string, makeStore: MakeStore)
 			expect(record?.mandateSnapshot).toEqual(mandateSnapshot);
 			expect(record?.policyId).toBe("default-conservative");
 			expect(record?.policyVersion).toBe("0.1.0");
+			// Deep-equal, not identity: the audit value is the nested thresholds surviving
+			// the jsonb round-trip — policyId/policyVersion alone cannot detect an edit.
+			expect(record?.policySnapshot).toEqual(DEFAULT_POLICY);
+			expect(record?.policySnapshot?.transfers.max_usd_without_approval).toBe(
+				DEFAULT_POLICY.transfers.max_usd_without_approval,
+			);
 			expect(record?.evaluatedRules).toEqual(["transfers.max_usd_without_approval"]);
 			expect(record?.deterministicDecision).toBe("REQUIRE_HUMAN_APPROVAL");
 			expect(record?.judgeModel).toBe("kimi-k2.5");
@@ -277,6 +286,7 @@ export function describeVerdictStoreContract(name: string, makeStore: MakeStore)
 			expect(record?.mandateSnapshot).toBeUndefined();
 			expect(record?.policyId).toBeUndefined();
 			expect(record?.policyVersion).toBeUndefined();
+			expect(record?.policySnapshot).toBeUndefined();
 			expect(record?.evaluatedRules).toBeUndefined();
 			expect(record?.deterministicDecision).toBeUndefined();
 			expect(record?.judgeModel).toBeUndefined();
