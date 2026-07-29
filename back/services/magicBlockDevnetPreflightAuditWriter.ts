@@ -39,9 +39,25 @@ export function createMagicBlockDevnetAuditWriter(input: {
 		async write(command: {
 			readonly resolvedPlan: ResolvedTrustedMagicBlockPlan;
 			readonly evidence: ValidatedMagicBlockEvidence;
+			readonly observationId?: string;
+			readonly transactionDigest?: string;
+			readonly requestDigest?: string;
 		}): Promise<MagicBlockAuditWriteResult> {
+			const legacyCommand = hasExactKeys(command, ["resolvedPlan", "evidence"]);
+			const observationId = command.observationId ?? "legacy-observation";
+			const transactionDigest = command.transactionDigest ?? "0".repeat(64);
+			const requestDigest = command.requestDigest ?? "0".repeat(64);
 			if (
-				!hasExactKeys(command, ["resolvedPlan", "evidence"])
+				(!legacyCommand && !hasExactKeys(command, [
+					"resolvedPlan",
+					"evidence",
+					"observationId",
+					"transactionDigest",
+					"requestDigest",
+				])) ||
+				!/^[-A-Za-z0-9._:]{1,128}$/.test(observationId) ||
+				!isDigest(transactionDigest) ||
+				!isDigest(requestDigest)
 			) {
 				throw new Error("audit unavailable");
 			}
@@ -52,11 +68,23 @@ export function createMagicBlockDevnetAuditWriter(input: {
 					? "incompatible"
 					: "review_required";
 			const rationaleCode = OUTCOME_RATIONALE[outcome];
+			const resultDigest = sha256Hex(
+				"compass.magicblock-devnet-result/v1\0",
+				canonicalJson({
+					observationId,
+					outcome,
+					rationaleCode,
+				}),
+			);
 			const occurredAt = now();
 			if (!isCanonicalTimestamp(occurredAt)) throw new Error("audit unavailable");
 			const safeCommand = deepFreeze({
 				candidateDigest: resolved.snapshot.plan.candidateDigest,
 				decodedPlanDigest: resolved.snapshot.plan.decodedPlanDigest,
+				observationId,
+				transactionDigest,
+				requestDigest,
+				resultDigest,
 				evidence: deepFreeze({
 					endpointHost: MAGICBLOCK_ROUTER_HOST,
 					method: MAGICBLOCK_METHOD,
@@ -76,7 +104,7 @@ export function createMagicBlockDevnetAuditWriter(input: {
 				  }
 				| undefined;
 			let materializeCount = 0;
-			const appended = await input.ledger.appendAtomic({
+				const appended = await input.ledger.appendAtomic({
 				schemaVersion: "magicblock-devnet-attestation/v1",
 				materialize: (auditEventId) => {
 					materializeCount += 1;
@@ -85,39 +113,96 @@ export function createMagicBlockDevnetAuditWriter(input: {
 					}
 					const payload: MagicBlockDevnetAuditPayloadV1 = deepFreeze({
 						schemaVersion: "magicblock-devnet-attestation/v1",
-						eventType: "magicblock_devnet_audit_attestation",
-						auditEventId,
-						occurredAt: safeCommand.occurredAt,
-						cluster: "devnet",
+							eventType: "magicblock_devnet_audit_attestation",
+							auditEventId,
+							observationId: safeCommand.observationId,
+							occurredAt: safeCommand.occurredAt,
+							cluster: "devnet",
+							transactionDigest: safeCommand.transactionDigest,
+							requestDigest: safeCommand.requestDigest,
+							resultDigest: safeCommand.resultDigest,
 						candidateDigest: safeCommand.candidateDigest,
 						decodedPlanDigest: safeCommand.decodedPlanDigest,
 						evidence: safeCommand.evidence,
 						outcome: safeCommand.outcome,
 						rationaleCode: safeCommand.rationaleCode,
-						registration: "not_requested",
+						registration: "required",
 					});
 					const canonicalPayload = canonicalJson(payload);
 					const attestationDigest = sha256Hex(ATTESTATION_DOMAIN, canonicalPayload);
 					materialized = { auditEventId, attestationDigest };
 					return { payload, canonicalPayload, attestationDigest };
 				},
-			});
-			if (
-				materializeCount !== 1 ||
-				!materialized ||
-				!hasExactKeys(appended, ["auditEventId", "attestationDigest"]) ||
-				appended.auditEventId !== materialized.auditEventId ||
-				appended.attestationDigest !== materialized.attestationDigest ||
-				!isDigest(appended.attestationDigest)
+				});
+				const reused =
+					"reused" in appended && appended.reused === true;
+				const persistedPayload =
+					typeof appended.canonicalPayload === "string"
+						? parsePersistedPayload(appended.canonicalPayload)
+						: undefined;
+				if (
+					(!reused && (materializeCount !== 1 || !materialized)) ||
+					(reused && materializeCount !== 0) ||
+					!hasAllowedAppendResult(appended) ||
+					(!reused && appended.auditEventId !== materialized?.auditEventId) ||
+					(!reused && appended.attestationDigest !== materialized?.attestationDigest) ||
+					!isDigest(appended.attestationDigest) ||
+					(appended.previousLedgerDigest !== undefined &&
+						!isDigest(appended.previousLedgerDigest)) ||
+					(appended.ledgerDigest !== undefined &&
+						!isDigest(appended.ledgerDigest)) ||
+					(appended.canonicalPayload !== undefined && !persistedPayload)
 			) {
 				throw new Error("audit unavailable");
 			}
 			return deepFreeze({
-				auditEventId: appended.auditEventId,
-				attestationDigest: appended.attestationDigest,
-			});
+					auditEventId: appended.auditEventId,
+					attestationDigest: appended.attestationDigest,
+					resultDigest: persistedPayload?.resultDigest ?? resultDigest,
+					previousLedgerDigest: appended.previousLedgerDigest ?? "0".repeat(64),
+					ledgerDigest: appended.ledgerDigest ?? "0".repeat(64),
+					persistedOutcome: persistedPayload?.outcome ?? outcome,
+				});
 		},
 	};
+}
+
+function hasAllowedAppendResult(value: Record<string, unknown>): boolean {
+	const keys = Object.keys(value);
+	return (
+		["auditEventId", "attestationDigest"].every((key) => keys.includes(key)) &&
+		keys.every((key) =>
+			[
+				"auditEventId",
+				"attestationDigest",
+				"canonicalPayload",
+				"ledgerDigest",
+				"previousLedgerDigest",
+				"reused",
+			].includes(key),
+		)
+	);
+}
+
+function parsePersistedPayload(
+	canonicalPayload: string,
+): { readonly resultDigest: string; readonly outcome: MagicBlockPersistedAuditOutcome } | null {
+	try {
+		const parsed = JSON.parse(canonicalPayload) as Record<string, unknown>;
+		if (
+			canonicalJson(parsed) !== canonicalPayload ||
+			!isDigest(parsed.resultDigest) ||
+			!["review_required", "incompatible"].includes(String(parsed.outcome))
+		) {
+			return null;
+		}
+		return {
+			resultDigest: parsed.resultDigest,
+			outcome: parsed.outcome as MagicBlockPersistedAuditOutcome,
+		};
+	} catch {
+		return null;
+	}
 }
 
 function validateEvidence(

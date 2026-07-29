@@ -12,10 +12,19 @@ import type {
 	MagicBlockAppendOnlyAuditLedger,
 	MagicBlockPost,
 } from "@back/services/magicBlockDevnetPreflightTypes";
+import {
+	materializeMagicBlockAuditCommitment,
+} from "@back/services/magicBlockOnchainAudit";
+import type {
+	MagicBlockAuditRecord,
+	MagicBlockAuditRecordStore,
+	MagicBlockOnchainAuditSubmitter,
+} from "@back/services/magicBlockOnchainAuditContracts";
 
 import type { SqlExecutor } from "../verdict/verdictStorePg";
 import { createMagicBlockAuditIngress } from "./magicBlockAuditIngress";
 import { createPgMagicBlockAppendOnlyAuditLedger } from "./magicBlockAuditLedgerPg";
+import { createPgMagicBlockAuditRecordStore } from "./magicBlockAuditRecordStorePg";
 import { createPgMagicBlockObservationStore } from "./magicBlockObservationStorePg";
 
 const NOW = "2026-07-28T12:00:00.000Z";
@@ -51,6 +60,201 @@ describe("MagicBlock authenticated audit ingress", () => {
 		expect(observations.claimCount()).toBe(0);
 	});
 
+	it("reconciles a prepared signature through GET before returning success", async () => {
+		const details = {
+			schemaVersion: "compass.magicblock-audit-commitment/v1" as const,
+			cluster: "devnet" as const,
+			observationId: "obs-query",
+			auditEventId: "aud_query",
+			transactionDigest: "1".repeat(64),
+			requestDigest: "2".repeat(64),
+			resultDigest: "3".repeat(64),
+			attestationDigest: "4".repeat(64),
+			previousLedgerDigest: "5".repeat(64),
+			ledgerDigest: "6".repeat(64),
+			outcome: "review_required" as const,
+		};
+		const commitment = materializeMagicBlockAuditCommitment(details);
+		let record: MagicBlockAuditRecord = {
+			details,
+			canonicalDetails: commitment.canonicalDetails,
+			registration: {
+				status: "retryable_failure",
+				retryable: true,
+				code: "SUBMISSION_UNCONFIRMED",
+				signature: "3".repeat(64),
+				commitmentDigest: commitment.commitmentDigest,
+				memo: commitment.memo,
+			},
+		};
+		const proof = {
+			status: "confirmed" as const,
+			cluster: "devnet" as const,
+			routerUrl: "https://devnet-router.magicblock.app/" as const,
+			signature: "3".repeat(64),
+			signer: "11111111111111111111111111111111",
+			slot: 77,
+			commitmentDigest: commitment.commitmentDigest,
+			memo: commitment.memo,
+			verifiedAt: NOW,
+		};
+		const verify = vi.fn(async () => proof);
+		const ingress = createMagicBlockAuditIngress({
+			enabled: true,
+			apiKey: "audit-secret",
+			runtime: {
+				observations: createMemoryObservationStore(),
+				createLedger: createMemoryLedgerFactory(
+					createMemoryObservationStore(),
+				),
+				post: boundDelegationPost("delegated"),
+				auditRecords: {
+					async save(next) {
+						record = next;
+					},
+					async reservePrepared({ record: next }) {
+						record = next;
+						return next;
+					},
+					async findByAuditEventId() {
+						return record;
+					},
+					async findByObservationId() {
+						return record;
+					},
+					async findBySignature() {
+						return record;
+					},
+				},
+				onchainAudit: {
+					async register() {
+						throw new Error("not used");
+					},
+					verify,
+				},
+			},
+		});
+		const response = await ingress.handle(
+			new Request(
+				`https://api.compassguard.xyz/api/magicblock-devnet/audit?signature=${"3".repeat(64)}`,
+				{
+				headers: { Authorization: "Bearer audit-secret" },
+				},
+			),
+		);
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({
+			registration: { status: "confirmed", slot: 77 },
+		});
+		expect(verify).toHaveBeenCalledWith({
+			signature: "3".repeat(64),
+			expectedCommitmentDigest: commitment.commitmentDigest,
+			expectedMemo: commitment.memo,
+		});
+	});
+
+	it("persists prepared-to-confirmed GET reconciliation in Postgres", async () => {
+		const db = new PGlite();
+		const sql = executor(db);
+		const observations = createPgMagicBlockObservationStore({ sql });
+		const records = createPgMagicBlockAuditRecordStore({ sql });
+		const requestDigest = "2".repeat(64);
+		const claim = await observations.claim(
+			claimInput("obs-query-pg", requestDigest, NOW),
+		);
+		const details = {
+			schemaVersion: "compass.magicblock-audit-commitment/v1" as const,
+			cluster: "devnet" as const,
+			observationId: "obs-query-pg",
+			auditEventId: "aud_query_pg",
+			transactionDigest: "1".repeat(64),
+			requestDigest,
+			resultDigest: "3".repeat(64),
+			attestationDigest: "4".repeat(64),
+			previousLedgerDigest: "5".repeat(64),
+			ledgerDigest: "6".repeat(64),
+			outcome: "review_required" as const,
+		};
+		const commitment = materializeMagicBlockAuditCommitment(details);
+		await records.reservePrepared({
+			record: {
+				details,
+				canonicalDetails: commitment.canonicalDetails,
+				registration: {
+					status: "retryable_failure",
+					retryable: true,
+					code: "SUBMISSION_UNCONFIRMED",
+					signature: "4".repeat(64),
+					commitmentDigest: commitment.commitmentDigest,
+					memo: commitment.memo,
+				},
+			},
+			requestDigest,
+			claimAttempt: claimedAttempt(claim),
+		});
+		const proof = {
+			status: "confirmed" as const,
+			cluster: "devnet" as const,
+			routerUrl: "https://devnet-router.magicblock.app/" as const,
+			signature: "4".repeat(64),
+			signer: "11111111111111111111111111111111",
+			slot: 88,
+			commitmentDigest: commitment.commitmentDigest,
+			memo: commitment.memo,
+			verifiedAt: NOW,
+		};
+		let verificationAttempts = 0;
+		const ingress = createMagicBlockAuditIngress({
+			enabled: true,
+			apiKey: "audit-secret",
+			runtime: {
+				observations,
+				createLedger: createMemoryLedgerFactory(observations),
+				post: boundDelegationPost("delegated"),
+				auditRecords: records,
+				onchainAudit: {
+					async register() {
+						throw new Error("not used");
+					},
+					async verify() {
+						verificationAttempts += 1;
+						return verificationAttempts === 1
+							? {
+									status: "retryable_failure" as const,
+									retryable: true as const,
+									code: "ROUTER_UNAVAILABLE" as const,
+							  }
+							: proof;
+					},
+				},
+			},
+		});
+		const request = () =>
+			new Request(
+				`https://api.compassguard.xyz/api/magicblock-devnet/audit?auditId=${details.auditEventId}`,
+				{ headers: { Authorization: "Bearer audit-secret" } },
+			);
+		const retryable = await ingress.handle(request());
+		expect(retryable.status).toBe(503);
+		await expect(
+			records.findByAuditEventId(details.auditEventId),
+		).resolves.toMatchObject({
+			registration: {
+				status: "retryable_failure",
+				signature: "4".repeat(64),
+				commitmentDigest: commitment.commitmentDigest,
+				memo: commitment.memo,
+			},
+		});
+		const response = await ingress.handle(request());
+		expect(response.status).toBe(200);
+		await expect(
+			records.findByAuditEventId(details.auditEventId),
+		).resolves.toMatchObject({
+			registration: { status: "confirmed", slot: 88 },
+		});
+	});
+
 	it("decodes, observes, appends once, and returns the cached idempotent result", async () => {
 		const observations = createMemoryObservationStore();
 		const createLedger = createMemoryLedgerFactory(observations);
@@ -62,15 +266,16 @@ describe("MagicBlock authenticated audit ingress", () => {
 				runtime: {
 					observations,
 					createLedger,
-				post,
-				now: () => NOW,
-				createOpaqueId: (kind) => `${kind}-${++id}`,
+					post,
+					now: () => NOW,
+					createOpaqueId: (kind) => `${kind}-${++id}`,
+					...confirmedOnchainRuntime(),
 			},
 		});
 
 		const first = await ingress.handle(observationRequest("audit-secret"));
 		const firstBody = (await first.json()) as MagicBlockDevnetObservationResultV1;
-		expect(first.status).toBe(200);
+		expect(first.status, JSON.stringify(firstBody)).toBe(200);
 		expect(firstBody).toMatchObject({
 			schemaVersion: MAGICBLOCK_OBSERVATION_RESULT_SCHEMA,
 			observationId: "observation-1",
@@ -102,7 +307,7 @@ describe("MagicBlock authenticated audit ingress", () => {
 		});
 
 		const response = await ingress.handle(observationRequest("audit-secret"));
-		expect(response.status).toBe(200);
+		expect(response.status).toBe(503);
 		const body = await response.json();
 		expect(body).toEqual({
 			schemaVersion: MAGICBLOCK_OBSERVATION_RESULT_SCHEMA,
@@ -112,7 +317,7 @@ describe("MagicBlock authenticated audit ingress", () => {
 		expect(JSON.stringify(body)).not.toContain("private provider detail");
 	});
 
-	it("reconciles an indeterminate append response to the atomically completed audit", async () => {
+	it("does not claim success when the durable append result is indeterminate", async () => {
 		const observations = createMemoryObservationStore();
 		const ingress = createMagicBlockAuditIngress({
 			enabled: true,
@@ -124,15 +329,13 @@ describe("MagicBlock authenticated audit ingress", () => {
 				}),
 				post: boundDelegationPost("delegated"),
 				now: () => NOW,
+				...confirmedOnchainRuntime(),
 			},
 		});
 
 		const response = await ingress.handle(observationRequest());
-		expect(response.status).toBe(200);
-		expect(await response.json()).toMatchObject({
-			outcome: "review_required",
-			audit: { auditEventId: "aud_test_1" },
-		});
+		expect(response.status).toBe(503);
+		expect(await response.json()).toMatchObject({ outcome: "unavailable" });
 	});
 
 	it("bounds eight delayed account observations to two batches of four within the route budget", async () => {
@@ -158,6 +361,7 @@ describe("MagicBlock authenticated audit ingress", () => {
 				createLedger: createMemoryLedgerFactory(observations),
 				post: delayedPost,
 				now: () => NOW,
+				...confirmedOnchainRuntime(),
 			},
 		});
 
@@ -257,6 +461,71 @@ describe("MagicBlock Postgres persistence", () => {
 		).resolves.toEqual({ status: "pending" });
 	});
 
+	it("allows only the current claim attempt to reserve the send signature", async () => {
+		const db = new PGlite();
+		const sql = executor(db);
+		const observations = createPgMagicBlockObservationStore({ sql });
+		const records = createPgMagicBlockAuditRecordStore({ sql });
+		const requestDigest = "e".repeat(64);
+		const first = await observations.claim(
+			claimInput("obs-reserve", requestDigest, "2026-07-28T12:00:00.000Z"),
+		);
+		const current = await observations.claim(
+			claimInput("obs-reserve", requestDigest, "2026-07-28T12:00:13.000Z"),
+		);
+		const details = {
+			schemaVersion: "compass.magicblock-audit-commitment/v1" as const,
+			cluster: "devnet" as const,
+			observationId: "obs-reserve",
+			auditEventId: "aud_reserve",
+			transactionDigest: "1".repeat(64),
+			requestDigest,
+			resultDigest: "2".repeat(64),
+			attestationDigest: "3".repeat(64),
+			previousLedgerDigest: "4".repeat(64),
+			ledgerDigest: "5".repeat(64),
+			outcome: "review_required" as const,
+		};
+		const commitment = materializeMagicBlockAuditCommitment(details);
+		const prepared = (signature: string): MagicBlockAuditRecord => ({
+			details,
+			canonicalDetails: commitment.canonicalDetails,
+			registration: {
+				status: "retryable_failure",
+				retryable: true,
+				code: "SUBMISSION_UNCONFIRMED",
+				signature,
+				commitmentDigest: commitment.commitmentDigest,
+				memo: commitment.memo,
+			},
+		});
+		await expect(
+			records.reservePrepared({
+				record: prepared("2".repeat(64)),
+				requestDigest,
+				claimAttempt: claimedAttempt(first),
+			}),
+		).rejects.toThrow("reservation");
+		await expect(
+			records.reservePrepared({
+				record: prepared("3".repeat(64)),
+				requestDigest,
+				claimAttempt: claimedAttempt(current),
+			}),
+		).resolves.toMatchObject({
+			registration: { signature: "3".repeat(64) },
+		});
+		await expect(
+			records.reservePrepared({
+				record: prepared("4".repeat(64)),
+				requestDigest,
+				claimAttempt: claimedAttempt(current),
+			}),
+		).resolves.toMatchObject({
+			registration: { signature: "3".repeat(64) },
+		});
+	});
+
 	it("fences stale claimants from both audit and unavailable finalization", async () => {
 		const db = new PGlite();
 		const sql = executor(db);
@@ -320,12 +589,20 @@ describe("MagicBlock Postgres persistence", () => {
 			createAuditEventId: () => "aud_pg_current",
 			now: () => NOW,
 		});
+		const currentAudit = await currentLedger.appendAtomic(
+			appendInput("candidate-current"),
+		);
+		expect(currentAudit).toMatchObject({ auditEventId: "aud_pg_current" });
 		await expect(
 			currentLedger.appendAtomic(appendInput("candidate-current")),
-		).resolves.toMatchObject({ auditEventId: "aud_pg_current" });
-		await expect(
-			currentLedger.appendAtomic(appendInput("candidate-current")),
-		).rejects.toThrow();
+		).resolves.toMatchObject({ auditEventId: "aud_pg_current", reused: true });
+		await observations.complete({
+			observationId: "obs-fenced",
+			requestDigest,
+			claimAttempt: claimedAttempt(secondClaim),
+			result: auditResult("obs-fenced", currentAudit),
+			completedAt: NOW,
+		});
 
 		const completed = await observations.claim(
 			claimInput("obs-fenced", requestDigest, NOW),
@@ -395,16 +672,24 @@ describe("MagicBlock Postgres persistence", () => {
 			VALUES (true, 0, NULL, NULL)`,
 			[],
 		);
-		await expect(
-			ledger.appendAtomic(appendInput("candidate-restored")),
-		).resolves.toMatchObject({ auditEventId: "aud_pg_restored" });
+		const restoredAudit = await ledger.appendAtomic(
+			appendInput("candidate-restored"),
+		);
+		expect(restoredAudit).toMatchObject({ auditEventId: "aud_pg_restored" });
 		expect(
 			await baseSql(
 				`SELECT status FROM magicblock_devnet_observations
 				WHERE observation_id = $1`,
 				["obs-missing-tip"],
 			),
-		).toEqual([{ status: "completed" }]);
+		).toEqual([{ status: "pending" }]);
+		await observations.complete({
+			observationId: "obs-missing-tip",
+			requestDigest,
+			claimAttempt: claimedAttempt(claim),
+			result: auditResult("obs-missing-tip", restoredAudit),
+			completedAt: NOW,
+		});
 		expect(
 			await baseSql(
 				`SELECT audit_event_id FROM magicblock_devnet_audit_ledger
@@ -439,7 +724,7 @@ describe("MagicBlock Postgres persistence", () => {
 			now: () => NOW,
 		});
 
-		await Promise.all([
+		const [auditA, auditB] = await Promise.all([
 			ledgerA.appendAtomic(appendInput("candidate-a")),
 			ledgerB.appendAtomic(appendInput("candidate-b")),
 		]);
@@ -455,6 +740,20 @@ describe("MagicBlock Postgres persistence", () => {
 		expect(rows[0]?.ledger_event_digest).toMatch(/^[0-9a-f]{64}$/);
 		expect(rows[1]?.ledger_event_digest).toMatch(/^[0-9a-f]{64}$/);
 		expect(rows.map((row) => Number(row.sequence))).toEqual([1, 2]);
+		await observations.complete({
+			observationId: "obs-a",
+			requestDigest: digestA,
+			claimAttempt: claimedAttempt(claimA),
+			result: auditResult("obs-a", auditA),
+			completedAt: NOW,
+		});
+		await observations.complete({
+			observationId: "obs-b",
+			requestDigest: digestB,
+			claimAttempt: claimedAttempt(claimB),
+			result: auditResult("obs-b", auditB),
+			completedAt: NOW,
+		});
 		await expect(
 			observations.claim(claimInput("obs-a", digestA, NOW)),
 		).resolves.toMatchObject({ status: "completed" });
@@ -492,9 +791,17 @@ describe("MagicBlock Postgres persistence", () => {
 		await expect(
 			ledger.appendAtomic(appendInput("candidate-ambiguous")),
 		).rejects.toThrow("simulated response loss after commit");
-		const reconciled = await observations.claim(
-			claimInput("obs-ambiguous", requestDigest, NOW),
+		const recoveredAudit = await ledger.appendAtomic(
+			appendInput("candidate-ambiguous"),
 		);
+		await observations.complete({
+			observationId: "obs-ambiguous",
+			requestDigest,
+			claimAttempt: claimedAttempt(claim),
+			result: auditResult("obs-ambiguous", recoveredAudit),
+			completedAt: NOW,
+		});
+		const reconciled = await observations.claim(claimInput("obs-ambiguous", requestDigest, NOW));
 		expect(reconciled).toMatchObject({
 			status: "completed",
 			result: {
@@ -623,35 +930,101 @@ function createMemoryObservationStore(): MagicBlockObservationStore & {
 }
 
 function createMemoryLedgerFactory(
-	observations: MagicBlockObservationStore,
+	_observations: MagicBlockObservationStore,
 	options: { readonly throwAfterComplete?: boolean } = {},
 ) {
 	let sequence = 0;
-	return (binding: {
-		readonly observationId: string;
-		readonly requestDigest: string;
-		readonly claimAttempt: number;
-	}): MagicBlockAppendOnlyAuditLedger => ({
+	return (): MagicBlockAppendOnlyAuditLedger => ({
 		async appendAtomic(input) {
 			const event = input.materialize(`aud_test_${++sequence}`);
-			const result: MagicBlockDevnetObservationResultV1 = {
-				schemaVersion: MAGICBLOCK_OBSERVATION_RESULT_SCHEMA,
-				observationId: binding.observationId,
-				outcome: event.payload.outcome,
-				audit: {
-					auditEventId: event.payload.auditEventId,
-					attestationDigest: event.attestationDigest,
-				},
-			};
-			await observations.complete({
-				...binding,
-				result,
-				completedAt: NOW,
-			});
 			if (options.throwAfterComplete) throw new Error("indeterminate commit");
-			return result.audit;
+			return {
+				auditEventId: event.payload.auditEventId,
+				attestationDigest: event.attestationDigest,
+				previousLedgerDigest: "0".repeat(64),
+				ledgerDigest: sha256Hex("ledger", event.canonicalPayload),
+				canonicalPayload: event.canonicalPayload,
+			};
 		},
 	});
+}
+
+function confirmedOnchainRuntime(): {
+	readonly auditRecords: MagicBlockAuditRecordStore;
+	readonly onchainAudit: MagicBlockOnchainAuditSubmitter;
+} {
+	const records = new Map<string, MagicBlockAuditRecord>();
+	const auditRecords: MagicBlockAuditRecordStore = {
+		async save(record) {
+			records.set(record.details.auditEventId, record);
+		},
+		async reservePrepared({ record }) {
+			const existing = records.get(record.details.auditEventId);
+			if (existing) return existing;
+			records.set(record.details.auditEventId, record);
+			return record;
+		},
+		async findByAuditEventId(auditEventId) {
+			return records.get(auditEventId) ?? null;
+		},
+		async findByObservationId(observationId) {
+			return (
+				[...records.values()].find(
+					(record) => record.details.observationId === observationId,
+				) ?? null
+			);
+		},
+		async findBySignature(signature) {
+			return (
+				[...records.values()].find(
+					(record) =>
+						"signature" in record.registration &&
+						record.registration.signature === signature,
+				) ?? null
+			);
+		},
+	};
+	const proof = (details: MagicBlockAuditRecord["details"]) => {
+		const commitment = materializeMagicBlockAuditCommitment(details);
+		return {
+			status: "confirmed" as const,
+			cluster: "devnet" as const,
+			routerUrl: "https://devnet-router.magicblock.app/" as const,
+			signature: "2".repeat(64),
+			signer: "11111111111111111111111111111111",
+			slot: 123,
+			commitmentDigest: commitment.commitmentDigest,
+			memo: commitment.memo,
+			verifiedAt: NOW,
+		};
+	};
+	const onchainAudit: MagicBlockOnchainAuditSubmitter = {
+		async register(details, onPrepared) {
+			const commitment = materializeMagicBlockAuditCommitment(details);
+			const prepared = {
+				status: "retryable_failure" as const,
+				retryable: true as const,
+				code: "SUBMISSION_UNCONFIRMED" as const,
+				signature: "2".repeat(64),
+				commitmentDigest: commitment.commitmentDigest,
+				memo: commitment.memo,
+			};
+			await onPrepared?.(prepared);
+			return proof(details);
+		},
+		async verify({ signature }) {
+			const record = await auditRecords.findBySignature(signature);
+			if (!record) {
+				return {
+					status: "retryable_failure",
+					retryable: true,
+					code: "TRANSACTION_VERIFICATION_FAILED",
+				};
+			}
+			return proof(record.details);
+		},
+	};
+	return { auditRecords, onchainAudit };
 }
 
 function claimInput(
@@ -672,6 +1045,45 @@ function claimedAttempt(
 ): number {
 	if (claim.status !== "claimed") throw new Error("test expected claim");
 	return claim.claimAttempt;
+}
+
+function auditResult(
+	observationId: string,
+	audit: Awaited<ReturnType<MagicBlockAppendOnlyAuditLedger["appendAtomic"]>>,
+): MagicBlockDevnetObservationResultV1 {
+	const commitmentDigest = sha256Hex("commitment", observationId);
+	const previousLedgerDigest = audit.previousLedgerDigest ?? "0".repeat(64);
+	const ledgerDigest = audit.ledgerDigest ?? sha256Hex("ledger", observationId);
+	return {
+		schemaVersion: MAGICBLOCK_OBSERVATION_RESULT_SCHEMA,
+		observationId,
+		outcome: "review_required",
+		audit: {
+			auditEventId: audit.auditEventId,
+			attestationDigest: audit.attestationDigest,
+			resultDigest: sha256Hex("result", observationId),
+			previousLedgerDigest,
+			ledgerDigest,
+			registration: {
+				status: "confirmed",
+				cluster: "devnet",
+				routerUrl: "https://devnet-router.magicblock.app/",
+				signature: "2".repeat(64),
+				signer: "11111111111111111111111111111111",
+				slot: 123,
+				commitmentDigest,
+				memo: `compass:audit:v1:${canonicalJson({
+					a: audit.auditEventId,
+					c: commitmentDigest,
+					l: ledgerDigest,
+					o: "review",
+					p: previousLedgerDigest,
+					v: 1,
+				})}`,
+				verifiedAt: NOW,
+			},
+		},
+	};
 }
 
 function executor(db: PGlite): SqlExecutor {
@@ -702,7 +1114,7 @@ function appendInput(candidateDigestSeed: string) {
 				},
 				outcome: "review_required" as const,
 				rationaleCode: "DELEGATION_STATUS_CONFIRMED" as const,
-				registration: "not_requested" as const,
+				registration: "required" as const,
 			};
 			const canonicalPayload = canonicalJson(payload);
 			return {

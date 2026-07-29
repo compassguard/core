@@ -1,5 +1,10 @@
 # COM-86: Audit-Checkpoint Trust Proposal
 
+> Historical proposal, superseded for the current transaction-level devnet
+> commitment by `functional-spec.md` and `technical-spec.md`. Statements below
+> that exclude Solana submission or say `registration: not_requested` are not
+> operative requirements.
+
 ## Decision requested
 
 Only the **Board** may select, approve, reject, or activate a strategic baseline: trust-anchor form and initial authority; checkpoint authority, custody boundary, and rotation owner; and registry ownership, revocation resolver, privacy, and permission boundary. The Chief of Staff may approve routine internal planning only and has no strategic-selection, approval, or activation authority. This decision does not govern the already-authorized local evidence-and-audit slice. It authorizes no checkpoint/trust-anchor/registry runtime code, authority material, or external action; those remain subject to a separate security-reviewed proposal.

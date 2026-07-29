@@ -1,5 +1,13 @@
 # Compass
 
+MagicBlock devnet audit registration is optional and disabled by default.
+Eligible Compass results are written to the private canonical SHA-256 ledger,
+then committed with a privacy-safe digest in a signed Solana Memo transaction
+through the official Magic Router devnet. Configure only a dedicated devnet
+audit signer; never reuse a user or mainnet key. Confirmed proofs can be queried
+through the authenticated audit route by `auditId` or transaction `signature`.
+Local tests use injected RPC and do not constitute live devnet proof.
+
 Compass is the **execution firewall for AI agents on Solana**.
 
 It sits between AI agents, MCP tools, wallets, and on-chain protocols. Before any sensitive crypto action is signed or executed, Compass validates intent, classifies the tool call, applies policy, simulates or decodes the transaction when needed, asks for human approval when required, and records the decision in an audit trail.

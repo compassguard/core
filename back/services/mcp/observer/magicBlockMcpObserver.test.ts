@@ -7,6 +7,7 @@ import { createMagicBlockMcpObserver } from "./magicBlockMcpObserver";
 import { readMagicBlockMcpObserverEnvConfig } from "./magicBlockMcpObserverConfig";
 import {
 	MAGICBLOCK_MCP_AUDIT_MAX_REQUEST_BYTES,
+	MAGICBLOCK_MCP_AUDIT_MAX_RESPONSE_BYTES,
 	type MagicBlockMcpAuditTransport,
 	type MagicBlockMcpObservation,
 } from "./magicBlockMcpObserverContracts";
@@ -95,7 +96,7 @@ describe("MagicBlock MCP observer configuration", () => {
 			{
 				COMPASS_MAGICBLOCK_MCP_AUDIT_URL: AUDIT_URL,
 				COMPASS_MAGICBLOCK_MCP_OBSERVER_API_KEY: API_KEY,
-				COMPASS_MAGICBLOCK_MCP_OBSERVER_TIMEOUT_MS: "1001",
+				COMPASS_MAGICBLOCK_MCP_OBSERVER_TIMEOUT_MS: "45001",
 			},
 		],
 		[
@@ -133,18 +134,16 @@ describe("MagicBlock MCP observer configuration", () => {
 			enabled: true,
 			url: AUDIT_URL,
 			apiKey: API_KEY,
-			timeoutMs: 500,
+			timeoutMs: 20_000,
 		});
 	});
 });
 
 describe("MagicBlock one-way hosted audit client", () => {
-	it("sends one bounded authenticated POST and ignores its response body", async () => {
+	it("sends one bounded authenticated POST and accepts only a confirmed audit", async () => {
 		const transport: MagicBlockMcpAuditTransport = vi.fn(async () => ({
-			status: 202,
-			get body() {
-				throw new Error("response body must not be read");
-			},
+			status: 200,
+			json: async () => confirmedAuditResponse(),
 		}));
 		const client = createMagicBlockHostedAuditClient({
 			url: AUDIT_URL,
@@ -154,8 +153,9 @@ describe("MagicBlock one-way hosted audit client", () => {
 		});
 
 		await expect(client.observe(validObservation())).resolves.toEqual({
-			outcome: "delivered",
-			status: 202,
+			outcome: "confirmed",
+			status: 200,
+			audit: confirmedAuditResponse(),
 		});
 		expect(transport).toHaveBeenCalledTimes(1);
 		const [url, init] = vi.mocked(transport).mock.calls[0]!;
@@ -185,9 +185,48 @@ describe("MagicBlock one-way hosted audit client", () => {
 
 		const startedAt = Date.now();
 		await expect(client.observe(validObservation())).resolves.toEqual({
-			outcome: "timeout",
+			outcome: "retryable_failure",
+			retryable: true,
+			code: "AUDIT_TIMEOUT",
 		});
 		expect(Date.now() - startedAt).toBeLessThan(250);
+	});
+
+	it("keeps the deadline active while the response body is pending", async () => {
+		const client = createMagicBlockHostedAuditClient({
+			url: AUDIT_URL,
+			apiKey: API_KEY,
+			timeoutMs: 10,
+			transport: async () => ({
+				status: 200,
+				json: () => new Promise(() => undefined),
+			}),
+		});
+		await expect(client.observe(validObservation())).resolves.toEqual({
+			outcome: "retryable_failure",
+			retryable: true,
+			code: "AUDIT_TIMEOUT",
+		});
+	});
+
+	it("rejects an oversized hosted response", async () => {
+		const client = createMagicBlockHostedAuditClient({
+			url: AUDIT_URL,
+			apiKey: API_KEY,
+			timeoutMs: 100,
+			transport: async () => ({
+				status: 200,
+				json: async () => ({
+					padding: "x".repeat(MAGICBLOCK_MCP_AUDIT_MAX_RESPONSE_BYTES),
+				}),
+			}),
+		});
+		await expect(client.observe(validObservation())).resolves.toEqual({
+			outcome: "retryable_failure",
+			retryable: true,
+			code: "AUDIT_UNAVAILABLE",
+			status: 200,
+		});
 	});
 
 	it("rejects an oversized payload before transport", async () => {
@@ -209,7 +248,9 @@ describe("MagicBlock one-way hosted audit client", () => {
 		};
 
 		await expect(client.observe(oversized)).resolves.toEqual({
-			outcome: "transport_error",
+			outcome: "retryable_failure",
+			retryable: true,
+			code: "AUDIT_UNAVAILABLE",
 		});
 		expect(transport).not.toHaveBeenCalled();
 	});
@@ -239,7 +280,24 @@ describe("MagicBlock one-way hosted audit client", () => {
 			},
 		});
 		await expect(client.observe(validObservation())).resolves.toEqual({
-			outcome: "transport_error",
+			outcome: "retryable_failure",
+			retryable: true,
+			code: "AUDIT_UNAVAILABLE",
+		});
+	});
+
+	it("does not treat an empty 2xx response as an audit success", async () => {
+		const client = createMagicBlockHostedAuditClient({
+			url: AUDIT_URL,
+			apiKey: API_KEY,
+			timeoutMs: 100,
+			transport: async () => ({ status: 204 }),
+		});
+		await expect(client.observe(validObservation())).resolves.toEqual({
+			outcome: "retryable_failure",
+			retryable: true,
+			code: "AUDIT_UNAVAILABLE",
+			status: 204,
 		});
 	});
 });
@@ -247,17 +305,58 @@ describe("MagicBlock one-way hosted audit client", () => {
 describe("MagicBlock MCP observer", () => {
 	it("forwards only the already detached observation contract", async () => {
 		const auditClient = {
-			observe: vi.fn(async () => ({ outcome: "delivered" as const, status: 204 })),
+			observe: vi.fn(async () => ({
+				outcome: "retryable_failure" as const,
+				retryable: true as const,
+				code: "AUDIT_UNAVAILABLE" as const,
+			})),
 		};
 		const observer = createMagicBlockMcpObserver({ auditClient });
 		const observation = Object.freeze(validObservation());
 
 		await expect(
 			observer(observation),
-		).resolves.toEqual({ outcome: "delivered", status: 204 });
+		).resolves.toEqual({
+			outcome: "retryable_failure",
+			retryable: true,
+			code: "AUDIT_UNAVAILABLE",
+		});
 		expect(auditClient.observe).toHaveBeenCalledWith(observation);
 	});
 });
+
+function confirmedAuditResponse() {
+	return {
+		schemaVersion: "compass.magicblock-devnet-observation-result/v1",
+		observationId: "obs-mcp-1",
+		outcome: "review_required",
+		audit: {
+			auditEventId: "audit-mcp-1",
+			attestationDigest: "a".repeat(64),
+			resultDigest: "b".repeat(64),
+			previousLedgerDigest: "c".repeat(64),
+			ledgerDigest: "d".repeat(64),
+			registration: {
+				status: "confirmed",
+				cluster: "devnet",
+				routerUrl: "https://devnet-router.magicblock.app/",
+				signature: "2".repeat(64),
+				signer: "11111111111111111111111111111111",
+				slot: 123,
+				commitmentDigest: "e".repeat(64),
+				memo: `compass:audit:v1:${JSON.stringify({
+					a: "audit-mcp-1",
+					c: "e".repeat(64),
+					l: "d".repeat(64),
+					o: "review",
+					p: "c".repeat(64),
+					v: 1,
+				})}`,
+				verifiedAt: "2026-07-29T00:00:00.000Z",
+			},
+		},
+	};
+}
 
 function validObservation(): MagicBlockMcpObservation {
 	return {

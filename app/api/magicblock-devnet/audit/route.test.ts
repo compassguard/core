@@ -24,11 +24,11 @@ describe("POST /api/magicblock-devnet/audit", () => {
 		});
 	});
 
-	it("declares headroom above the eight-second runtime budget and twelve-second stale lease", async () => {
+	it("declares headroom for provider checks and base-layer confirmation", async () => {
 		vi.stubEnv("COMPASS_MAGICBLOCK_AUDIT_INGRESS_ENABLED", "false");
 		const { maxDuration } = await import("./route");
 
-		expect(maxDuration).toBe(15);
+		expect(maxDuration).toBe(60);
 	});
 
 	it("fails closed when enabled without the dedicated key and shared database", async () => {

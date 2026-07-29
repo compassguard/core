@@ -8,9 +8,11 @@ import {
 	MAGICBLOCK_OBSERVATION_SCHEMA,
 } from "../../magicBlockDevnetObservationContracts";
 import type { MagicBlockPost } from "../../magicBlockDevnetPreflightTypes";
+import { materializeMagicBlockAuditCommitment } from "../../magicBlockOnchainAudit";
 import { createMagicBlockAuditIngress } from "../../../../hosted/magicblock/magicBlockAuditIngress";
 import { createPgMagicBlockAppendOnlyAuditLedger } from "../../../../hosted/magicblock/magicBlockAuditLedgerPg";
 import { createPgMagicBlockObservationStore } from "../../../../hosted/magicblock/magicBlockObservationStorePg";
+import { createPgMagicBlockAuditRecordStore } from "../../../../hosted/magicblock/magicBlockAuditRecordStorePg";
 import type { SqlExecutor } from "../../../../hosted/verdict/verdictStorePg";
 import type { DownstreamMcpClient } from "../proxy/mcpProxyContracts";
 import { createProxyMcpServer } from "../server/mcpServer";
@@ -27,11 +29,54 @@ describe("MagicBlock MCP observer local E2E", () => {
 		const sql = executor(db);
 		const observations = createPgMagicBlockObservationStore({ sql });
 		const provider = boundDelegationPost();
+		let confirmedProof:
+			| {
+					status: "confirmed";
+					cluster: "devnet";
+					routerUrl: "https://devnet-router.magicblock.app/";
+					signature: string;
+					signer: string;
+					slot: number;
+					commitmentDigest: string;
+					memo: string;
+					verifiedAt: string;
+			  }
+			| undefined;
+		const verify = vi.fn(async () => {
+			if (!confirmedProof) throw new Error("proof unavailable");
+			return confirmedProof;
+		});
 		const ingress = createMagicBlockAuditIngress({
 			enabled: true,
 			apiKey: "observer-secret",
 			runtime: {
 				observations,
+				auditRecords: createPgMagicBlockAuditRecordStore({ sql }),
+				onchainAudit: {
+					async register(details, onPrepared) {
+						const commitment = materializeMagicBlockAuditCommitment(details);
+						await onPrepared?.({
+							status: "retryable_failure",
+							retryable: true,
+							code: "SUBMISSION_UNCONFIRMED",
+							signature: "3".repeat(64),
+							commitmentDigest: commitment.commitmentDigest,
+							memo: commitment.memo,
+						});
+						return (confirmedProof = {
+							status: "confirmed",
+							cluster: "devnet",
+							routerUrl: "https://devnet-router.magicblock.app/",
+							signature: "3".repeat(64),
+							signer: "11111111111111111111111111111111",
+							slot: 99,
+							commitmentDigest: commitment.commitmentDigest,
+							memo: commitment.memo,
+							verifiedAt: NOW,
+						});
+					},
+					verify,
+				},
 				createLedger: (binding) =>
 					createPgMagicBlockAppendOnlyAuditLedger({
 						sql,
@@ -44,16 +89,19 @@ describe("MagicBlock MCP observer local E2E", () => {
 				createOpaqueId: (kind) => `${kind}-mcp-e2e`,
 			},
 		});
-		const transport: MagicBlockMcpAuditTransport = vi.fn(async (url, init) =>
-			ingress.handle(
+		let deliveredBody: unknown;
+		const transport: MagicBlockMcpAuditTransport = vi.fn(async (url, init) => {
+			const response = await ingress.handle(
 				new Request(url, {
 					method: init.method,
 					headers: init.headers,
 					body: init.body,
 					signal: init.signal,
 				}),
-			),
-		);
+			);
+			deliveredBody = await response.clone().json();
+			return response;
+		});
 		const auditClient = createMagicBlockHostedAuditClient({
 			url: AUDIT_URL,
 			apiKey: "observer-secret",
@@ -67,8 +115,22 @@ describe("MagicBlock MCP observer local E2E", () => {
 			downstream: successfulDownstream,
 			observer: createMagicBlockMcpObserver({ auditClient }),
 		});
+		expect(deliveredBody).toMatchObject({
+			outcome: "review_required",
+			audit: { registration: { status: "confirmed" } },
+		});
 
-		expect(returned).toStrictEqual(downstreamResult("obs-mcp-e2e"));
+		expect(returned.structuredContent).toMatchObject({
+			observationId: "obs-mcp-e2e",
+			compassAudit: {
+				outcome: "confirmed",
+				audit: {
+					audit: {
+						registration: { status: "confirmed", slot: 99 },
+					},
+				},
+			},
+		});
 		expect(successfulDownstream.listTools).toHaveBeenCalledTimes(1);
 		expect(successfulDownstream.callTool).toHaveBeenCalledWith({
 			toolName: "read_observation",
@@ -76,6 +138,23 @@ describe("MagicBlock MCP observer local E2E", () => {
 		});
 		expect(transport).toHaveBeenCalledTimes(1);
 		expect(provider).toHaveBeenCalledTimes(2);
+		const byAuditId = await ingress.handle(
+			new Request(`${AUDIT_URL}?auditId=aud_mcp_e2e`, {
+				headers: { Authorization: "Bearer observer-secret" },
+			}),
+		);
+		expect(byAuditId.status).toBe(200);
+		expect(await byAuditId.json()).toMatchObject({
+			details: { auditEventId: "aud_mcp_e2e", observationId: "obs-mcp-e2e" },
+			registration: { status: "confirmed", signature: "3".repeat(64) },
+		});
+		const bySignature = await ingress.handle(
+			new Request(`${AUDIT_URL}?signature=${"3".repeat(64)}`, {
+				headers: { Authorization: "Bearer observer-secret" },
+			}),
+		);
+		expect(bySignature.status).toBe(200);
+		expect(verify).toHaveBeenCalledTimes(2);
 
 		const wrongAuthClient = createMagicBlockHostedAuditClient({
 			url: AUDIT_URL,
@@ -93,9 +172,14 @@ describe("MagicBlock MCP observer local E2E", () => {
 			}),
 		});
 
-		expect(wrongAuthReturned).toStrictEqual(
-			downstreamResult("obs-mcp-wrong-auth"),
-		);
+		expect(wrongAuthReturned.structuredContent).toMatchObject({
+			observationId: "obs-mcp-wrong-auth",
+			compassAudit: {
+				outcome: "retryable_failure",
+				retryable: true,
+				code: "AUDIT_REJECTED",
+			},
+		});
 		expect(transport).toHaveBeenCalledTimes(2);
 		expect(provider).toHaveBeenCalledTimes(2);
 		await expect(

@@ -1,143 +1,117 @@
-# MagicBlock Devnet Audit-Attestation Technical Spec
+# MagicBlock Devnet On-Chain Audit Technical Spec
 
-## Architecture boundary
-
-This local internal slice is implemented, disabled by default, and audit-only. It preserves Compass signing control by containing no signer, wallet, key, transaction, submission client, executable instruction, Solana RPC client, or MagicBlock SDK. MagicBlock is an injected external devnet evidence source, never a policy or execution authority.
+## Architecture
 
 ```text
-allowed downstream MCP CallToolResult
-  -> closed structuredContent-only extractor
-  -> bounded separately authenticated hosted audit POST (awaited, fail-open)
-  -> dedicated authenticated observation ingress (disabled by default)
-
-dedicated authenticated observation ingress (disabled by default)
-  -> closed unsigned v0/no-ALT decoder
-  -> request-scoped immutable candidate source + plan store
-  -> controlled producer
-  -> literal bounded devnet HTTPS transport + evidence adapter
-  -> redacted audit writer
-  -> atomic Postgres append-only hash-chained ledger
-  -> closed idempotent observation result
-
-future immutable checkpoint / trust anchor / registry (blocked; no runtime edge)
+eligible MCP result
+  -> authenticated hosted audit ingress
+  -> trusted v0 transaction decode
+  -> bounded Magic Router getDelegationStatus evidence
+  -> canonical Postgres audit event + SHA-256 ledger link
+  -> canonical private commitment details
+  -> signed Solana Memo transaction via Magic Router devnet
+  -> independent confirmation and transaction read via Solana devnet RPC
+  -> completed observation + retrievable confirmed proof
 ```
 
-No arrow reaches approval, signing, submission, delegation, permission changes, or execution.
+The implementation uses the official Magic Router devnet endpoint
+`https://devnet-router.magicblock.app/` for `getLatestBlockhash` and
+`sendTransaction`. Verification uses only the compile-time literal
+`https://api.devnet.solana.com/`. Redirects, alternate clusters, and endpoint
+configuration are rejected.
 
-## MCP observer composition
+References:
 
-`createProxyMcpServerHandlers().callTool` remains the real observation boundary. It first awaits `proxyCallTool`, maps the proxy result exactly as before, and extracts only when the proxy outcome is `allow`, `data` is the actual downstream object, and `data.isError !== true`. Missing downstream data, deny, require-approval, synthesized MCP errors, and downstream error results are never observed. Extraction creates a detached frozen closed observation before the sink is called; the sink contract cannot receive the original `CallToolResult` or its `structuredContent`. `Promise.resolve().then(...)` normalizes synchronous throws, returned diagnostics, thenables, and asynchronous rejection, and the wrapper catches every sink outcome fail-open before returning the already-mapped object. Mapping an allowed downstream result returns `result.data` itself, so structural equality, deep state, and reference identity are preserved.
+- Magic Router: <https://docs.magicblock.gg/pages/ephemeral-rollups-ers/introduction/magic-router>
+- Solana Memo transaction: <https://solana.com/developers/cookbook/transactions/add-memo>
+- Solana `getTransaction`: <https://solana.com/docs/rpc/http/gettransaction>
 
-The observer contracts, extractor, config, hosted client, and behavior live under `back/services/mcp/observer/`; contracts remain separate from behavior. The extractor is passed only `structuredContent`. It performs an exact root-key check, exact schema check, the same opaque-ID syntax as ingress, canonical base64 syntax including zero unused padding bits, and a decoded-length bound of 1–1232 bytes. It constructs and freezes the closed observation request and does not parse `content`, text, nested objects, or arbitrary result members.
+## Contracts
 
-The hosted client has no MagicBlock feature-root, policy, provider, evaluation, approval, execution, signer, sender, or delegation dependency; its dedicated contract repeats only the closed wire shape and literal schema version. It validates one canonical HTTPS DNS endpoint whose exact path is `/api/magicblock-devnet/audit`, rejects redirects and URL ambiguity, limits timeout to 1–1000ms, bounds the UTF-8 JSON request to 16384 bytes before transport, and supplies only the dedicated bearer plus JSON content type. A timeout race completes even if an injected transport ignores abort. Rejections are attached to the raced promise, so late transport failures cannot become unhandled rejections. Only the HTTP status becomes a delivery diagnostic; the response body is never read and the diagnostic is ignored by `callTool`.
+Shared on-chain contracts live in
+`back/services/magicBlockOnchainAuditContracts.ts`; signing, submission, and
+verification behavior lives separately in
+`back/services/magicBlockOnchainAudit.ts`.
 
-Runtime activation requires all of:
+The canonical private schema is
+`compass.magicblock-audit-commitment/v1`. Its digest is:
 
-- `COMPASS_MAGICBLOCK_MCP_OBSERVER_ENABLED=true`
-- canonical `COMPASS_MAGICBLOCK_MCP_AUDIT_URL`
-- non-empty `COMPASS_MAGICBLOCK_MCP_OBSERVER_API_KEY`
-- an absent timeout (safe 500ms default) or valid `COMPASS_MAGICBLOCK_MCP_OBSERVER_TIMEOUT_MS` from 1 through 1000
+```text
+SHA-256(
+  UTF8("compass.magicblock-audit-commitment/v1\0")
+  || UTF8(canonicalJson(privateCommitmentDetails))
+)
+```
 
-Missing or invalid configuration yields `{ enabled: false }`. Ingress credentials and general hosted-evaluation credentials are never fallback inputs. Rollout and rollback order are canonical in `rollout-runbook.md`.
+The on-chain Memo is `compass:audit:v1:` followed by compact canonical JSON:
+`{a,c,l,o,p,v}` for audit ID, commitment digest, current ledger digest,
+outcome, previous ledger digest, and version. Canonical private details bind
+the observation, transaction, request, final result, attestation, ledger chain,
+cluster, and outcome without disclosing those raw payloads.
 
-## Runtime composition and persistence
+## Persistence
 
-`app/api/magicblock-devnet/audit/route.ts` is the sole entrypoint. It lazily resolves a dedicated ingress from environment and returns 404 unless `COMPASS_MAGICBLOCK_AUDIT_INGRESS_ENABLED` is exactly `true`. Enabled composition requires its dedicated API key and the same `COMPASS_VERDICT_DB_URL` used by hosted verdict persistence. Missing configuration returns unavailable and creates neither a transport call nor an in-memory durability fallback.
+`magicblock_devnet_audit_ledger` remains the exact private event source and
+hash chain. Ledger append no longer marks an observation completed.
 
-The request body is streaming-bounded to 16384 bytes, parsed with duplicate-member rejection, and closed to `schemaVersion`, `observationId`, and `unsignedTransactionBase64`. The canonical request digest is domain-separated. `magicblock_devnet_observations` uses `observation_id` as its primary key and binds it permanently to that digest. A first request claims `pending`; an exact completed replay returns the stored closed result; a different digest fails; an active pending replay does not dispatch; and a pending claim whose `claimed_at` is at least twelve seconds old is recovered by one conditional Postgres upsert. The upsert increments and returns positive integer `claim_attempts`. That returned `claimAttempt` is an immutable lease-fencing value threaded through ingress and required by both the success-ledger predicate and the `unavailable` completion predicate. Once a stale retry increments it, the prior claimant can perform neither finalization.
+`magicblock_devnet_onchain_audits` stores:
 
-The trusted decoder parses Solana short-vector lengths canonically and accepts only version prefix `0x80`, all-zero signatures matching the required-signature count, no more than eight static accounts, valid account/instruction indexes, at least one instruction, and zero address-table lookups. It does not import a Solana SDK and retains no recent blockhash, signature, instruction data, or raw transaction after deriving the immutable candidate. The adapter observes at most four accounts concurrently. Each literal transport call is bounded to two seconds and the remaining part of the ingress's eight-second deadline. The Next entrypoint declares 15 seconds.
+- observation and audit IDs;
+- canonical private details;
+- commitment digest and exact Memo;
+- registration status, code, signature, signer, slot, and verification time.
 
-`magicblock_devnet_audit_tip` contains exactly one row. Each append is one data-modifying-CTE statement after idempotent schema creation: it locks the pending observation only when the request digest and `claimAttempt` match, updates the singleton tip from its current committed value, stores the old tip as `previous_event_digest`, computes `SHA-256(domain || 0x00 || priorDigestOrZero || 0x00 || auditEventId || 0x00 || attestationDigest)`, inserts the next sequenced ledger event, and completes the observation from that inserted row. PostgreSQL row-update conflict handling reapplies the tip update to the latest committed singleton row after waiting, preventing two concurrent statements from using one prior digest. The final scalar transition guard requires counts of exactly one for the locked observation, advanced tip, inserted event, and completed observation; otherwise it raises an in-statement division error so autocommit rolls back every data-modifying CTE. A missing singleton tip therefore cannot leave a completed observation, and restoration permits a safe retry with the still-current attempt. A response lost after commit is reconciled from the completed observation. This is compatible with `SqlExecutor` because the entire state transition is one autocommit statement; it does not rely on a multi-call transaction or session advisory lock. The ledger is tamper-evident only, not an independently verifiable checkpoint.
+Uniqueness constraints prevent one observation, audit ID, or signature from
+being bound to multiple records. Confirmed state is monotonic. The prepared
+signed signature is stored before `sendTransaction`, so a response loss is
+reconciled by verification rather than duplicate submission.
 
-## Evidence contract
+`magicblock_devnet_observations` transitions to completed only with a confirmed
+registration. The cached completed result is therefore safe to return as
+idempotent success.
 
-| Control | Requirement |
-|---|---|
-| Endpoint field | `evidence.routerEndpoint` must parse and normalize exactly to `https://devnet-router.magicblock.app/`: `https`, host `devnet-router.magicblock.app`, effective port `443`, path `/`, and no credentials, query, fragment, IP literal, alias, or redirect. No configurable URL. |
-| Method | `getDelegationStatus` only, one account per request using the official `params: [base58Account]` shape and an integer JSON-RPC ID. |
-| Response | The transport receives `maxResponseBytes: 16384` and enforces it while streaming before buffering; the adapter rechecks UTF-8 byte length and applies fixed nesting/token limits before duplicate-safe parsing. Accept only a closed JSON-RPC 2.0 success with the matching integer ID and required boolean `result.isDelegated`. The only optional result members are documented `fqdn` and `{ authority, owner, delegationSlot, lamports }` delegation metadata; they are validated but never followed or used as authority. |
-| Input | A trusted, immutable, decoded Compass candidate only; reject raw transactions and caller-supplied accounts, plans, flags, or digests. Before provider parsing, recompute every account digest and security flag from immutable candidate data. |
-| Output | The non-custodial Compass Audit Attestation Authority writes a redacted `MagicBlockDevnetAuditAttestationV1` to an injected append-only internal ledger. It emits no checkpoint or registry write; `registration` remains `"not_requested"`. |
-| Failure | Return `unavailable`, emit no usable recommendation, and do not create an attestation. |
+## Signing and verification
 
-## Controlled producer and execution isolation
+The audit signer is loaded from exactly one of:
 
-`TrustedDecodedActionPlan` is produced only by a controlled Compass service. Its public command accepts only a closed opaque internal-candidate reference and resolves it through an injected `InternalMagicBlockCandidateSource`; callers cannot pass candidate data, accounts, flags, or digests. The producer clones and validates the resolved immutable candidate, then atomically persists `planId`, producer-assigned opaque `candidateId`, `candidateDigest`, `decodedPlanDigest`, `cluster: "devnet"`, account flags, and allowlisted `accountDigests`; it exposes only an opaque plan reference to the adapter. Each immutable account is canonically projected as `{ accountIndex, publicKey, isSigner, isWritable, isProgram, isPayer }`: index is zero-based no-leading-zero ASCII decimal, public key is canonical base58, and flags are ASCII `true`/`false`. Serialize the projection as RFC 8785 JCS UTF-8 and compute `accountDigest = SHA-256(UTF8("compass.magicblock-devnet-preflight/v1/account\\0") || JCS(projection))` as lowercase hex. `candidateDigest` is SHA-256 over JCS UTF-8 immutable candidate data containing the ordered exact account projections. At preflight time, before provider parsing, resolve the reference and recompute the candidate and plan digests plus every account digest and every `isSigner`, `isWritable`, `isProgram`, and `isPayer` flag from the same immutable candidate and decoded plan. Any absence, count/order mismatch, caller-supplied transaction/plan/account/digest/flag, missing binding, or mismatch fails closed as `unavailable`.
+- `COMPASS_MAGICBLOCK_DEVNET_AUDIT_SIGNER_SECRET_KEY`: base58 secret key or
+  JSON array containing the 64 key bytes.
+- `COMPASS_MAGICBLOCK_DEVNET_AUDIT_SIGNER_SECRET_KEY_FILE`: absolute path to a
+  file containing either format.
 
-For each account, the provider response is usable only when the result has required boolean `isDelegated` and no undocumented keys. Optional `fqdn` must be a bounded non-empty control-free string. Optional `delegationRecord` must contain exactly string base58 `authority`, string base58 `owner`, non-negative safe-integer `delegationSlot`, and non-negative safe-integer `lamports`. Classification derives only from `isDelegated`; optional metadata cannot override it. Each collect creates a unique evaluation ID using default `randomUUID`; an optional injected factory is trusted internal composition and must return a valid opaque identifier. A domain-separated SHA-256 over that ID, canonical `observedAt`, trusted candidate identity/digest, and current account digest is truncated into a positive JSON-safe integer request ID that the response must echo. The candidate bindings stay internal: the wire request contains only the account string, and no provider echo is treated as Compass evidence. Reject oversized, over-complex, duplicate, extra, absent, malformed, replayed-ID, or inconsistent results. The prior object parameter and Compass-specific `magicblock.delegation-record/v1` envelope are explicit regression failures.
+`COMPASS_MAGICBLOCK_DEVNET_AUDIT_SIGNER_PUBLIC_KEY` optionally pins the expected
+public key. Invalid, oversized, unreadable, relative-path, or mismatched inputs
+disable the signer. Secrets are never logged or returned.
 
-The existing `simulate_transaction` tool classification currently returns `ALLOW`; it is not an authorization primitive for MagicBlock. The preflight adapter is audit-only and may not be registered in, imported by, or return values to the tool dispatcher, policy decision path, confirmation flow, signer, sender, submitter, simulator, delegation/permission handler, transaction executor, commit/undelegation handler, registry writer, or execution gateway. The TypeScript-AST closure script uses all ten core runtime modules as roots, permits `fetch` only in `magicBlockDevnetHttpsTransport` and `node:buffer` only in `magicBlockDevnetTransactionDecoder`, and validates an exact per-file direct-edge graph for all seven observer/server modules. Each observer/server role also has an exact external-specifier set: the seam may import only the MCP SDK types module, while the server may import only its enumerated MCP SDK modules plus `node:url`, `node:os`, and `node:crypto`.
+Submission builds one legacy Solana transaction with the audit authority as fee
+payer and required Memo signer. Magic Router performs preflight and submission.
+Independent verification calls `getSignatureStatuses` and `getTransaction`,
+decodes the compiled Memo instruction, validates the Memo program ID and signer
+index, then compares the exact expected Memo and commitment digest.
 
-The observer gate parses static imports and re-exports, TypeScript import types, and literal dynamic imports; any dynamic import in these seven files is rejected. It also rejects `.cjs`/`.cts`, import-equals, `require`, `createRequire`, process runtime module loaders, parse errors, unresolved imports, local imports outside `app`, `back`, `hosted`, and `shared`, missing required external specifiers, and unexpected bare packages or Node builtins. Runtime capability access is not a name-level allowlist. It is an exact-use policy with required counts: config has one `process.env` parameter default in `readMagicBlockMcpObserverEnvConfig`; the hosted client has one direct `globalThis.fetch(url, init)` call in `createMagicBlockHostedAuditClient`; the extractor has one direct `Object.freeze({...})`; and the server has one zero-argument `process.cwd()` in `resolveLocalInstallationId`, one top-level callback `process.exit(1)`, the two distinct direct `process.argv[1]` positions in `isDirectExecution`, and one `process.env` object spread in `startClient`. Every other occurrence of `process`, `fetch`, `globalThis`, `global`, `self`, `window`, `Reflect`, `Proxy`, `Object`, `eval`, `Function`, `WebSocket`, `XMLHttpRequest`, or `EventSource` fails closed.
+## HTTP behavior
 
-Computed member access has an independent exact-use table. It permits only `value[value.length - padding - 1]` in `isBoundedCanonicalBase64`, the four named `env[...]` configuration reads, and the two context-distinct `process.argv[1]` reads; each must occur once. Contracts, hosted client, audit observer, and server seam permit zero computed member accesses. Every unrecognized `obj[...]` fails closed before global-use validation, including static, concatenated, nested-array/join, aliased, or otherwise apparently benign expressions. `Object.getPrototypeOf`, property descriptors, `Reflect`, `Proxy`, direct or computed `.constructor`/`__proto__`, Function-constructor derivation, computed global lookup, aliasing, destructuring, indirect calls, and `process.getBuiltinModule`, `binding`, or `dlopen` are prohibited rather than allowlisted.
+The route is absent unless `COMPASS_MAGICBLOCK_AUDIT_INGRESS_ENABLED=true` and
+uses a dedicated bearer. `POST` returns `200` only after confirmed on-chain
+verification; retryable registration returns `503` with the stable audit
+metadata. `GET ?auditId=...` or `GET ?signature=...` refreshes verification and
+uses the same success rule.
 
-The same seven files currently contain zero `BindingElement` nodes, zero object/array destructuring assignments, and zero object/array destructuring `for…in/of` targets, so the exact policy permits none. It rejects source-property extraction through aliased or shorthand bindings, nested object/array patterns, destructured parameters, string-literal or computed property names, initializer defaults, rest patterns, assignment expressions, and loop targets. Explicit regressions cover `constructor` and `__proto__` in these forms. This verifier is a fail-closed static boundary for the enumerated dependency, global-use, computed-member, reflection, and binding AST forms in these seven modules; it is not a general JavaScript evaluator, data-flow proof, or runtime sandbox.
+The MCP client awaits the hosted result with a 20-second default and 45-second
+maximum. It accepts only a closed confirmed proof. All other outcomes are
+attached to the Compass result as `retryable_failure`.
 
-Only the extractor may directly import the Wave 14A observation contract, canonical helper, and observer contract; every other observer module is prohibited from direct or transitive feature-root reachability. The real MCP server may reach the feature only through that exact extractor edge and may compose only its enumerated dispatcher/server/observer dependencies. The verifier also prohibits reverse feature/protected-boundary imports into observer implementation, rejects nonliteral dynamic imports throughout every scanned source root, traverses the full local dependency closure from every protected boundary, and rejects bidirectional reachability, unauthorized sibling bridges, extra/missing observer edges, and unlisted consumers. Bare packages in unrelated non-feature code remain permitted.
+## Live devnet smoke
 
-The closure roots are fixed to `back/services/magicBlockDevnetPreflightTypes`, `magicBlockDevnetPreflightCanonical`, `magicBlockDevnetObservationContracts`, `magicBlockDevnetPreflightProducer`, `magicBlockDevnetPreflightAdapter`, `magicBlockDevnetPreflightAuditWriter`, `magicBlockDevnetPreflightIntegration`, `magicBlockDevnetTransactionDecoder`, `magicBlockDevnetRequestScope`, and `magicBlockDevnetHttpsTransport` (with a supported source extension).
+Prerequisites are a dedicated audit keypair funded with devnet SOL and the
+three signer variables above. No user/mainnet key may be used. Run:
 
-## Threat boundaries
+```sh
+npm run smoke:magicblock-devnet-onchain
+```
 
-The six concrete scenarios, fail-closed mitigations, required evidence, and owners are in `docs/magicblock-devnet-preflight/audit-checkpoint-trust-proposal.md` § **Threat model: six fail-closed scenarios**. This section is canonical for the technical controls: a substituted candidate is rejected by trusted-plan recomputation; a misconfigured endpoint, redirect, or any Solana RPC read/write is prohibited and fails closed; deceptive provider evidence is `unavailable`; forged, stale, replayed, or substituted checkpoints fail anchored verification; dependency closure rejects evidence-to-execution reachability; and the attestation has no approval or execution field. The audit producer is not a signer, wallet, key holder, custodian, Solana RPC client, or registry writer; its only authority is appending the internal audit event.
-
-## Canonical attestation contract
-
-Persisted `rationaleCode` is closed to `DELEGATION_STATUS_CONFIRMED` and `DELEGATION_STATUS_INCOMPATIBLE`; `unavailable` never creates an attestation. Serialize the complete allowlisted payload, including `auditEventId`, with RFC 8785 JCS and UTF-8; do not serialize a derived digest. Compute `SHA-256(UTF8("compass.magicblock-devnet-attestation/v1\0") || JCS(payload))`, rendered as lowercase hexadecimal. Reject raw account values, RPC request/response bodies, transaction material, credentials, provider errors, approval/execution state, unknown fields, or unknown rationale codes before ledger persistence.
-
-The structured writer command accepts exactly the resolved trusted-plan record and validated official delegation-status evidence. It independently revalidates each status and its classification, derives the only consistent outcome/rationale, and does not permit callers to choose them or request an `unavailable` audit. Before the first ledger await, it recomputes bindings and creates a deep-frozen private snapshot of all values used by `materialize`, preventing caller mutation between validation and append. It performs one atomic append-only ledger write and returns only `{ auditEventId, attestationDigest }` after durability succeeds. Any rejection or write failure yields an integration-level `unavailable` with no record or recommendation.
-
-## Future checkpoint provenance contract (blocked)
-
-Hash-linked ledger events are tamper-evident but do not independently prove provenance. A write-once checkpoint record has exactly one accepted form: `compass.audit-checkpoint/v1`, a Merkle root over an ordered inclusive `firstAuditEventId`–`lastAuditEventId` range. Chain-tip forms are unsupported and fail closed. The range is contiguous in ascending immutable ledger order and includes both endpoints. Its leaves, in that order, are `SHA-256(UTF8("compass.audit-checkpoint/v1/leaf\\0") || UTF8(auditEventId) || 0x00 || bytes.fromHex(attestationDigest))`; internal nodes are `SHA-256(UTF8("compass.audit-checkpoint/v1/node\\0") || left || right)`; an odd node is duplicated as its right sibling. The lowercase-hex `rootDigest` is the resulting root.
-
-Checkpoint JSON has exactly `schemaVersion`, `checkpointId`, `sequence`, `createdAt`, `firstAuditEventId`, `lastAuditEventId`, `eventCount`, `rootDigest`, `authorityId`, `keyId`, `signatureAlgorithm`, `authorityRotationChain`, and `signature`. Serialize the exact object without only its top-level `signature` using RFC 8785 JCS UTF-8; the included rotation members retain their own signatures. `schemaVersion` is `compass.audit-checkpoint/v1`; `checkpointId` is lowercase canonical UUID; `sequence` and `eventCount` are no-leading-zero ASCII decimal strings; timestamps are UTC RFC 3339 with exactly three fractional digits; digests are 64 lowercase hex characters; identifiers are non-empty ASCII; and `signature` is unpadded base64url of exactly 64 bytes. A rotation member has exactly `schemaVersion`, `predecessorAuthorityId`, `predecessorKeyId`, `successorAuthorityId`, `successorKeyId`, `successorPublicKey`, `signatureAlgorithm`, `effectiveSequence`, `effectiveTimestamp`, and `signature`; its own signing payload omits only its own `signature`, then uses JCS UTF-8. Its schema version is `compass.audit-rotation/v1`, its successor public key is unpadded base64url of exactly 32 raw bytes, and its effective sequence/timestamp use the same formats. Only `Ed25519` is accepted. Every key ID is `sha256:` plus lowercase SHA-256 hex of the corresponding 32 raw public-key bytes. Any unsupported schema, field, duplicate JSON member, value, algorithm, key type/identifier, padding, encoding, or non-JCS serialization fails closed.
-
-Before future verifier acceptance, a separately security-approved verifier configuration must name exactly one trust-anchor form: a pre-approved pinned public verification key, or an immutable on-chain registry genesis/authority record. The anchor identifies the initial authority and verification algorithm. A rotation is accepted only if the canonical rotation record is signed by the currently resolved predecessor key and names the successor public key, `effectiveSequence`, and `effectiveTimestamp`; it applies only when both `checkpoint.sequence >= effectiveSequence` and `checkpoint.createdAt >= effectiveTimestamp`. A checkpoint's self-declared `authorityId` or rotation chain is never an anchor.
-
-An independent verifier obtains the immutable checkpoint plus the redacted event path, recomputes canonical event digests and the root, confirms the covered range/count and digest, resolves `authorityId` through the complete anchored and predecessor-authorized rotation chain effective under both timestamp and sequence, requires the resolved key ID to equal `keyId`, and verifies the Ed25519 checkpoint signature before acceptance. For a Merkle root, it verifies the full contiguous inclusive source range and `eventCount`, or a membership proof for the attestation being verified together with authenticated range/count metadata bound to that root; a partial event path alone fails closed. Before checkpoint acceptance, authenticated provisioning atomically creates an anchor-bound baseline containing the immutable anchor identifier/digest, initial authority, algorithm, empty replay state, and status `uninitialized`, only after verifying that exact approved anchor. First initialization is solely an atomic transition of that existing baseline from `uninitialized` to `active` with the first accepted replay state. A missing, unreadable, changed, reset, or inconsistent baseline/state is not first initialization and fails closed. It persists durable replay state per authority: highest accepted `sequence`, seen `checkpointId`, and seen `rootDigest`. Acceptance performs one atomic compare-and-store: reject duplicate ID/root and decreasing or equal sequence; otherwise persist the new sequence, ID, and root together. The verifier rejects missing, malformed, forged, substituted, conflicting, replayed, stale (more than 24 hours after `createdAt`), or otherwise unverifiable checkpoint material as `unavailable`. No checkpoint may establish provenance, create a reviewed digest, or be resolved when that validation fails.
-
-## Future checkpoint revocation lifecycle (blocked)
-
-Before accepting or resolving a checkpoint, the verifier resolves a durable authenticated revocation record bound to the approved anchor. Missing, unreadable, stale, forged, or revoked anchor, authority, key, checkpoint, or digest state fails closed as `unavailable`; disable prevents new checkpoint writes.
-
-## Future registration decision gate
-
-The future Solana registry may store only an attestation digest plus schema version and devnet marker. It must not store a signer authority, action approval, executable payload, or capability reference. Before that future implementation, only the Board may approve a separate proposal covering the verifier trust anchor, predecessor-authorized key rotation, durable replay state, checkpoint-registration authority, registry ownership, signing/custody, replay and revocation, privacy, program permissions, threat model, tests, devnet rollout, and rollback. The Chief of Staff may approve routine internal planning only. `npm run preflight:magicblock-devnet` is the mandatory runnable local-slice check and must pass. `npm run preflight:magicblock-devnet:strategic-gate` is the separate expected-blocked sentinel: `strategic-baseline-approval.json` is internal pending proposal metadata, not Board authorization or immutable evidence. A future verifier must validate independently verifiable immutable Board approval evidence before strategic or external action. Registration on devnet Solana or MagicBlock remains impossible by design without that approved authority; this change defines neither a private key nor a live registry.
-
-That separate proposal is accepted only if its tests prove: (1) duplicate `(schemaVersion, auditEventId, attestationDigest)` writes fail; (2) a write binds to the exact immutable ledger event, digest, schema, cluster, and reviewed digest; (3) checkpoint Merkle-root recomputation, including canonical leaves, ordering, domain separation, odd-node duplication, range/count/root, and either full-range source verification or membership-proof metadata, succeeds only for the intended checkpoint; (4) predecessor-authorized rotation validation requires both effective sequence and timestamp; (5) only the authenticated anchor-bound atomic bootstrap permits first initialization, while a missing/reset baseline after initialization fails closed; (6) forged rotation chains, substituted checkpoints, within-window replays, lost verifier state, replayed, conflicting, malformed, or more-than-24-hour-old checkpoints fail closed; and (7) disable prevents new writes while a durable revocation makes resolution fail closed. The registry's future signer/write design is out of scope here and needs separate security approval.
-
-## Implemented local tests and future strategic tests
-
-- Disabled mode makes zero network calls.
-- Only the literal Router URL and `getDelegationStatus` method are reachable; requests use one base58 string parameter and no Compass-specific wire object.
-- Invalid input, response, or audit persistence fails closed.
-- Redaction rejects raw accounts, transactions, signatures, credentials, provider errors, approval state, and execution state.
-- Canonical serialization yields the same domain-separated digest for the immutable ledger event and rejects unknown rationale or non-allowlisted fields.
-- An independent verifier reproduces the canonical checkpoint Merkle root, validates the configured trust anchor and predecessor-authorized rotation chain at its timestamp, and verifies the Ed25519 checkpoint signature before acceptance.
-- Checkpoint and rotation tests prove reordered source members yield the same JCS signing bytes, and reject omitted/extra or duplicate fields, unsupported schemas/algorithms/key IDs, and ambiguous or padded signature/public-key/text encodings.
-- Merkle tests reproduce the specified leaf bytes and sequence ordering, domain-separated leaf/internal hashes, odd-node duplication, range/count/root, and reject an incomplete range without a valid membership proof plus authenticated range/count metadata.
-- Rotation tests reject a successor key when either `effectiveSequence` or `effectiveTimestamp` is not satisfied.
-- Bootstrap tests accept only an atomic baseline bound to the authenticated approved anchor on first initialization, and reject a missing, changed, or reset baseline after initialization.
-- Forged rotation chains, substituted checkpoints, within-window replays, and lost/unreadable/reset verifier state fail closed and cannot establish provenance.
-- The verifier atomically persists and compares per-authority monotonic sequence plus seen checkpoint ID/root; duplicate or decreasing checkpoints fail closed.
-- Static dependency checks prove no signer, sender, submission, simulation, delegation, permission, commit, undelegation, or registry-write capability is reachable.
-- A contract test proves the attestation cannot be passed to authorization or execution code.
-- A focused Vitest test uses `vitest.back.config.ts` to prove controlled-producer binding, official wire-shape validation, structured-writer redaction, and `simulate_transaction`-ALLOW isolation.
-- The focused Vitest test at `back/services/__tests__/magicBlockDevnetPreflight.test.ts` proves canonical per-account digest/flag recomputation, opaque internal-candidate sourcing, official one-string request parameters, required `isDelegated`, documented optional metadata, rejection of the former Compass request/record assumptions, structured-writer redaction, and `simulate_transaction`-ALLOW isolation.
-- `scripts/verify-magicblock-preflight-dependency-closure.mjs` traverses every feature entrypoint, integration caller, concrete audit writer, and their closure through static imports, static re-exports, and literal dynamic imports; unresolved/nonliteral or external feature imports fail closed; and it rejects authorization or execution reachability in either direction.
-- MCP observer tests prove off/on behavior, root-only extraction, malformed/irrelevant/extra-key/oversized rejection, dedicated auth and URL rules, request bounding, hard timeout, response-body non-consumption, fail-open delivery, denied/error exclusion, exact result equality/reference identity, and a fake-transport/PGlite end-to-end path through the real wrapper and hosted ingress.
-- Future registry acceptance tests prove checkpoint authority approval, forged-rotation and substituted-checkpoint rejection, within-window replay and lost-state rejection, 24-hour checkpoint staleness rejection, disable-before-write rollback, and revocation-resolution failure.
-
-## Rollout, rollback, and forecast
-
-The local evidence-and-audit slice is implemented but disabled by default. Rollback is disabling or removing its composition; it has no on-chain state. Checkpoint, trust-anchor, registry, signing/custody, and strategic activation remain unimplemented and gated by the named Board/security review.
-
-The explicitly authorized local implementation is complete. The separate strategic checkpoint remains blocked: absent independently verifiable immutable Board approval evidence, no checkpoint/trust-anchor/registry work or external activation is authorized. Any such future implementation, especially a Solana registry write or MagicBlock SDK addition, requires a new forecast and security review.
-
-## Traceability
-
-COM-68 supplies the direct-devnet research context; COM-71 supplies the reviewed fail-closed, non-executing decision. Their source artifacts are unavailable in this repository. This document records that limitation and relies only on the reviewed decision represented by this preflight documentation.
+Successful output contains only the public audit ID, signer, signature, slot,
+commitment digest, and
+`https://explorer.solana.com/tx/<signature>?cluster=devnet`. If the credential
+is unavailable, deterministic injected-RPC tests are the verification evidence
+and live proof remains explicitly blocked.

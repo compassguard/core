@@ -5,6 +5,11 @@ import type {
 	MagicBlockPost,
 	TrustedMagicBlockPlanStore,
 } from "./magicBlockDevnetPreflightTypes";
+import type {
+	MagicBlockAuditRecordStore,
+	MagicBlockOnchainAuditRegistration,
+	MagicBlockOnchainAuditSubmitter,
+} from "./magicBlockOnchainAuditContracts";
 
 export const MAGICBLOCK_OBSERVATION_SCHEMA =
 	"compass.magicblock-devnet-observation/v1" as const;
@@ -12,7 +17,7 @@ export const MAGICBLOCK_OBSERVATION_RESULT_SCHEMA =
 	"compass.magicblock-devnet-observation-result/v1" as const;
 export const MAGICBLOCK_OBSERVATION_MAX_REQUEST_BYTES = 16_384 as const;
 export const MAGICBLOCK_MAX_TRANSACTION_BYTES = 1_232 as const;
-export const MAGICBLOCK_OBSERVATION_CLAIM_LEASE_MS = 12_000 as const;
+export const MAGICBLOCK_OBSERVATION_CLAIM_LEASE_MS = 55_000 as const;
 
 export type MagicBlockDevnetObservationV1 = {
 	readonly schemaVersion: typeof MAGICBLOCK_OBSERVATION_SCHEMA;
@@ -28,6 +33,10 @@ export type MagicBlockDevnetObservationResultV1 =
 			readonly audit: {
 				readonly auditEventId: string;
 				readonly attestationDigest: string;
+				readonly resultDigest?: string;
+				readonly previousLedgerDigest?: string;
+				readonly ledgerDigest?: string;
+				readonly registration?: MagicBlockOnchainAuditRegistration;
 			};
 	  }
 	| {
@@ -88,6 +97,8 @@ export type MagicBlockAuditIngressRuntimeDependencies = {
 		readonly claimAttempt: number;
 	}) => MagicBlockAppendOnlyAuditLedger;
 	readonly post: MagicBlockPost;
+	readonly onchainAudit?: MagicBlockOnchainAuditSubmitter;
+	readonly auditRecords?: MagicBlockAuditRecordStore;
 	readonly createOpaqueId?: (kind: "candidate" | "plan") => string;
 	readonly now?: () => string;
 	readonly nowEpochMs?: () => number;

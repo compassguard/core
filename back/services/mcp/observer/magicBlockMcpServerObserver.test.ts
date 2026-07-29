@@ -11,33 +11,43 @@ const REQUEST = { params: { name: "build_transaction", arguments: {} } };
 const AUDIT_URL = "https://audit.example/api/magicblock-devnet/audit";
 
 describe("MagicBlock observer at the real MCP callTool wrapper", () => {
-	it("keeps the feature off when no observer is injected", async () => {
+	it("surfaces an explicit retryable audit state when no observer is injected", async () => {
 		const downstream = validDownstreamResult();
 		const handlers = createProxyMcpServerHandlers({
 			proxyCallTool: allowed(downstream),
 		});
 
 		const returned = await handlers.callTool(REQUEST);
-		expect(returned).toBe(downstream);
+		expect(returned).not.toBe(downstream);
+		expect(returned.structuredContent).toEqual({
+			...validStructuredContent(),
+			compassAudit: retryableAudit(),
+		});
 	});
 
-	it("awaits a successful audit observation and returns the exact downstream object", async () => {
+	it("awaits a confirmed audit and attaches its proof to the Compass result", async () => {
 		const downstream = validDownstreamResult();
 		const transport: MagicBlockMcpAuditTransport = vi.fn(async () => ({
-			status: 204,
+			status: 200,
+			json: async () => confirmedIngressResponse(),
 		}));
 		const handlers = observedHandlers(downstream, transport);
 
 		const returned = await handlers.callTool(REQUEST);
 
 		expect(transport).toHaveBeenCalledTimes(1);
-		expect(returned).toBe(downstream);
-		expect(returned).toStrictEqual(downstream);
+		expect(returned).not.toBe(downstream);
+		expect(returned.structuredContent).toMatchObject({
+			compassAudit: {
+				outcome: "confirmed",
+				status: 200,
+				audit: confirmedIngressResponse(),
+			},
+		});
 	});
 
-	it("fails open on observer rejection and preserves exact equality and identity", async () => {
+	it("surfaces a retryable state on observer rejection", async () => {
 		const downstream = validDownstreamResult();
-		const snapshot = structuredClone(downstream);
 		const handlers = createProxyMcpServerHandlers({
 			proxyCallTool: allowed(downstream),
 			observeMagicBlockObservation: vi.fn(async () => {
@@ -46,13 +56,14 @@ describe("MagicBlock observer at the real MCP callTool wrapper", () => {
 		});
 
 		const returned = await handlers.callTool(REQUEST);
-		expect(returned).toBe(downstream);
-		expect(returned).toStrictEqual(snapshot);
+		expect(returned.structuredContent).toEqual({
+			...validStructuredContent(),
+			compassAudit: retryableAudit(),
+		});
 	});
 
-	it("fails open on a synchronous sink throw without changing the downstream result", async () => {
+	it("surfaces a retryable state on a synchronous sink throw", async () => {
 		const downstream = validDownstreamResult();
-		const snapshot = structuredClone(downstream);
 		const handlers = createProxyMcpServerHandlers({
 			proxyCallTool: allowed(downstream),
 			observeMagicBlockObservation: () => {
@@ -61,13 +72,14 @@ describe("MagicBlock observer at the real MCP callTool wrapper", () => {
 		});
 
 		const returned = await handlers.callTool(REQUEST);
-		expect(returned).toBe(downstream);
-		expect(returned).toStrictEqual(snapshot);
+		expect(returned.structuredContent).toEqual({
+			...validStructuredContent(),
+			compassAudit: retryableAudit(),
+		});
 	});
 
-	it("fails open on a rejecting custom PromiseLike without changing the downstream result", async () => {
+	it("surfaces a retryable state on a rejecting custom PromiseLike", async () => {
 		const downstream = validDownstreamResult();
-		const snapshot = structuredClone(downstream);
 		const rejectingThenable = {
 			then(
 				_resolve: (value: unknown) => void,
@@ -82,13 +94,14 @@ describe("MagicBlock observer at the real MCP callTool wrapper", () => {
 		});
 
 		const returned = await handlers.callTool(REQUEST);
-		expect(returned).toBe(downstream);
-		expect(returned).toStrictEqual(snapshot);
+		expect(returned.structuredContent).toEqual({
+			...validStructuredContent(),
+			compassAudit: retryableAudit(),
+		});
 	});
 
-	it("passes a detached frozen observation so sink mutation cannot affect the result", async () => {
+	it("passes a detached frozen observation so sink mutation cannot affect the source result", async () => {
 		const downstream = validDownstreamResult();
-		const snapshot = structuredClone(downstream);
 		const structuredContent = downstream.structuredContent;
 		const sink = vi.fn((observation) => {
 			expect(observation).not.toBe(structuredContent);
@@ -96,7 +109,7 @@ describe("MagicBlock observer at the real MCP callTool wrapper", () => {
 			(
 				observation as { observationId: string }
 			).observationId = "mutated-by-sink";
-			return { outcome: "delivered" as const, status: 204 };
+			return retryableAudit();
 		});
 		const handlers = createProxyMcpServerHandlers({
 			proxyCallTool: allowed(downstream),
@@ -105,32 +118,34 @@ describe("MagicBlock observer at the real MCP callTool wrapper", () => {
 
 		const returned = await handlers.callTool(REQUEST);
 		expect(sink).toHaveBeenCalledTimes(1);
-		expect(returned).toBe(downstream);
-		expect(returned).toStrictEqual(snapshot);
+		expect(downstream.structuredContent).toEqual(validStructuredContent());
+		expect(returned.structuredContent).toEqual({
+			...validStructuredContent(),
+			compassAudit: retryableAudit(),
+		});
 	});
 
 	it.each([
 		["timeout", () => new Promise<{ status: number }>(() => undefined), 10],
 		["non-2xx", async () => ({ status: 401 }), 100],
 	] as const)(
-		"keeps identity and state unchanged on audit %s",
+		"surfaces a retryable state on audit %s",
 		async (_name, transportImplementation, timeoutMs) => {
 			const downstream = validDownstreamResult();
-			const snapshot = structuredClone(downstream);
 			const transport: MagicBlockMcpAuditTransport = vi.fn(
 				transportImplementation,
 			);
 			const handlers = observedHandlers(downstream, transport, timeoutMs);
 
 			const returned = await handlers.callTool(REQUEST);
-			expect(returned).toBe(downstream);
-			expect(returned).toStrictEqual(snapshot);
+			expect(returned.structuredContent).toMatchObject({
+				compassAudit: { outcome: "retryable_failure", retryable: true },
+			});
 		},
 	);
 
 	it("swallows a transport rejection that arrives after the timeout", async () => {
 		const downstream = validDownstreamResult();
-		const snapshot = structuredClone(downstream);
 		let rejectTransport: ((reason: Error) => void) | undefined;
 		const transport: MagicBlockMcpAuditTransport = () =>
 			new Promise((_resolve, reject) => {
@@ -142,8 +157,9 @@ describe("MagicBlock observer at the real MCP callTool wrapper", () => {
 		rejectTransport?.(new Error("late transport rejection"));
 		await new Promise((resolve) => setImmediate(resolve));
 
-		expect(returned).toBe(downstream);
-		expect(returned).toStrictEqual(snapshot);
+		expect(returned.structuredContent).toMatchObject({
+			compassAudit: { outcome: "retryable_failure", retryable: true },
+		});
 	});
 
 	it.each([
@@ -251,5 +267,46 @@ function validStructuredContent() {
 		schemaVersion: MAGICBLOCK_OBSERVATION_SCHEMA,
 		observationId: "obs-entry",
 		unsignedTransactionBase64: "AQ==",
+	};
+}
+
+function retryableAudit() {
+	return {
+		outcome: "retryable_failure" as const,
+		retryable: true as const,
+		code: "AUDIT_UNAVAILABLE" as const,
+	};
+}
+
+function confirmedIngressResponse() {
+	return {
+		schemaVersion: "compass.magicblock-devnet-observation-result/v1",
+		observationId: "obs-entry",
+		outcome: "review_required",
+		audit: {
+			auditEventId: "audit-entry-1",
+			attestationDigest: "a".repeat(64),
+			resultDigest: "b".repeat(64),
+			previousLedgerDigest: "c".repeat(64),
+			ledgerDigest: "d".repeat(64),
+			registration: {
+				status: "confirmed",
+				cluster: "devnet",
+				routerUrl: "https://devnet-router.magicblock.app/",
+				signature: "2".repeat(64),
+				signer: "11111111111111111111111111111111",
+				slot: 123,
+				commitmentDigest: "e".repeat(64),
+				memo: `compass:audit:v1:${JSON.stringify({
+					a: "audit-entry-1",
+					c: "e".repeat(64),
+					l: "d".repeat(64),
+					o: "review",
+					p: "c".repeat(64),
+					v: 1,
+				})}`,
+				verifiedAt: "2026-07-29T00:00:00.000Z",
+			},
+		},
 	};
 }

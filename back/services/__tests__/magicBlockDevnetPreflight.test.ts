@@ -408,7 +408,7 @@ describe("MagicBlock devnet local audit preflight", () => {
 		expect(harness.ledger.event?.payload).toMatchObject({
 			outcome,
 			rationaleCode: rationale,
-			registration: "not_requested",
+			registration: "required",
 		});
 	});
 
@@ -612,16 +612,20 @@ describe("MagicBlock devnet local audit preflight", () => {
 			"decodedPlanDigest",
 			"eventType",
 			"evidence",
+			"observationId",
 			"occurredAt",
 			"outcome",
 			"rationaleCode",
 			"registration",
+			"requestDigest",
+			"resultDigest",
 			"schemaVersion",
+			"transactionDigest",
 		]);
 		const serialized = JSON.stringify(event);
 		for (const forbidden of [
 			...publicKeys,
-			"transaction",
+			"unsignedTransactionBase64",
 			"signature",
 			"approval",
 			"execution",
@@ -855,10 +859,10 @@ function verify(directory: string) {
 }
 
 describe("MagicBlock dependency and strategic gates", () => {
-	it("accepts the implemented local boundary graph", () => {
+	it("approves the corrected on-chain design without opening execution boundaries", () => {
 		const result = verify(root);
-		expect(result.stderr).toBe("");
 		expect(result.status).toBe(0);
+		expect(result.stderr).toBe("");
 	});
 
 	it("accepts only the required exact observer global-use shapes", () => {

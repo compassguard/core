@@ -159,8 +159,12 @@ export type MagicBlockDevnetAuditPayloadV1 = {
 	readonly schemaVersion: "magicblock-devnet-attestation/v1";
 	readonly eventType: "magicblock_devnet_audit_attestation";
 	readonly auditEventId: string;
+	readonly observationId?: string;
 	readonly occurredAt: string;
 	readonly cluster: "devnet";
+	readonly transactionDigest?: string;
+	readonly requestDigest?: string;
+	readonly resultDigest?: string;
 	readonly candidateDigest: string;
 	readonly decodedPlanDigest: string;
 	readonly evidence: {
@@ -172,7 +176,7 @@ export type MagicBlockDevnetAuditPayloadV1 = {
 	};
 	readonly outcome: MagicBlockPersistedAuditOutcome;
 	readonly rationaleCode: MagicBlockPersistedAuditRationale;
-	readonly registration: "not_requested";
+	readonly registration: "required";
 };
 
 export type MaterializedMagicBlockAuditEvent = {
@@ -188,12 +192,20 @@ export interface MagicBlockAppendOnlyAuditLedger {
 	}): Promise<{
 		readonly auditEventId: string;
 		readonly attestationDigest: string;
+		readonly previousLedgerDigest?: string;
+		readonly ledgerDigest?: string;
+		readonly canonicalPayload?: string;
+		readonly reused?: true;
 	}>;
 }
 
 export type MagicBlockAuditWriteResult = {
 	readonly auditEventId: string;
 	readonly attestationDigest: string;
+	readonly resultDigest?: string;
+	readonly previousLedgerDigest?: string;
+	readonly ledgerDigest?: string;
+	readonly persistedOutcome?: MagicBlockPersistedAuditOutcome;
 };
 
 export type MagicBlockDevnetPreflightResult =

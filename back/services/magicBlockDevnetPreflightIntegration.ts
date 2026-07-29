@@ -22,16 +22,34 @@ export function createMagicBlockDevnetPreflight(input: {
 		write(command: {
 			readonly resolvedPlan: ResolvedTrustedMagicBlockPlan;
 			readonly evidence: ValidatedMagicBlockEvidence;
+			readonly observationId?: string;
+			readonly transactionDigest?: string;
+			readonly requestDigest?: string;
 		}): Promise<{
 			readonly auditEventId: string;
 			readonly attestationDigest: string;
+			readonly resultDigest?: string;
+			readonly previousLedgerDigest?: string;
+			readonly ledgerDigest?: string;
+			readonly persistedOutcome?: "review_required" | "incompatible";
 		}>;
 	};
 }) {
 	const enabled = input.enabled === true;
 
 	return {
-		async review(reference: TrustedDecodedPlanRef): Promise<MagicBlockDevnetPreflightResult> {
+		async review(
+			reference: TrustedDecodedPlanRef,
+			binding: {
+				readonly observationId: string;
+				readonly transactionDigest: string;
+				readonly requestDigest: string;
+			} = {
+				observationId: "legacy-observation",
+				transactionDigest: "0".repeat(64),
+				requestDigest: "0".repeat(64),
+			},
+		): Promise<MagicBlockDevnetPreflightResult> {
 			if (!enabled) return { outcome: "unavailable" };
 			try {
 				const resolvedPlan = await input.producer.resolve(reference);
@@ -44,8 +62,9 @@ export function createMagicBlockDevnetPreflight(input: {
 				const audit = await input.auditWriter.write({
 					resolvedPlan,
 					evidence: collected.evidence,
+					...binding,
 				});
-				return { outcome, audit };
+				return { outcome: audit.persistedOutcome ?? outcome, audit };
 			} catch {
 				return { outcome: "unavailable" };
 			}

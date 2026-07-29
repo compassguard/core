@@ -1,4 +1,4 @@
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { timingSafeEqual } from "node:crypto";
 
 import {
 	canonicalJson,
@@ -26,6 +26,7 @@ import { createTrustedMagicBlockPlanProducer } from "@back/services/magicBlockDe
 import { createRequestScopedMagicBlockDependencies } from "@back/services/magicBlockDevnetRequestScope";
 import { decodeTrustedUnsignedV0NoAltCandidate } from "@back/services/magicBlockDevnetTransactionDecoder";
 import { MAGICBLOCK_ROUTE_DEADLINE_MS } from "@back/services/magicBlockDevnetPreflightTypes";
+import { materializeMagicBlockAuditCommitment } from "@back/services/magicBlockOnchainAudit";
 
 const REQUEST_DIGEST_DOMAIN = "compass.magicblock-devnet-observation/v1/request\0";
 
@@ -50,21 +51,65 @@ export function createMagicBlockAuditIngress(
 	const apiKey = input.apiKey;
 	const now = input.runtime.now ?? (() => new Date().toISOString());
 	const nowEpochMs = input.runtime.nowEpochMs ?? Date.now;
-	const createOpaqueId =
-		input.runtime.createOpaqueId ??
-		((kind: "candidate" | "plan") => `${kind}:${randomUUID()}`);
 
 	return {
 		async handle(request) {
-			if (request.method !== "POST") {
-				return jsonError(405, "METHOD_NOT_ALLOWED", "POST is required.");
-			}
 			if (!hasAuthorizedBearer(request.headers.get("authorization"), apiKey)) {
 				return jsonError(
 					401,
 					"UNAUTHENTICATED",
 					"Missing or invalid audit-ingress credentials.",
 				);
+			}
+			if (request.method === "GET") {
+				if (!input.runtime.auditRecords || !input.runtime.onchainAudit) {
+					return jsonError(503, "UNAVAILABLE", "On-chain audit unavailable.");
+				}
+				const url = new URL(request.url);
+				const auditEventId = url.searchParams.get("auditId");
+				const signature = url.searchParams.get("signature");
+				if (
+					(auditEventId === null) === (signature === null) ||
+					(auditEventId !== null && !isOpaqueIdentifier(auditEventId)) ||
+					(signature !== null && !/^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(signature))
+				) {
+					return jsonError(400, "BAD_REQUEST", "Provide exactly one auditId or signature.");
+				}
+				let record;
+				try {
+					record =
+						auditEventId !== null
+							? await input.runtime.auditRecords.findByAuditEventId(auditEventId)
+							: await input.runtime.auditRecords.findBySignature(signature as string);
+				} catch {
+					return jsonError(503, "UNAVAILABLE", "Audit proof unavailable.");
+				}
+				if (!record) return jsonError(404, "NOT_FOUND", "Audit proof not found.");
+				if (
+					record.registration.status !== "confirmed" &&
+					!record.registration.signature
+				) {
+					return Response.json(record, { status: 503 });
+				}
+				const commitment = materializeMagicBlockAuditCommitment(record.details);
+				let verified;
+				try {
+					verified = await input.runtime.onchainAudit.verify({
+						signature: record.registration.signature,
+						expectedCommitmentDigest: commitment.commitmentDigest,
+						expectedMemo: commitment.memo,
+					});
+				} catch {
+					return jsonError(503, "UNAVAILABLE", "Audit verification unavailable.");
+				}
+				const refreshed = { ...record, registration: verified };
+				await input.runtime.auditRecords.save(refreshed);
+				return Response.json(refreshed, {
+					status: verified.status === "confirmed" ? 200 : 503,
+				});
+			}
+			if (request.method !== "POST") {
+				return jsonError(405, "METHOD_NOT_ALLOWED", "GET or POST is required.");
 			}
 			const deadlineAtEpochMs = nowEpochMs() + MAGICBLOCK_ROUTE_DEADLINE_MS;
 			if (!Number.isSafeInteger(deadlineAtEpochMs)) {
@@ -119,6 +164,7 @@ export function createMagicBlockAuditIngress(
 				observationId: observation.observationId,
 				outcome: "unavailable",
 			});
+			let durableAuditResult: MagicBlockDevnetObservationResultV1 | undefined;
 			try {
 				const decoded = decodeTrustedUnsignedV0NoAltCandidate(observation);
 				const scoped = createRequestScopedMagicBlockDependencies({
@@ -128,7 +174,13 @@ export function createMagicBlockAuditIngress(
 				const producer = createTrustedMagicBlockPlanProducer({
 					candidateSource: scoped.candidateSource.source,
 					store: scoped.planStore,
-					createOpaqueId,
+					createOpaqueId: (kind) =>
+						`${kind}:${sha256Hex(
+							"compass.magicblock-devnet-observation/v1/id\0",
+							requestDigest,
+							"\0",
+							kind,
+						).slice(0, 32)}`,
 				});
 				const reference = await producer.produce(scoped.candidateSource.reference);
 				const adapter = createMagicBlockDevnetEvidenceAdapter({
@@ -152,35 +204,148 @@ export function createMagicBlockAuditIngress(
 					adapter,
 					auditWriter,
 				});
-				const reviewed = await preflight.review(reference);
+				const transactionDigest = sha256Hex(
+					"compass.magicblock-devnet-observation/v1/transaction\0",
+					Buffer.from(observation.unsignedTransactionBase64, "base64"),
+				);
+				const reviewed = await preflight.review(reference, {
+					observationId: observation.observationId,
+					transactionDigest,
+					requestDigest,
+				});
 				if (reviewed.outcome !== "unavailable") {
-					result = deepFreeze({
+					if (
+						!reviewed.audit.resultDigest ||
+						!reviewed.audit.previousLedgerDigest ||
+						!reviewed.audit.ledgerDigest
+					) {
+						return jsonError(503, "UNAVAILABLE", "Audit commitment unavailable.");
+					}
+					const details = deepFreeze({
+						schemaVersion: "compass.magicblock-audit-commitment/v1" as const,
+						cluster: "devnet" as const,
+						observationId: observation.observationId,
+						auditEventId: reviewed.audit.auditEventId,
+						transactionDigest,
+						requestDigest,
+						resultDigest: reviewed.audit.resultDigest,
+						attestationDigest: reviewed.audit.attestationDigest,
+						previousLedgerDigest: reviewed.audit.previousLedgerDigest,
+						ledgerDigest: reviewed.audit.ledgerDigest,
+						outcome: reviewed.outcome,
+					});
+					const auditFields = {
+						auditEventId: reviewed.audit.auditEventId,
+						attestationDigest: reviewed.audit.attestationDigest,
+						resultDigest: reviewed.audit.resultDigest,
+						previousLedgerDigest:
+							reviewed.audit.previousLedgerDigest,
+						ledgerDigest: reviewed.audit.ledgerDigest,
+					};
+					durableAuditResult = deepFreeze({
 						schemaVersion: MAGICBLOCK_OBSERVATION_RESULT_SCHEMA,
 						observationId: observation.observationId,
 						outcome: reviewed.outcome,
-						audit: reviewed.audit,
+						audit: {
+							...auditFields,
+							registration: {
+								status: "retryable_failure",
+								retryable: true,
+								code: "ROUTER_UNAVAILABLE",
+							},
+						},
 					});
+					if (!input.runtime.onchainAudit || !input.runtime.auditRecords) {
+						return Response.json(durableAuditResult, { status: 503 });
+					}
+					const existingRecord =
+						await input.runtime.auditRecords.findByAuditEventId(
+							details.auditEventId,
+						);
+					const effectiveDetails = existingRecord?.details ?? details;
+					const effectiveCommitment =
+						materializeMagicBlockAuditCommitment(effectiveDetails);
+					if (
+						existingRecord &&
+						(existingRecord.details.observationId !== observation.observationId ||
+							existingRecord.details.transactionDigest !== transactionDigest ||
+							existingRecord.details.requestDigest !== requestDigest ||
+							existingRecord.details.auditEventId !==
+								reviewed.audit.auditEventId ||
+							existingRecord.details.attestationDigest !==
+								reviewed.audit.attestationDigest ||
+							existingRecord.details.resultDigest !==
+								reviewed.audit.resultDigest ||
+							existingRecord.details.previousLedgerDigest !==
+								reviewed.audit.previousLedgerDigest ||
+							existingRecord.details.ledgerDigest !==
+								reviewed.audit.ledgerDigest ||
+							existingRecord.details.outcome !== reviewed.outcome)
+					) {
+						throw new Error("persisted audit commitment mismatch");
+					}
+					const priorSignature =
+						existingRecord &&
+						"signature" in existingRecord.registration
+							? existingRecord.registration.signature
+							: undefined;
+					const registration = priorSignature
+						? await input.runtime.onchainAudit.verify({
+								signature: priorSignature,
+								expectedCommitmentDigest:
+									effectiveCommitment.commitmentDigest,
+								expectedMemo: effectiveCommitment.memo,
+							})
+							: await input.runtime.onchainAudit.register(
+								effectiveDetails,
+								async (prepared) => {
+									const reserved =
+										await input.runtime.auditRecords!.reservePrepared({
+											record: {
+												details: effectiveDetails,
+												canonicalDetails:
+													effectiveCommitment.canonicalDetails,
+												registration: prepared,
+											},
+											requestDigest,
+											claimAttempt: claim.claimAttempt,
+										});
+									if (
+										reserved.registration.status !==
+										"retryable_failure"
+									) {
+										throw new Error(
+											"audit reservation unavailable",
+										);
+									}
+									return reserved.registration;
+								},
+							);
+					result = deepFreeze({
+						schemaVersion: MAGICBLOCK_OBSERVATION_RESULT_SCHEMA,
+						observationId: observation.observationId,
+						outcome: effectiveDetails.outcome,
+						audit: { ...auditFields, registration },
+					});
+					durableAuditResult = result;
+					await input.runtime.auditRecords.save({
+						details: effectiveDetails,
+						canonicalDetails: effectiveCommitment.canonicalDetails,
+						registration,
+					});
+					if (registration.status === "retryable_failure") {
+						return Response.json(result, { status: 503 });
+					}
 				}
 			} catch {
-				// Fail closed. Provider and decoder errors are never reflected or persisted.
+				if (durableAuditResult) {
+					return Response.json(durableAuditResult, { status: 503 });
+				}
 			}
 
-			let reconciled;
-			try {
-				reconciled = await input.runtime.observations.claim(claimInput);
-			} catch {
-				return jsonError(503, "UNAVAILABLE", "Observation persistence unavailable.");
+			if (result.outcome === "unavailable") {
+				return Response.json(result, { status: 503 });
 			}
-			if (reconciled.status === "completed") {
-				return Response.json(reconciled.result);
-			}
-			if (reconciled.status === "conflict") {
-				return jsonError(409, "IDEMPOTENCY_CONFLICT", "Observation ID conflict.");
-			}
-			if (result.outcome !== "unavailable") {
-				return jsonError(503, "UNAVAILABLE", "Atomic audit persistence unavailable.");
-			}
-
 			const completedAt = now();
 			if (!isCanonicalTimestamp(completedAt)) {
 				return jsonError(503, "UNAVAILABLE", "Audit ingress unavailable.");

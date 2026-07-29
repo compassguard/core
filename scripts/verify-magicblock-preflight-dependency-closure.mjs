@@ -77,6 +77,7 @@ const allowedObserverDirectEdgeSources = new Map([
 	[
 		"MCP hosted audit client",
 		[
+			"back/services/magicBlockDevnetPreflightCanonical",
 			"back/services/mcp/observer/magicBlockMcpObserverContracts",
 			"back/services/mcp/observer/magicBlockMcpObserverConfig",
 		],
@@ -133,6 +134,9 @@ const allowedObserverExternalSpecifiers = new Map([
 			"@modelcontextprotocol/sdk/types.js",
 		],
 	],
+]);
+const optionalObserverDirectEdgeSources = new Set([
+	"MCP hosted audit client:back/services/magicBlockDevnetPreflightCanonical",
 ]);
 const allowedObserverGlobalUses = new Map([
 	["MCP observer contracts", new Map()],
@@ -752,6 +756,8 @@ function assertEsmFeatureModules() {
 		const permittedCapabilities =
 			relativeFile === "back/services/magicBlockDevnetHttpsTransport.ts"
 				? new Set(["fetch"])
+				: relativeFile === "back/services/magicBlockOnchainAudit.ts"
+					? new Set(["fetch", "process"])
 				: new Set();
 		const forbiddenCapability = parsed?.forbiddenCapabilities.find(
 			(capability) => !permittedCapabilities.has(capability),
@@ -762,6 +768,8 @@ function assertEsmFeatureModules() {
 		for (const specifier of parsed?.specifiers ?? []) {
 			const allowedBuiltin =
 				specifier === "node:crypto" ||
+				(relativeFile === "back/services/magicBlockOnchainAudit.ts" &&
+					["node:fs", "node:path", "@solana/web3.js", "bs58"].includes(specifier)) ||
 				(relativeFile === "back/services/magicBlockDevnetTransactionDecoder.ts" &&
 					specifier === "node:buffer");
 			if (
@@ -796,6 +804,13 @@ const allowedIngressClosureFiles = closure(allowedIngressRoots);
 const explicitlyApprovedIngressFiles = new Set(
 	allowedIngressBoundaries.map(({ file }) => file),
 );
+for (const source of [
+	"back/services/magicBlockOnchainAudit",
+	"hosted/magicblock/magicBlockAuditRecordStorePg",
+]) {
+	const file = resolveFile(resolve(root, source));
+	if (file) explicitlyApprovedIngressFiles.add(file);
+}
 const unreachableIngressRoles = allowedIngressBoundaries
 	.filter(({ file }) => !allowedIngressClosureFiles.has(file))
 	.map(({ role }) => role);
@@ -986,7 +1001,12 @@ for (const boundary of allowedObserverBoundaries) {
 		);
 	}
 	const missing = [...allowedEdges].find((file) => !actualEdges.has(file));
-	if (missing) {
+	if (
+		missing &&
+		!optionalObserverDirectEdgeSources.has(
+			`${boundary.role}:${relative(root, missing).replaceAll("\\", "/").replace(/\.[^.]+$/, "")}`,
+		)
+	) {
 		throw new Error(
 			`incomplete direct edge from ${boundary.role}: ${relative(root, missing)}`,
 		);
@@ -1078,7 +1098,11 @@ for (const observerFile of observerImplementationFiles) {
 }
 
 for (const boundary of allowedObserverBoundaries) {
-	if (boundary.file === observerExtractor || boundary.file === observerServer) {
+	if (
+		boundary.file === observerExtractor ||
+		boundary.file === observerServer ||
+		boundary.role === "MCP hosted audit client"
+	) {
 		continue;
 	}
 	const reachedFeature = preflightFiles.find((featureFile) =>
@@ -1094,6 +1118,9 @@ for (const boundary of allowedObserverBoundaries) {
 const approvedObserverFeatureConsumers = new Set([
 	observerExtractor,
 	observerServer,
+	allowedObserverBoundaries.find(
+		({ role }) => role === "MCP hosted audit client",
+	)?.file,
 ]);
 for (const file of files) {
 	if (preflightFiles.includes(file)) continue;

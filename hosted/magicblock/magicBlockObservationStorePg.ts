@@ -1,6 +1,7 @@
 import {
 	canonicalJson,
 	hasExactKeys,
+	isCanonicalSolanaPublicKey,
 	isCanonicalTimestamp,
 	isDigest,
 	isOpaqueIdentifier,
@@ -215,13 +216,83 @@ function validateStoredResult(
 	}
 	if (
 		!["review_required", "incompatible"].includes(value.outcome as string) ||
-		!hasExactKeys(value.audit, ["auditEventId", "attestationDigest"]) ||
+		!hasExactKeys(value.audit, [
+			"auditEventId",
+			"attestationDigest",
+			"resultDigest",
+			"previousLedgerDigest",
+			"ledgerDigest",
+			"registration",
+		]) ||
 		!isOpaqueIdentifier(value.audit.auditEventId) ||
-		!isDigest(value.audit.attestationDigest)
+		!isDigest(value.audit.attestationDigest) ||
+		!isDigest(value.audit.resultDigest) ||
+		!isDigest(value.audit.previousLedgerDigest) ||
+		!isDigest(value.audit.ledgerDigest) ||
+		!hasExactKeys(value.audit.registration, [
+			"status",
+			"cluster",
+			"routerUrl",
+			"signature",
+			"signer",
+			"slot",
+			"commitmentDigest",
+			"memo",
+			"verifiedAt",
+		]) ||
+		!isStoredConfirmedRegistration(
+			value.audit.registration,
+			value.audit.auditEventId,
+			value.audit.previousLedgerDigest,
+			value.audit.ledgerDigest,
+			value.outcome as "review_required" | "incompatible",
+		)
 	) {
 		throw new Error("observation unavailable");
 	}
 	return value as MagicBlockDevnetObservationResultV1;
+}
+
+function isStoredConfirmedRegistration(
+	value: Record<string, unknown>,
+	auditEventId: string,
+	previousLedgerDigest: string,
+	ledgerDigest: string,
+	outcome: "review_required" | "incompatible",
+): boolean {
+	if (
+		value.status !== "confirmed" ||
+		value.cluster !== "devnet" ||
+		value.routerUrl !== "https://devnet-router.magicblock.app/" ||
+		typeof value.signature !== "string" ||
+		!/^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(value.signature) ||
+		!isCanonicalSolanaPublicKey(value.signer) ||
+		!Number.isSafeInteger(value.slot) ||
+		Number(value.slot) < 0 ||
+		!isDigest(value.commitmentDigest) ||
+		typeof value.memo !== "string" ||
+		!isCanonicalTimestamp(value.verifiedAt) ||
+		!value.memo.startsWith("compass:audit:v1:")
+	) {
+		return false;
+	}
+	try {
+		const encoded = value.memo.slice("compass:audit:v1:".length);
+		const memo = JSON.parse(encoded) as Record<string, unknown>;
+		return (
+			canonicalJson(memo) === encoded &&
+			hasExactKeys(memo, ["a", "c", "l", "o", "p", "v"]) &&
+			memo.a === auditEventId &&
+			memo.c === value.commitmentDigest &&
+			memo.l === ledgerDigest &&
+			memo.p === previousLedgerDigest &&
+			memo.o ===
+				(outcome === "review_required" ? "review" : "incompatible") &&
+			memo.v === 1
+		);
+	} catch {
+		return false;
+	}
 }
 
 function parseJsonb(value: unknown): unknown {

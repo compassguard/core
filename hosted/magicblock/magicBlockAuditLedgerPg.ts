@@ -1,10 +1,6 @@
 import { randomUUID } from "node:crypto";
 
 import {
-	MAGICBLOCK_OBSERVATION_RESULT_SCHEMA,
-	type MagicBlockDevnetObservationResultV1,
-} from "@back/services/magicBlockDevnetObservationContracts";
-import {
 	canonicalJson,
 	hasExactKeys,
 	isCanonicalTimestamp,
@@ -64,7 +60,7 @@ const APPEND_SQL = `WITH locked_observation AS MATERIALIZED (
 	FROM magicblock_devnet_observations
 	WHERE observation_id = $6
 		AND request_digest = $7
-		AND claim_attempts = $10
+		AND claim_attempts = $8
 		AND status = 'pending'
 	FOR UPDATE
 ), advanced_tip AS MATERIALIZED (
@@ -109,35 +105,21 @@ const APPEND_SQL = `WITH locked_observation AS MATERIALIZED (
 		$5
 	FROM advanced_tip
 	RETURNING sequence, audit_event_id, attestation_digest, previous_event_digest, ledger_event_digest
-), completed AS MATERIALIZED (
-	UPDATE magicblock_devnet_observations AS observation
-	SET status = 'completed',
-		result = $8::jsonb,
-		completed_at = $9
-	FROM inserted
-	WHERE observation.observation_id = $6
-		AND observation.request_digest = $7
-		AND observation.claim_attempts = $10
-		AND observation.status = 'pending'
-	RETURNING observation.observation_id
 ), transition_counts AS MATERIALIZED (
 	SELECT
 		(SELECT count(*) FROM locked_observation) AS locked_count,
 		(SELECT count(*) FROM advanced_tip) AS tip_count,
-		(SELECT count(*) FROM inserted) AS inserted_count,
-		(SELECT count(*) FROM completed) AS completed_count
+		(SELECT count(*) FROM inserted) AS inserted_count
 )
 SELECT
 	(SELECT audit_event_id FROM inserted) AS audit_event_id,
 	(SELECT attestation_digest FROM inserted) AS attestation_digest,
 	(SELECT previous_event_digest FROM inserted) AS previous_event_digest,
 	(SELECT ledger_event_digest FROM inserted) AS ledger_event_digest,
-	completed_count,
 	1 / CASE
 		WHEN locked_count = 1
 			AND tip_count = 1
 			AND inserted_count = 1
-			AND completed_count = 1
 		THEN 1
 		ELSE 0
 	END AS transition_guard
@@ -203,9 +185,42 @@ export function createPgMagicBlockAppendOnlyAuditLedger(input: {
 			) {
 				throw new Error("audit unavailable");
 			}
-			const auditEventId = createAuditEventId();
+			const existingRows = await input.sql(
+				`SELECT audit_event_id, attestation_digest, previous_event_digest,
+					ledger_event_digest, canonical_payload
+				FROM magicblock_devnet_audit_ledger
+				WHERE observation_id = $1 AND request_digest = $2`,
+				[input.observationId, input.requestDigest],
+			);
+			const existing = existingRows[0];
+			const auditEventId =
+				existing?.audit_event_id === undefined
+					? createAuditEventId()
+					: String(existing.audit_event_id);
 			if (!/^aud_[A-Za-z0-9][A-Za-z0-9._:-]{0,123}$/.test(auditEventId)) {
 				throw new Error("audit unavailable");
+			}
+			if (existing !== undefined) {
+				if (
+					!isDigest(existing.attestation_digest) ||
+					(existing.previous_event_digest !== null &&
+						!isDigest(existing.previous_event_digest)) ||
+					!isDigest(existing.ledger_event_digest) ||
+					typeof existing.canonical_payload !== "string"
+				) {
+					throw new Error("audit unavailable");
+				}
+				return {
+					auditEventId,
+					attestationDigest: String(existing.attestation_digest),
+					previousLedgerDigest:
+						existing.previous_event_digest === null
+							? "0".repeat(64)
+							: String(existing.previous_event_digest),
+					ledgerDigest: String(existing.ledger_event_digest),
+					canonicalPayload: existing.canonical_payload,
+					reused: true as const,
+				};
 			}
 			const materialized = appendInput.materialize(auditEventId);
 			if (
@@ -224,15 +239,6 @@ export function createPgMagicBlockAppendOnlyAuditLedger(input: {
 			}
 			const createdAt = now();
 			if (!isCanonicalTimestamp(createdAt)) throw new Error("audit unavailable");
-			const result: MagicBlockDevnetObservationResultV1 = {
-				schemaVersion: MAGICBLOCK_OBSERVATION_RESULT_SCHEMA,
-				observationId: input.observationId,
-				outcome: materialized.payload.outcome,
-				audit: {
-					auditEventId,
-					attestationDigest: materialized.attestationDigest,
-				},
-			};
 			const rows = await input.sql(APPEND_SQL, [
 				auditEventId,
 				appendInput.schemaVersion,
@@ -241,8 +247,6 @@ export function createPgMagicBlockAppendOnlyAuditLedger(input: {
 				createdAt,
 				input.observationId,
 				input.requestDigest,
-				result,
-				createdAt,
 				input.claimAttempt,
 			]);
 			const row = rows[0];
@@ -250,7 +254,6 @@ export function createPgMagicBlockAppendOnlyAuditLedger(input: {
 				rows.length !== 1 ||
 				row?.audit_event_id !== auditEventId ||
 				row.attestation_digest !== materialized.attestationDigest ||
-				Number(row.completed_count) !== 1 ||
 				Number(row.transition_guard) !== 1 ||
 				(row.previous_event_digest !== null &&
 					!isDigest(row.previous_event_digest)) ||
@@ -261,6 +264,12 @@ export function createPgMagicBlockAppendOnlyAuditLedger(input: {
 			return {
 				auditEventId,
 				attestationDigest: materialized.attestationDigest,
+				previousLedgerDigest:
+					row.previous_event_digest === null
+						? "0".repeat(64)
+						: String(row.previous_event_digest),
+				ledgerDigest: String(row.ledger_event_digest),
+				canonicalPayload: materialized.canonicalPayload,
 			};
 		},
 	};

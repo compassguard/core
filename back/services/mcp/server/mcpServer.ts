@@ -81,7 +81,6 @@ export function createProxyMcpServerHandlers(
 			});
 			const mapped = mapProxyCallToolResult(request.params.name, result);
 			const observation =
-				observeMagicBlockObservation &&
 				result.outcome === "allow" &&
 				result.data !== undefined &&
 				result.data.isError !== true
@@ -90,9 +89,26 @@ export function createProxyMcpServerHandlers(
 					  )
 					: undefined;
 			if (observation) {
-				await Promise.resolve()
-					.then(() => observeMagicBlockObservation(observation))
-					.catch(() => undefined);
+				const audit = observeMagicBlockObservation
+					? await Promise.resolve()
+							.then(() => observeMagicBlockObservation(observation))
+							.catch(() => ({
+								outcome: "retryable_failure" as const,
+								retryable: true as const,
+								code: "AUDIT_UNAVAILABLE" as const,
+							}))
+					: {
+						outcome: "retryable_failure" as const,
+						retryable: true as const,
+						code: "AUDIT_UNAVAILABLE" as const,
+					};
+				return {
+					...mapped,
+					structuredContent: {
+						...(mapped.structuredContent ?? {}),
+						compassAudit: audit,
+					},
+				};
 			}
 			return mapped;
 		},

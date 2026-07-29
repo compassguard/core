@@ -1,5 +1,9 @@
 # COM-73 Review Remediation
 
+> Historical review evidence for the earlier local-only stack. Its exclusions
+> of signing and submission are superseded by the current functional and
+> technical specs.
+
 ## Outcome
 
 The explicitly authorized local devnet evidence-and-audit slice now implements these controls without authorizing any checkpoint, registry, or external Solana action.
