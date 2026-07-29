@@ -7,11 +7,10 @@ import {
 	sha256Hex,
 } from "./magicBlockDevnetPreflightCanonical";
 import { verifyResolvedTrustedMagicBlockPlan } from "./magicBlockDevnetPreflightProducer";
+import { cloneOfficialDelegationStatus } from "./magicBlockDevnetPreflightSchema";
 import {
-	MAGICBLOCK_AS_HOST,
 	MAGICBLOCK_METHOD,
 	MAGICBLOCK_ROUTER_HOST,
-	type DelegationRecordV1,
 	type MagicBlockAppendOnlyAuditLedger,
 	type MagicBlockAuditWriteResult,
 	type MagicBlockDevnetAuditPayloadV1,
@@ -23,7 +22,6 @@ import {
 
 const ATTESTATION_DOMAIN = "compass.magicblock-devnet-attestation/v1\0";
 const AUDIT_EVENT_ID = /^aud_[A-Za-z0-9][A-Za-z0-9._:-]{0,123}$/;
-const DECIMAL = /^(?:0|[1-9]\d*)$/;
 const OUTCOME_RATIONALE: Readonly<
 	Record<MagicBlockPersistedAuditOutcome, MagicBlockPersistedAuditRationale>
 > = {
@@ -134,7 +132,7 @@ function validateEvidence(
 			"observedAt",
 			"accountDigests",
 			"classifications",
-			"delegationRecords",
+			"delegationStatuses",
 		]) ||
 		value.schemaVersion !== "magicblock.devnet-evidence/v1" ||
 		value.endpointHost !== MAGICBLOCK_ROUTER_HOST ||
@@ -142,43 +140,27 @@ function validateEvidence(
 		!isCanonicalTimestamp(value.observedAt) ||
 		!Array.isArray(value.accountDigests) ||
 		!Array.isArray(value.classifications) ||
-		!Array.isArray(value.delegationRecords) ||
+		!Array.isArray(value.delegationStatuses) ||
 		value.accountDigests.length !== resolved.snapshot.accountBindings.length ||
 		value.classifications.length !== resolved.snapshot.accountBindings.length ||
-		value.delegationRecords.length !== resolved.snapshot.accountBindings.length
+		value.delegationStatuses.length !== resolved.snapshot.accountBindings.length
 	) {
 		throw new Error("audit unavailable");
 	}
+	const delegationStatuses = [];
 	for (let index = 0; index < resolved.snapshot.accountBindings.length; index += 1) {
 		const binding = resolved.snapshot.accountBindings[index];
-		const record = value.delegationRecords[index] as DelegationRecordV1;
+		const status = cloneOfficialDelegationStatus(value.delegationStatuses[index]);
+		const expectedClassification = status?.isDelegated ? "delegated" : "base_layer";
 		if (
 			value.accountDigests[index] !== binding.accountDigest ||
 			!["delegated", "base_layer"].includes(value.classifications[index] as string) ||
-			value.classifications[index] !== record?.status ||
-			!hasExactKeys(record, [
-				"schemaVersion",
-				"candidateId",
-				"candidateDigest",
-				"accountDigest",
-				"status",
-				"evaluatedSlot",
-				"commitment",
-				"evidence",
-			]) ||
-			record.schemaVersion !== "magicblock.delegation-record/v1" ||
-			record.candidateId !== resolved.snapshot.plan.candidateId ||
-			record.candidateDigest !== resolved.snapshot.plan.candidateDigest ||
-			record.accountDigest !== binding.accountDigest ||
-			!["delegated", "base_layer"].includes(record.status) ||
-			typeof record.evaluatedSlot !== "string" ||
-			!DECIMAL.test(record.evaluatedSlot) ||
-			!["processed", "confirmed", "finalized"].includes(record.commitment) ||
-			!hasExactKeys(record.evidence, ["endpointHost"]) ||
-			record.evidence.endpointHost !== MAGICBLOCK_AS_HOST
+			status === null ||
+			value.classifications[index] !== expectedClassification
 		) {
 			throw new Error("audit unavailable");
 		}
+		delegationStatuses.push(status);
 	}
 	return deepFreeze({
 		schemaVersion: "magicblock.devnet-evidence/v1",
@@ -189,14 +171,7 @@ function validateEvidence(
 		classifications: deepFreeze(
 			[...value.classifications] as ("delegated" | "base_layer")[],
 		),
-		delegationRecords: deepFreeze(
-			value.delegationRecords.map((record) =>
-				deepFreeze({
-					...record,
-					evidence: deepFreeze({ ...record.evidence }),
-				}),
-			),
-		),
+		delegationStatuses: deepFreeze(delegationStatuses),
 	});
 }
 

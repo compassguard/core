@@ -1,6 +1,5 @@
 export const MAGICBLOCK_ROUTER_URL = "https://devnet-router.magicblock.app/" as const;
 export const MAGICBLOCK_ROUTER_HOST = "devnet-router.magicblock.app" as const;
-export const MAGICBLOCK_AS_HOST = "devnet-as.magicblock.app" as const;
 export const MAGICBLOCK_METHOD = "getDelegationStatus" as const;
 export const MAGICBLOCK_MAX_RESPONSE_BYTES = 16_384 as const;
 
@@ -85,17 +84,17 @@ export interface TrustedMagicBlockPlanStore {
 	resolveImmutable(opaqueRef: string): Promise<TrustedMagicBlockPlanSnapshot | null>;
 }
 
-export type DelegationRecordV1 = {
-	readonly schemaVersion: "magicblock.delegation-record/v1";
-	readonly candidateId: string;
-	readonly candidateDigest: string;
-	readonly accountDigest: string;
-	readonly status: "delegated" | "base_layer";
-	readonly evaluatedSlot: string;
-	readonly commitment: "processed" | "confirmed" | "finalized";
-	readonly evidence: {
-		readonly endpointHost: typeof MAGICBLOCK_AS_HOST;
-	};
+export type MagicBlockDelegationRecord = {
+	readonly authority: string;
+	readonly owner: string;
+	readonly delegationSlot: number;
+	readonly lamports: number;
+};
+
+export type MagicBlockDelegationStatus = {
+	readonly isDelegated: boolean;
+	readonly fqdn?: string;
+	readonly delegationRecord?: MagicBlockDelegationRecord;
 };
 
 export type MagicBlockPostRequest = {
@@ -127,7 +126,7 @@ export type ValidatedMagicBlockEvidence = {
 	readonly observedAt: string;
 	readonly accountDigests: readonly string[];
 	readonly classifications: readonly ("delegated" | "base_layer")[];
-	readonly delegationRecords: readonly DelegationRecordV1[];
+	readonly delegationStatuses: readonly MagicBlockDelegationStatus[];
 };
 
 export type MagicBlockAuditOutcome =

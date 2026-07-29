@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 const HEX_DIGEST = /^[0-9a-f]{64}$/;
 const RFC3339_MILLISECONDS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const OPAQUE_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
 export function hasExactKeys(
 	value: unknown,
@@ -30,6 +31,35 @@ export function isOpaqueIdentifier(value: unknown): value is string {
 export function isCanonicalTimestamp(value: unknown): value is string {
 	if (typeof value !== "string" || !RFC3339_MILLISECONDS.test(value)) return false;
 	return new Date(value).toISOString() === value;
+}
+
+export function isCanonicalSolanaPublicKey(value: unknown): value is string {
+	if (
+		typeof value !== "string" ||
+		value.length < 32 ||
+		value.length > 44 ||
+		![...value].every((character) => BASE58_ALPHABET.includes(character))
+	) {
+		return false;
+	}
+
+	const bytes = [0];
+	for (const character of value) {
+		let carry = BASE58_ALPHABET.indexOf(character);
+		for (let index = 0; index < bytes.length; index += 1) {
+			carry += bytes[index] * 58;
+			bytes[index] = carry & 0xff;
+			carry >>= 8;
+		}
+		while (carry > 0) {
+			bytes.push(carry & 0xff);
+			carry >>= 8;
+		}
+	}
+	for (let index = 0; index < value.length - 1 && value[index] === "1"; index += 1) {
+		bytes.push(0);
+	}
+	return bytes.length === 32;
 }
 
 export function canonicalJson(value: unknown): string {

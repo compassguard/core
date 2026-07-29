@@ -2,6 +2,7 @@ import {
 	canonicalJson,
 	deepFreeze,
 	hasExactKeys,
+	isCanonicalSolanaPublicKey,
 	isDigest,
 	isOpaqueIdentifier,
 	sha256Hex,
@@ -22,7 +23,6 @@ import type {
 
 const ACCOUNT_DOMAIN = "compass.magicblock-devnet-preflight/v1/account\0";
 const PLAN_DOMAIN = "compass.magicblock-devnet-preflight/v1/decoded-plan\0";
-const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
 export type MagicBlockOpaqueIdFactory = (kind: "candidate" | "plan") => string;
 
@@ -327,33 +327,4 @@ function cloneAndValidateDecodedPlan(value: unknown, accountCount: number): Magi
 		actionKind: "account_delegation_review",
 		accountIndexes: deepFreeze([...value.accountIndexes] as string[]),
 	});
-}
-
-function isCanonicalSolanaPublicKey(value: unknown): value is string {
-	if (
-		typeof value !== "string" ||
-		value.length < 32 ||
-		value.length > 44 ||
-		![...value].every((character) => BASE58_ALPHABET.includes(character))
-	) {
-		return false;
-	}
-
-	const bytes = [0];
-	for (const character of value) {
-		let carry = BASE58_ALPHABET.indexOf(character);
-		for (let index = 0; index < bytes.length; index += 1) {
-			carry += bytes[index] * 58;
-			bytes[index] = carry & 0xff;
-			carry >>= 8;
-		}
-		while (carry > 0) {
-			bytes.push(carry & 0xff);
-			carry >>= 8;
-		}
-	}
-	for (let index = 0; index < value.length - 1 && value[index] === "1"; index += 1) {
-		bytes.push(0);
-	}
-	return bytes.length === 32;
 }

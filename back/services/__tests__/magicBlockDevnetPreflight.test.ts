@@ -40,6 +40,12 @@ const publicKeys = [
 	"11111111111111111111111111111111",
 	"ComputeBudget111111111111111111111111111111",
 ] as const;
+const documentedDelegationRecord = {
+	authority: "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57",
+	owner: "3JnJ727jWEmPVU8qfXwtH63sCNDX7nMgsLbg8qy8aaPX",
+	delegationSlot: 388_473_478,
+	lamports: 15_144_960,
+} as const;
 
 const candidate: InternalImmutableMagicBlockCandidate = {
 	schemaVersion: "compass.magicblock-candidate/v1",
@@ -130,22 +136,19 @@ function respondingPost(
 	const post: MagicBlockPost = async (request) => {
 		requests.push(request);
 		const requestBody = JSON.parse(request.body);
-		const binding = requestBody.params[0];
 		const callIndex = requests.length - 1;
+		const isDelegated = (statuses[callIndex] ?? "delegated") === "delegated";
 		const body = JSON.stringify({
 			jsonrpc: "2.0",
 			id: requestBody.id,
 			result: {
-				delegationRecord: {
-					schemaVersion: "magicblock.delegation-record/v1",
-					candidateId: binding.candidateId,
-					candidateDigest: binding.candidateDigest,
-					accountDigest: binding.accountDigest,
-					status: statuses[callIndex] ?? "delegated",
-					evaluatedSlot: "123",
-					commitment: "confirmed",
-					evidence: { endpointHost: "devnet-as.magicblock.app" },
-				},
+				isDelegated,
+				...(isDelegated
+					? {
+							fqdn: "https://devnet-as.magicblock.app/",
+							delegationRecord: documentedDelegationRecord,
+						}
+					: {}),
 			},
 		});
 		const response = {
@@ -242,14 +245,95 @@ describe("MagicBlock devnet local audit preflight", () => {
 			const body = JSON.parse(request.body);
 			expect(body.method).toBe(MAGICBLOCK_METHOD);
 			expect(Object.keys(body).sort()).toEqual(["id", "jsonrpc", "method", "params"]);
+			expect(Number.isSafeInteger(body.id)).toBe(true);
+			expect(body.params).toEqual([publicKeys[harness.transport.requests.indexOf(request)]]);
+			expect(typeof body.params[0]).toBe("string");
 		}
+	});
+
+	it("uses the official one-account parameter and never sends Compass binding objects", async () => {
+		const harness = await setup({ enabled: true });
+		const resolved = await harness.producer.resolve(harness.reference);
+		await expect(harness.adapter.collect(resolved)).resolves.toMatchObject({
+			status: "available",
+		});
+		for (const [index, request] of harness.transport.requests.entries()) {
+			const body = JSON.parse(request.body);
+			expect(body.params).toEqual([publicKeys[index]]);
+			expect(Object.keys(body.params)).toEqual(["0"]);
+			expect(request.body).not.toContain("candidateId");
+			expect(request.body).not.toContain("candidateDigest");
+			expect(request.body).not.toContain("accountDigest");
+		}
+	});
+
+	it("accepts the required official isDelegated result without optional metadata", async () => {
+		const harness = await setup({
+			enabled: true,
+			mutateResponse: (response) => {
+				const body = JSON.parse(response.body);
+				body.result = { isDelegated: body.result.isDelegated };
+				return { ...response, body: JSON.stringify(body) };
+			},
+		});
+		await expect(harness.preflight.review(harness.reference)).resolves.toMatchObject({
+			outcome: "review_required",
+		});
+		expect(harness.ledger.appends).toBe(1);
+	});
+
+	it.each([
+		[
+			"old response containing only the invented Compass delegationRecord",
+			{
+				delegationRecord: {
+					schemaVersion: "magicblock.delegation-record/v1",
+					candidateId: "candidate_1",
+					candidateDigest: "0".repeat(64),
+					accountDigest: "1".repeat(64),
+					status: "delegated",
+					evaluatedSlot: "123",
+					commitment: "confirmed",
+					evidence: { endpointHost: "devnet-as.magicblock.app" },
+				},
+			},
+		],
+		[
+			"required isDelegated combined with the invented Compass delegationRecord",
+			{
+				isDelegated: true,
+				delegationRecord: {
+					schemaVersion: "magicblock.delegation-record/v1",
+					candidateId: "candidate_1",
+					candidateDigest: "0".repeat(64),
+					accountDigest: "1".repeat(64),
+					status: "delegated",
+					evaluatedSlot: "123",
+					commitment: "confirmed",
+					evidence: { endpointHost: "devnet-as.magicblock.app" },
+				},
+			},
+		],
+	] as const)("rejects %s", async (_name, result) => {
+		const harness = await setup({
+			enabled: true,
+			mutateResponse: (response) => {
+				const body = JSON.parse(response.body);
+				body.result = result;
+				return { ...response, body: JSON.stringify(body) };
+			},
+		});
+		await expect(harness.preflight.review(harness.reference)).resolves.toEqual({
+			outcome: "unavailable",
+		});
+		expect(harness.ledger.appends).toBe(0);
 	});
 
 	it("uses a unique evaluation binding and rejects a response replayed into another evaluation", async () => {
 		const harness = await setup({ enabled: true });
 		const resolved = await harness.producer.resolve(harness.reference);
 		const firstResponses: string[] = [];
-		const requestIds: string[] = [];
+		const requestIds: number[] = [];
 		let calls = 0;
 		const adapter = createMagicBlockDevnetEvidenceAdapter({
 			enabled: true,
@@ -261,7 +345,6 @@ describe("MagicBlock devnet local audit preflight", () => {
 			post: async (request) => {
 				const body = JSON.parse(request.body);
 				requestIds.push(body.id);
-				const binding = body.params[0];
 				const accountIndex = calls % 2;
 				calls += 1;
 				if (calls > 2) {
@@ -276,16 +359,9 @@ describe("MagicBlock devnet local audit preflight", () => {
 					jsonrpc: "2.0",
 					id: body.id,
 					result: {
-						delegationRecord: {
-							schemaVersion: "magicblock.delegation-record/v1",
-							candidateId: binding.candidateId,
-							candidateDigest: binding.candidateDigest,
-							accountDigest: binding.accountDigest,
-							status: "delegated",
-							evaluatedSlot: "123",
-							commitment: "confirmed",
-							evidence: { endpointHost: "devnet-as.magicblock.app" },
-						},
+						isDelegated: true,
+						fqdn: "https://devnet-as.magicblock.app/",
+						delegationRecord: documentedDelegationRecord,
 					},
 				});
 				firstResponses.push(responseBody);
@@ -367,10 +443,10 @@ describe("MagicBlock devnet local audit preflight", () => {
 			}),
 		],
 		[
-			"extra record field",
+			"extra result field",
 			(response: ReturnType<ResponseMutation>) => ({
 				...response,
-				body: response.body.replace('"evaluatedSlot":"123"', '"extra":true,"evaluatedSlot":"123"'),
+				body: response.body.replace('"isDelegated":true', '"isDelegated":true,"extra":true'),
 			}),
 		],
 		[
@@ -378,38 +454,97 @@ describe("MagicBlock devnet local audit preflight", () => {
 			(response: ReturnType<ResponseMutation>) => ({
 				...response,
 				body: response.body.replace(
-					'"status":"delegated"',
-					'"status":"delegated","status":"base_layer"',
+					'"isDelegated":true',
+					'"isDelegated":true,"isDelegated":false',
 				),
 			}),
 		],
 		[
-			"literal evidence host",
+			"missing required isDelegated",
 			(response: ReturnType<ResponseMutation>) => ({
 				...response,
-				body: response.body.replace("devnet-as.magicblock.app", "devnet-as.magicblock.app.evil"),
+				body: response.body.replace('"isDelegated":true,', ""),
 			}),
 		],
 		[
-			"candidate binding",
-			(response: ReturnType<ResponseMutation>) => ({
-				...response,
-				body: response.body.replace('"candidateId":"candidate_1"', '"candidateId":"candidate_other"'),
-			}),
-		],
-		[
-			"candidate digest binding",
+			"string JSON-RPC response id",
 			(response: ReturnType<ResponseMutation>) => {
 				const parsed = JSON.parse(response.body);
-				parsed.result.delegationRecord.candidateDigest = "0".repeat(64);
+				parsed.id = String(parsed.id);
 				return { ...response, body: JSON.stringify(parsed) };
 			},
 		],
 		[
-			"account binding",
+			"invalid fqdn metadata type",
+			(response: ReturnType<ResponseMutation>) => ({
+				...response,
+				body: response.body.replace(
+					'"fqdn":"https://devnet-as.magicblock.app/"',
+					'"fqdn":42',
+				),
+			}),
+		],
+		[
+			"empty fqdn metadata",
 			(response: ReturnType<ResponseMutation>) => {
 				const parsed = JSON.parse(response.body);
-				parsed.result.delegationRecord.accountDigest = "0".repeat(64);
+				parsed.result.fqdn = "";
+				return { ...response, body: JSON.stringify(parsed) };
+			},
+		],
+		[
+			"control character in fqdn metadata",
+			(response: ReturnType<ResponseMutation>) => {
+				const parsed = JSON.parse(response.body);
+				parsed.result.fqdn = "https://devnet-as.magicblock.app/\u0000";
+				return { ...response, body: JSON.stringify(parsed) };
+			},
+		],
+		[
+			"overlong fqdn metadata",
+			(response: ReturnType<ResponseMutation>) => {
+				const parsed = JSON.parse(response.body);
+				parsed.result.fqdn = "a".repeat(2_049);
+				return { ...response, body: JSON.stringify(parsed) };
+			},
+		],
+		[
+			"extra official delegation record field",
+			(response: ReturnType<ResponseMutation>) => {
+				const parsed = JSON.parse(response.body);
+				parsed.result.delegationRecord.commitment = "confirmed";
+				return { ...response, body: JSON.stringify(parsed) };
+			},
+		],
+		[
+			"unsafe integer delegation slot",
+			(response: ReturnType<ResponseMutation>) => {
+				const parsed = JSON.parse(response.body);
+				parsed.result.delegationRecord.delegationSlot = Number.MAX_SAFE_INTEGER + 1;
+				return { ...response, body: JSON.stringify(parsed) };
+			},
+		],
+		[
+			"negative lamports",
+			(response: ReturnType<ResponseMutation>) => {
+				const parsed = JSON.parse(response.body);
+				parsed.result.delegationRecord.lamports = -1;
+				return { ...response, body: JSON.stringify(parsed) };
+			},
+		],
+		[
+			"noncanonical delegation authority",
+			(response: ReturnType<ResponseMutation>) => {
+				const parsed = JSON.parse(response.body);
+				parsed.result.delegationRecord.authority = "z".repeat(44);
+				return { ...response, body: JSON.stringify(parsed) };
+			},
+		],
+		[
+			"noncanonical delegation owner",
+			(response: ReturnType<ResponseMutation>) => {
+				const parsed = JSON.parse(response.body);
+				parsed.result.delegationRecord.owner = "not-a-solana-address";
 				return { ...response, body: JSON.stringify(parsed) };
 			},
 		],

@@ -18,7 +18,7 @@ The attestation is audit evidence only. It cannot approve, deny, route, simulate
 
 ### Fail-closed evidence boundary
 
-The adapter request URL is the compile-time literal `https://devnet-router.magicblock.app/`: HTTPS only, hostname `devnet-router.magicblock.app`, effective port `443`, pathname `/`, and no username, password, query, fragment, alternate port, IP literal, DNS alias, or redirect. `getDelegationStatus` is the only permitted method. The injected transport receives `maxResponseBytes: 16384` and MUST enforce it while streaming before buffering; the adapter independently rechecks UTF-8 bytes. A delegated response may contain only the literal evidence string `devnet-as.magicblock.app`; it is never parsed or followed as a request target. Validation occurs before dispatch and again after size-bounded, depth/token-bounded, duplicate-safe closed response parsing. Any mismatch, redirect, network change, malformed response, missing evidence, or audit-write failure is `unavailable`; it creates no attestation and makes no recommendation.
+The adapter request URL is the compile-time literal `https://devnet-router.magicblock.app/`: HTTPS only, hostname `devnet-router.magicblock.app`, effective port `443`, pathname `/`, and no username, password, query, fragment, alternate port, IP literal, DNS alias, or redirect. `getDelegationStatus` is the only permitted method. Each official JSON-RPC request uses an integer ID and exactly `params: [accountPublicKey]`; no Compass candidate, digest, or account-binding object is sent to MagicBlock. The injected transport receives `maxResponseBytes: 16384` and MUST enforce it while streaming before buffering; the adapter independently rechecks UTF-8 bytes. Validation occurs before dispatch and again after size-bounded, depth/token-bounded, duplicate-safe closed response parsing. Any mismatch, redirect, network change, malformed response, missing evidence, or audit-write failure is `unavailable`; it creates no attestation and makes no recommendation.
 
 ### Trusted decoded-plan producer and candidate binding
 
@@ -40,24 +40,24 @@ type TrustedDecodedActionPlan = {
 
 The MagicBlock preflight resolves that reference through the controlled producer and, before any provider result can be parsed, recomputes the candidate digest, decoded-plan digest, **every** account digest, and **every** `isSigner`, `isWritable`, `isProgram`, and `isPayer` flag from immutable candidate data. It rejects absence, count/order mismatch, digest mismatch, flag mismatch, missing binding, unknown field, or non-devnet plan as `unavailable`. A raw transaction, caller-provided decoded plan, account list, flag, or precomputed digest is never evidence input.
 
-### Canonical provider delegation record
+### Official provider delegation status
 
-For each trusted candidate account, the only acceptable provider evidence is this closed `delegationRecord` object; all members are required and no extra or duplicate JSON member is permitted:
+For each trusted candidate account, the only acceptable provider evidence is the official closed result. `isDelegated` is required. The only optional members are the documented `fqdn` string and official `delegationRecord`; no extra or duplicate JSON member is permitted:
 
 ```ts
-type DelegationRecordV1 = {
-  schemaVersion: "magicblock.delegation-record/v1";
-  candidateId: string;
-  candidateDigest: string;
-  accountDigest: string;
-  status: "delegated" | "base_layer";
-  evaluatedSlot: string;
-  commitment: "processed" | "confirmed" | "finalized";
-  evidence: { endpointHost: "devnet-as.magicblock.app" };
+type MagicBlockDelegationStatus = {
+  isDelegated: boolean;
+  fqdn?: string;
+  delegationRecord?: {
+    authority: string;
+    owner: string;
+    delegationSlot: number;
+    lamports: number;
+  };
 };
 ```
 
-`evaluatedSlot` is an ASCII decimal string without leading zeroes. The preflight accepts a record only after its schema, syntax, closed fields, `candidateId`, `candidateDigest`, `accountDigest`, `status`, `evaluatedSlot`, commitment, and literal evidence host bind exactly to the resolved immutable candidate and the account currently evaluated. Each collect creates a unique evaluation ID using `randomUUID` by default; any injected factory is an internal trusted dependency and its output must pass the closed opaque-identifier validation. The JSON-RPC request ID is domain-separated SHA-256 over that ID, `observedAt`, `candidateId`, `candidateDigest`, and the current `accountDigest`; the response must echo it. “Stale for the evaluation” means replayed or substituted from a different evaluation binding, not comparison with a chain tip. No Solana freshness read is performed. An absent, malformed, incomplete, oversized, over-complex, extra, duplicate, untrusted, replayed, or mismatched record is `unavailable`; no provider result is usable until all candidate accounts have a valid bound record.
+`authority` and `owner` must be base58 address strings; `delegationSlot` and `lamports` must be non-negative safe integers. Optional metadata is validated and retained only inside the transient evidence object; classification derives solely from the required `isDelegated` boolean. Each collect creates a unique internal evaluation ID using `randomUUID` by default and derives a positive JSON-safe integer request ID from the evaluation, timestamp, trusted candidate, and current account digest; the response must echo that integer. This provides request/response correlation without changing the official parameter shape or claiming chain-tip freshness. The ordered trusted account bindings remain internal and are recomputed before calls; MagicBlock is not expected to echo Compass data. The prior Compass-specific request object and invented `magicblock.delegation-record/v1` response are invalid and cannot produce usable evidence.
 
 ### Authorization isolation
 
@@ -121,7 +121,7 @@ Only allowlisted fields may be recorded. SHA-256 digests replace account identif
 
 ### Structured redacted audit writer
 
-The only writer is the Compass Audit Attestation Authority. Its write command accepts exactly the resolved `TrustedDecodedActionPlan` and validated literal-host evidence; callers cannot supply an outcome or rationale. It recomputes the candidate and plan digests, validates every evidence binding, then derives `review_required`/`DELEGATION_STATUS_CONFIRMED` only when every classification is `delegated`, or `incompatible`/`DELEGATION_STATUS_INCOMPATIBLE` when any is `base_layer`. Before awaiting the ledger it clones and deep-freezes its own redacted command snapshot; the ledger callback never rereads caller-owned objects. It writes the complete canonical record atomically, then returns only `{ auditEventId, attestationDigest }`. A failed binding, redaction, canonicalization, or durable write returns `unavailable` from the integration with no audit record or recommendation.
+The only writer is the Compass Audit Attestation Authority. Its write command accepts exactly the resolved `TrustedDecodedActionPlan` and validated official status evidence; callers cannot supply an outcome or rationale. It recomputes the candidate and plan digests, revalidates every official status and ordered internal account binding, then derives `review_required`/`DELEGATION_STATUS_CONFIRMED` only when every classification is `delegated`, or `incompatible`/`DELEGATION_STATUS_INCOMPATIBLE` when any is `base_layer`. Before awaiting the ledger it clones and deep-freezes its own redacted command snapshot; the ledger callback never rereads caller-owned objects. It writes the complete canonical record atomically, then returns only `{ auditEventId, attestationDigest }`. A failed binding, redaction, canonicalization, or durable write returns `unavailable` from the integration with no audit record or recommendation.
 
 The canonical payload is the attestation object without any derived digest, serialized as RFC 8785 JSON Canonicalization Scheme UTF-8 bytes. `attestationDigest = SHA-256(UTF8("compass.magicblock-devnet-attestation/v1\0") || JCS(canonicalPayload))`. The prefix is required, `auditEventId` is included in `canonicalPayload`, and hashes are lowercase hexadecimal. Different serializations, omitted fields, unrecognized rationale codes, or sensitive/raw inputs are rejected as `unavailable`.
 
@@ -132,11 +132,11 @@ The only proposed on-chain value is the immutable digest of a reviewed attestati
 ## Acceptance criteria
 
 - [ ] The design is disabled by default and devnet-only.
-- [ ] The literal Router endpoint and method are the only evidence origin; the literal AS FQDN is response-only.
+- [ ] The literal Router endpoint and method are the only evidence origin; every request has exactly one base58 account string parameter and no Compass-specific request object.
 - [ ] Invalid or absent evidence, endpoint mismatch, and audit failure fail closed as `unavailable`.
 - [ ] Only the controlled producer can create `TrustedDecodedActionPlan`; the preflight resolves its opaque reference and recomputes the immutable candidate and decoded-plan binding.
 - [ ] Before a provider response is used, the preflight recomputes every canonical account digest and `isSigner`, `isWritable`, `isProgram`, and `isPayer` flag from immutable candidate data, failing closed for any absence or mismatch.
-- [ ] Each provider `delegationRecord` is closed, well formed, and bound to the trusted candidate ID/digest, evaluated account digest, status/evidence, slot, and commitment; absent or mismatched records fail closed.
+- [ ] Each provider result requires boolean `isDelegated`, permits only the documented optional `fqdn` and official delegation record metadata, and rejects the prior Compass-specific record schema.
 - [ ] `simulate_transaction` remains classified independently; its current `ALLOW` result cannot reach MagicBlock preflight, authorization, confirmation, signing, submission, or execution.
 - [ ] Attestation evidence is redacted and contains no secrets, raw accounts, signatures, transactions, approval state, or execution state.
 - [ ] The structured writer accepts only a bound trusted plan and validated evidence, rejects unknown or sensitive fields, and returns an audit event/digest only after an atomic durable ledger write.
