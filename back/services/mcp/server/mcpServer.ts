@@ -9,7 +9,7 @@
 
 import { pathToFileURL } from "node:url";
 import { hostname } from "node:os";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { getPostHogClient, getInstallationDistinctId } from "@back/posthog/posthogClient";
@@ -40,7 +40,11 @@ import { isSafeNonToolMethod } from "../proxy/mcpProxyContracts";
 import type { ProxyMcpServerHandlerDependencies } from "./mcpProxyServerContracts";
 import { parseDownstreamMcpRuntimeConfig } from "../config/mcpRuntimeConfig";
 import { createMcpHostedClient } from "../proxy/mcpHostedClient";
-import { randomUUID } from "node:crypto";
+import { readMagicBlockMcpObserverEnvConfig } from "../observer/magicBlockMcpObserverConfig";
+import { createMagicBlockHostedAuditClient } from "../observer/magicBlockHostedAuditClient";
+import { createMagicBlockMcpObserver } from "../observer/magicBlockMcpObserver";
+import type { MagicBlockMcpObserver } from "../observer/magicBlockMcpObserverContracts";
+import { extractMagicBlockObservationFromStructuredContent } from "../observer/magicBlockMcpObservationExtractor";
 
 const COMPASS_MCP_SERVER_INFO = {
 	name: "compass-mcp-guard",
@@ -52,6 +56,8 @@ export function createProxyMcpServerHandlers(
 ) {
 	const proxyListTools = dependencies.proxyListTools;
 	const proxyCallTool = dependencies.proxyCallTool;
+	const observeMagicBlockObservation =
+		dependencies.observeMagicBlockObservation;
 
 	return {
 		async listTools(): Promise<ListToolsResult> {
@@ -73,7 +79,22 @@ export function createProxyMcpServerHandlers(
 				toolName: request.params.name,
 				arguments: request.params.arguments as Record<string, unknown> | undefined,
 			});
-			return mapProxyCallToolResult(request.params.name, result);
+			const mapped = mapProxyCallToolResult(request.params.name, result);
+			const observation =
+				observeMagicBlockObservation &&
+				result.outcome === "allow" &&
+				result.data !== undefined &&
+				result.data.isError !== true
+					? extractMagicBlockObservationFromStructuredContent(
+							result.data.structuredContent,
+					  )
+					: undefined;
+			if (observation) {
+				await Promise.resolve()
+					.then(() => observeMagicBlockObservation(observation))
+					.catch(() => undefined);
+			}
+			return mapped;
 		},
 	};
 }
@@ -85,6 +106,7 @@ export function createProxyMcpServer(config: {
 	executeTool?: Parameters<typeof createProxyDispatcher>[0]["executeTool"];
 	installationId?: string;
 	sessionId?: string;
+	observeMagicBlockObservation?: MagicBlockMcpObserver;
 } = {}): Server {
 	const downstream = config.downstream;
 	const dispatcher = createProxyDispatcher({
@@ -105,6 +127,7 @@ export function createProxyMcpServer(config: {
 	const handlers = createProxyMcpServerHandlers({
 		proxyListTools: () => dispatcher.listTools(),
 		proxyCallTool: (args) => dispatcher.callTool(args),
+		observeMagicBlockObservation: config.observeMagicBlockObservation,
 	});
 
 	server.setRequestHandler(ListToolsRequestSchema, async () => handlers.listTools());
@@ -230,6 +253,7 @@ export async function startCompassMcpStdioServer(): Promise<void> {
 	const config = parseDownstreamMcpRuntimeConfig();
 	const downstream = createRuntimeDownstreamClient(config);
 	const hostedConfig = readHostedBackendEnvConfig();
+	const observerConfig = readMagicBlockMcpObserverEnvConfig();
 	const installationId =
 		hostedConfig.installationId ?? resolveLocalInstallationId();
 	const hostedClient =
@@ -240,7 +264,13 @@ export async function startCompassMcpStdioServer(): Promise<void> {
 					timeoutMs: hostedConfig.timeoutMs,
 			  })
 			: undefined;
-		const sessionId = `session_${randomUUID()}`;
+	const observeMagicBlockObservation =
+		observerConfig.enabled
+			? createMagicBlockMcpObserver({
+					auditClient: createMagicBlockHostedAuditClient(observerConfig),
+			  })
+			: undefined;
+	const sessionId = `session_${randomUUID()}`;
 	try {
 		await downstream.start?.();
 		const server = createProxyMcpServer({
@@ -251,6 +281,7 @@ export async function startCompassMcpStdioServer(): Promise<void> {
 				(await downstream.callTool(args)) as CallToolResult,
 			installationId,
 			sessionId,
+			observeMagicBlockObservation,
 		});
 		const transport = new StdioServerTransport();
 		await server.connect(transport);

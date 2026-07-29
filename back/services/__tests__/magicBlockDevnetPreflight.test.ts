@@ -785,6 +785,21 @@ function fixture(files: Record<string, string>) {
 	return directory;
 }
 
+const MCP_SERVER_SEAM_EXTERNAL_IMPORT =
+	'import "@modelcontextprotocol/sdk/types.js";';
+const MCP_SERVER_EXTERNAL_IMPORTS =
+	'import "node:url"; import "node:os"; import "node:crypto"; import "@modelcontextprotocol/sdk/client/index.js"; import "@modelcontextprotocol/sdk/client/stdio.js"; import "@modelcontextprotocol/sdk/server/index.js"; import "@modelcontextprotocol/sdk/server/stdio.js"; import "@modelcontextprotocol/sdk/types.js";';
+const MCP_SERVER_LOCAL_IMPORTS =
+	'import "@back/posthog/posthogClient"; import "@back/guardrail/debugLogger"; import "../../envConfig"; import "../config/loadRepoEnv"; import "../proxy/mcpProxyContracts"; import "../proxy/mcpProxyDispatcher"; import "./mcpProxyServerContracts"; import "../config/mcpRuntimeConfig"; import "../proxy/mcpHostedClient"; import "../proxy/mcpProxyAudit"; import "../observer/magicBlockMcpObserverConfig"; import "../observer/magicBlockHostedAuditClient"; import "../observer/magicBlockMcpObserver"; import "../observer/magicBlockMcpObserverContracts"; import "../observer/magicBlockMcpObservationExtractor";';
+const MCP_EXTRACTOR_EXACT_MEMBER_USES =
+	"export function extractMagicBlockObservationFromStructuredContent() { return Object.freeze({}); } function isBoundedCanonicalBase64(value, padding) { return value[value.length - padding - 1]; }";
+const MCP_OBSERVER_CONFIG_EXACT_GLOBAL_USE =
+	'const ENABLED_ENV = "enabled"; const URL_ENV = "url"; const API_KEY_ENV = "api-key"; const TIMEOUT_ENV = "timeout"; export function readMagicBlockMcpObserverEnvConfig(env = process.env) { return [env[ENABLED_ENV], env[URL_ENV], env[API_KEY_ENV], env[TIMEOUT_ENV]]; }';
+const MCP_HOSTED_CLIENT_EXACT_GLOBAL_USE =
+	"export function createMagicBlockHostedAuditClient() { return (url, init) => globalThis.fetch(url, init); }";
+const MCP_SERVER_EXACT_GLOBAL_USES =
+	"function resolveLocalInstallationId() { return process.cwd(); } Promise.resolve().catch(() => process.exit(1)); function isDirectExecution() { return process.argv[1] && pathToFileURL(process.argv[1]); } function createRuntimeDownstreamClient() { function startClient() { return { ...process.env }; } return startClient; }";
+
 function completeFeature(files: Record<string, string>) {
 	return {
 		"back/services/magicBlockDevnetPreflightTypes.ts": "export {};",
@@ -805,6 +820,29 @@ function completeFeature(files: Record<string, string>) {
 		"hosted/magicblock/magicBlockAuditLedgerPg.ts": "export {};",
 		"app/api/magicblock-devnet/audit/route.ts":
 			'import "../../../../hosted/magicblock/magicBlockAuditIngressFromEnv"; export {};',
+		"back/services/mcp/observer/magicBlockMcpObserverContracts.ts":
+			"export {};",
+		"back/services/mcp/observer/magicBlockMcpObservationExtractor.ts":
+			`import "../../magicBlockDevnetObservationContracts"; import "../../magicBlockDevnetPreflightCanonical"; import "./magicBlockMcpObserverContracts"; ${MCP_EXTRACTOR_EXACT_MEMBER_USES}`,
+		"back/services/mcp/observer/magicBlockMcpObserverConfig.ts":
+			`import "./magicBlockMcpObserverContracts"; ${MCP_OBSERVER_CONFIG_EXACT_GLOBAL_USE}`,
+		"back/services/mcp/observer/magicBlockHostedAuditClient.ts":
+			`import "./magicBlockMcpObserverContracts"; import "./magicBlockMcpObserverConfig"; ${MCP_HOSTED_CLIENT_EXACT_GLOBAL_USE}`,
+		"back/services/mcp/observer/magicBlockMcpObserver.ts":
+			'import "./magicBlockMcpObserverContracts"; export {};',
+		"back/services/mcp/server/mcpProxyServerContracts.ts":
+			`${MCP_SERVER_SEAM_EXTERNAL_IMPORT} import "../proxy/mcpProxyContracts"; import "../observer/magicBlockMcpObserverContracts"; export {};`,
+		"back/services/mcp/server/mcpServer.ts":
+			`${MCP_SERVER_EXTERNAL_IMPORTS} ${MCP_SERVER_LOCAL_IMPORTS} ${MCP_SERVER_EXACT_GLOBAL_USES} export {};`,
+		"back/posthog/posthogClient.ts": "export {};",
+		"back/guardrail/debugLogger.ts": "export {};",
+		"back/services/envConfig.ts": "export {};",
+		"back/services/mcp/config/loadRepoEnv.ts": "export {};",
+		"back/services/mcp/config/mcpRuntimeConfig.ts": "export {};",
+		"back/services/mcp/proxy/mcpProxyContracts.ts": "export {};",
+		"back/services/mcp/proxy/mcpHostedClient.ts": "export {};",
+		"back/services/mcp/proxy/mcpProxyAudit.ts": "export {};",
+		"back/services/mcp/proxy/mcpProxyDispatcher.ts": "export {};",
 		"back/guardrail/execution/executionGateway.ts": "export {};",
 		...files,
 	};
@@ -821,6 +859,17 @@ describe("MagicBlock dependency and strategic gates", () => {
 		const result = verify(root);
 		expect(result.stderr).toBe("");
 		expect(result.status).toBe(0);
+	});
+
+	it("accepts only the required exact observer global-use shapes", () => {
+		const directory = fixture(completeFeature({}));
+		try {
+			const result = verify(directory);
+			expect(result.stderr).toBe("");
+			expect(result.status).toBe(0);
+		} finally {
+			rmSync(directory, { recursive: true, force: true });
+		}
 	});
 
 	it("keeps the strategic Board gate explicitly blocked", () => {
@@ -907,6 +956,430 @@ describe("MagicBlock dependency and strategic gates", () => {
 			const result = verify(directory);
 			expect(result.status).not.toBe(0);
 			expect(result.stderr).toContain("unauthorized MagicBlock preflight consumer");
+		} finally {
+			rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects observer implementation reachability into the MCP dispatcher", () => {
+		const directory = fixture(
+			completeFeature({
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; import "../proxy/mcpProxyDispatcher"; export {};',
+			}),
+		);
+		try {
+			const result = verify(directory);
+			expect(result.status).not.toBe(0);
+			expect(result.stderr).toContain(
+				"unauthorized direct edge from MCP audit observer",
+			);
+		} finally {
+			rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
+	it.each([
+		[
+			"MCP observer contracts",
+			"back/services/mcp/observer/magicBlockMcpObserverContracts.ts",
+			'import "../../magicBlockDevnetObservationContracts"; export {};',
+		],
+		[
+			"MCP observer config",
+			"back/services/mcp/observer/magicBlockMcpObserverConfig.ts",
+			`import "./magicBlockMcpObserverContracts"; import "../../magicBlockDevnetObservationContracts"; ${MCP_OBSERVER_CONFIG_EXACT_GLOBAL_USE}`,
+		],
+		[
+			"MCP hosted audit client",
+			"back/services/mcp/observer/magicBlockHostedAuditClient.ts",
+			`import "./magicBlockMcpObserverContracts"; import "./magicBlockMcpObserverConfig"; import "../../magicBlockDevnetObservationContracts"; ${MCP_HOSTED_CLIENT_EXACT_GLOBAL_USE}`,
+		],
+		[
+			"MCP audit observer",
+			"back/services/mcp/observer/magicBlockMcpObserver.ts",
+			'import "./magicBlockMcpObserverContracts"; import "../../magicBlockDevnetObservationContracts"; export {};',
+		],
+		[
+			"MCP server observer seam",
+			"back/services/mcp/server/mcpProxyServerContracts.ts",
+			`${MCP_SERVER_SEAM_EXTERNAL_IMPORT} import "../proxy/mcpProxyContracts"; import "../observer/magicBlockMcpObserverContracts"; import "../../magicBlockDevnetObservationContracts"; export {};`,
+		],
+	])("rejects feature imports from %s", (role, path, source) => {
+		const directory = fixture(completeFeature({ [path]: source }));
+		try {
+			const result = verify(directory);
+			expect(result.status).not.toBe(0);
+			expect(result.stderr).toContain(`unauthorized direct edge from ${role}`);
+		} finally {
+			rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
+	it("allows the extractor only its exact observation contract/helper ingress", () => {
+		const directory = fixture(
+			completeFeature({
+				"back/services/mcp/observer/magicBlockMcpObservationExtractor.ts":
+					`import "../../magicBlockDevnetObservationContracts"; import "../../magicBlockDevnetPreflightCanonical"; import "./magicBlockMcpObserverContracts"; import "../../magicBlockDevnetPreflightAdapter"; ${MCP_EXTRACTOR_EXACT_MEMBER_USES}`,
+			}),
+		);
+		try {
+			const result = verify(directory);
+			expect(result.status).not.toBe(0);
+			expect(result.stderr).toContain(
+				"unauthorized direct edge from MCP structured-content extractor",
+			);
+		} finally {
+			rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects an MCP server bypass around the approved observer ingress", () => {
+		const directory = fixture(
+			completeFeature({
+				"back/services/mcp/server/mcpServer.ts":
+					`${MCP_SERVER_EXTERNAL_IMPORTS} ${MCP_SERVER_LOCAL_IMPORTS} import "../../magicBlockDevnetObservationContracts"; ${MCP_SERVER_EXACT_GLOBAL_USES} export {};`,
+			}),
+		);
+		try {
+			const result = verify(directory);
+			expect(result.status).not.toBe(0);
+			expect(result.stderr).toContain(
+				"unauthorized direct edge from MCP server entrypoint",
+			);
+		} finally {
+			rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
+	it.each([
+		[
+			"unexpected Solana SDK dependency",
+			{
+				"back/services/mcp/observer/magicBlockHostedAuditClient.ts":
+					`import "./magicBlockMcpObserverContracts"; import "./magicBlockMcpObserverConfig"; import "@solana/web3.js"; ${MCP_HOSTED_CLIENT_EXACT_GLOBAL_USE}`,
+			},
+			"unexpected external dependency @solana/web3.js from MCP hosted audit client",
+		],
+		[
+			"dangerous Node builtin",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; import "node:child_process"; export {};',
+			},
+			"unexpected external dependency node:child_process from MCP audit observer",
+		],
+		[
+			"TypeScript import-type dependency",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; type SolanaConnection = import("@solana/web3.js").Connection; export type { SolanaConnection };',
+			},
+			"unexpected external dependency @solana/web3.js from MCP audit observer",
+		],
+		[
+			"unresolved observer import",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserverConfig.ts":
+					`import "./magicBlockMcpObserverContracts"; import "./missingObserverDependency"; ${MCP_OBSERVER_CONFIG_EXACT_GLOBAL_USE}`,
+			},
+			"unresolved import ./missingObserverDependency from MCP observer config",
+		],
+		[
+			"observer import outside source roots",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserverConfig.ts":
+					`import "./magicBlockMcpObserverContracts"; import "../../../../scripts/observerBypass.mjs"; ${MCP_OBSERVER_CONFIG_EXACT_GLOBAL_USE}`,
+				"scripts/observerBypass.mjs": "export {};",
+			},
+			"out-of-scope local import ../../../../scripts/observerBypass.mjs from MCP observer config",
+		],
+		[
+			"CommonJS require bypass",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; require("./magicBlockMcpObserverContracts"); export {};',
+			},
+			"unsupported CommonJS usage in MCP audit observer",
+		],
+		[
+			"createRequire bypass",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; import { createRequire } from "node:module"; export {};',
+			},
+			"unsupported CommonJS usage in MCP audit observer",
+		],
+		[
+			"literal dynamic import bypass",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; import("./magicBlockMcpObserverContracts"); export {};',
+			},
+			"dynamic import is not allowed in MCP audit observer",
+		],
+		[
+			"process builtin loader bypass",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserverConfig.ts":
+					`import "./magicBlockMcpObserverContracts"; ${MCP_OBSERVER_CONFIG_EXACT_GLOBAL_USE} process.getBuiltinModule("node:child_process");`,
+			},
+			"runtime module loader process.getBuiltinModule is not allowed in MCP observer config",
+		],
+		[
+			"aliased process global",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserverConfig.ts":
+					`import "./magicBlockMcpObserverContracts"; ${MCP_OBSERVER_CONFIG_EXACT_GLOBAL_USE} const processAlias = process; export { processAlias };`,
+			},
+			"unapproved global capability use process:unapproved-reference@<top-level> in MCP observer config",
+		],
+		[
+			"aliased process loader",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserverConfig.ts":
+					`import "./magicBlockMcpObserverContracts"; ${MCP_OBSERVER_CONFIG_EXACT_GLOBAL_USE} const loader = process.getBuiltinModule; loader("node:child_process");`,
+			},
+			"unapproved global capability use process:unapproved-reference@<top-level> in MCP observer config",
+		],
+		[
+			"Reflect.get global fetch",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; Reflect.get(globalThis, "fetch")("https://example.test"); export {};',
+			},
+			"unapproved global capability use Reflect:unapproved-reference@<top-level> in MCP audit observer",
+		],
+		[
+			"computed global capability name",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; globalThis[["fe", "tch"].join("")]("https://example.test"); export {};',
+			},
+			"unapproved computed member access unrecognized:globalThis[[\"fe\", \"tch\"].join(\"\")]@<top-level> in MCP audit observer",
+		],
+		[
+			"process binding loader",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserverConfig.ts":
+					`import "./magicBlockMcpObserverContracts"; ${MCP_OBSERVER_CONFIG_EXACT_GLOBAL_USE} process.binding("fs");`,
+			},
+			"runtime module loader process.binding is not allowed in MCP observer config",
+		],
+		[
+			"process dlopen loader",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserverConfig.ts":
+					`import "./magicBlockMcpObserverContracts"; ${MCP_OBSERVER_CONFIG_EXACT_GLOBAL_USE} process.dlopen({}, "./native.node");`,
+			},
+			"runtime module loader process.dlopen is not allowed in MCP observer config",
+		],
+		[
+			"destructured global fetch",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; const { fetch: indirectFetch } = globalThis; indirectFetch("https://example.test"); export {};',
+			},
+			"binding/destructuring pattern is not allowed in MCP audit observer",
+		],
+		[
+			"indirect global fetch call",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; const indirectFetch = globalThis.fetch; indirectFetch("https://example.test"); export {};',
+			},
+			"unapproved global capability use globalThis:unapproved-reference@<top-level> in MCP audit observer",
+		],
+		[
+			"reflective Function constructor",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; const obtainProcess = (() => undefined).constructor("return process"); obtainProcess(); export {};',
+			},
+			"reflective capability constructor is not allowed in MCP audit observer",
+		],
+		[
+			"aliased reflective Function constructor",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; const construct = (() => undefined)["con" + "structor"]; const obtainProcess = construct("return process"); obtainProcess(); export {};',
+			},
+			"reflective capability constructor is not allowed in MCP audit observer",
+		],
+		[
+			"nested computed Function constructor",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; const fn = () => undefined; fn[["con", "structor"].join("")]("return fetch")(); export {};',
+			},
+			"unapproved computed member access unrecognized:fn[[\"con\", \"structor\"].join(\"\")]@<top-level> in MCP audit observer",
+		],
+		[
+			"Object prototype reflection",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; Object.getPrototypeOf(() => undefined); export {};',
+			},
+			"unapproved global capability use Object:unapproved-reference@<top-level> in MCP audit observer",
+		],
+		[
+			"Object property-descriptor reflection",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; Object.getOwnPropertyDescriptor(() => undefined, "constructor"); export {};',
+			},
+			"unapproved global capability use Object:unapproved-reference@<top-level> in MCP audit observer",
+		],
+		[
+			"otherwise-benign unrecognized computed member",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; const bag = { safe: true }; const key = "safe"; bag[key]; export {};',
+			},
+			"unapproved computed member access unrecognized:bag[key]@<top-level> in MCP audit observer",
+		],
+		[
+			"optional unrecognized computed member",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; const bag = { safe: true }; const key = "safe"; bag?.[key]; export {};',
+			},
+			"unapproved computed member access unrecognized:bag?.[key]@<top-level> in MCP audit observer",
+		],
+		[
+			"duplicate otherwise-approved computed member",
+			{
+				"back/services/mcp/observer/magicBlockMcpObservationExtractor.ts":
+					'import "../../magicBlockDevnetObservationContracts"; import "../../magicBlockDevnetPreflightCanonical"; import "./magicBlockMcpObserverContracts"; export function extractMagicBlockObservationFromStructuredContent() { return Object.freeze({}); } function isBoundedCanonicalBase64(value, padding) { value[value.length - padding - 1]; return value[value.length - padding - 1]; }',
+			},
+			"expected 1 exact value:index-last-data-character@isBoundedCanonicalBase64 computed access(es) in MCP structured-content extractor, found 2",
+		],
+		[
+			"constructor binding alias",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; const { constructor: FunctionAlias } = () => undefined; FunctionAlias("return fetch")(); export {};',
+			},
+			"binding/destructuring pattern is not allowed in MCP audit observer",
+		],
+		[
+			"constructor shorthand binding",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; const { constructor } = () => undefined; constructor("return fetch")(); export {};',
+			},
+			"binding/destructuring pattern is not allowed in MCP audit observer",
+		],
+		[
+			"nested constructor binding",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; const { nested: { constructor: FunctionAlias } } = { nested: () => undefined }; FunctionAlias("return fetch")(); export {};',
+			},
+			"binding/destructuring pattern is not allowed in MCP audit observer",
+		],
+		[
+			"constructor parameter binding with default",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; function derive({ constructor: FunctionAlias } = () => undefined) { return FunctionAlias("return fetch")(); } derive(); export {};',
+			},
+			"binding/destructuring pattern is not allowed in MCP audit observer",
+		],
+		[
+			"string-literal constructor binding with property default",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; const { "constructor": FunctionAlias = () => undefined } = () => undefined; FunctionAlias("return fetch")(); export {};',
+			},
+			"binding/destructuring pattern is not allowed in MCP audit observer",
+		],
+		[
+			"computed constructor binding",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; const { ["con" + "structor"]: FunctionAlias } = () => undefined; FunctionAlias("return fetch")(); export {};',
+			},
+			"binding/destructuring pattern is not allowed in MCP audit observer",
+		],
+		[
+			"__proto__ binding alias",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; const { __proto__: prototypeAlias } = {}; export { prototypeAlias };',
+			},
+			"binding/destructuring pattern is not allowed in MCP audit observer",
+		],
+		[
+			"__proto__ shorthand binding",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; const { __proto__ } = {}; export { __proto__ };',
+			},
+			"binding/destructuring pattern is not allowed in MCP audit observer",
+		],
+		[
+			"nested string-literal __proto__ binding with default",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; const { nested: { "__proto__": prototypeAlias = {} } } = { nested: {} }; export { prototypeAlias };',
+			},
+			"binding/destructuring pattern is not allowed in MCP audit observer",
+		],
+		[
+			"constructor destructuring assignment",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; let FunctionAlias; ({ constructor: FunctionAlias } = () => undefined); FunctionAlias("return fetch")(); export {};',
+			},
+			"binding/destructuring pattern is not allowed in MCP audit observer",
+		],
+		[
+			"__proto__ for-of destructuring assignment",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; let prototypeAlias; for ({ __proto__: prototypeAlias } of [{}]) { void prototypeAlias; } export {};',
+			},
+			"binding/destructuring pattern is not allowed in MCP audit observer",
+		],
+		[
+			"array binding that derives a constructor",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; const [FunctionAlias] = [(() => undefined).constructor]; FunctionAlias("return fetch")(); export {};',
+			},
+			"binding/destructuring pattern is not allowed in MCP audit observer",
+		],
+		[
+			"duplicate otherwise-approved fetch use",
+			{
+				"back/services/mcp/observer/magicBlockHostedAuditClient.ts":
+					'import "./magicBlockMcpObserverContracts"; import "./magicBlockMcpObserverConfig"; export function createMagicBlockHostedAuditClient(url, init) { globalThis.fetch(url, init); return globalThis.fetch(url, init); }',
+			},
+			"expected 1 exact globalThis.fetch:direct-call-url-init@createMagicBlockHostedAuditClient use(s) in MCP hosted audit client, found 2",
+		],
+		[
+			"unapproved observer runtime capability",
+			{
+				"back/services/mcp/observer/magicBlockMcpObserver.ts":
+					'import "./magicBlockMcpObserverContracts"; globalThis.fetch("https://example.test"); export {};',
+			},
+			"unapproved global capability use globalThis:unapproved-reference@<top-level> in MCP audit observer",
+		],
+		[
+			"missing required server builtin",
+			{
+				"back/services/mcp/server/mcpServer.ts":
+					`${MCP_SERVER_EXTERNAL_IMPORTS.replace('import "node:crypto"; ', "")} ${MCP_SERVER_LOCAL_IMPORTS} ${MCP_SERVER_EXACT_GLOBAL_USES} export {};`,
+			},
+			"missing external dependency node:crypto from MCP server entrypoint",
+		],
+	] as const)("rejects MCP observer raw-import %s", (_name, files, error) => {
+		const directory = fixture(completeFeature(files));
+		try {
+			const result = verify(directory);
+			expect(result.status).not.toBe(0);
+			expect(result.stderr).toContain(error);
 		} finally {
 			rmSync(directory, { recursive: true, force: true });
 		}

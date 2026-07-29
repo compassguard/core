@@ -1,6 +1,6 @@
 {
   "change": "magicblock-devnet-preflight",
-  "status": "runtime_foundation_complete_strategic_gate_blocked",
+  "status": "mcp_observer_complete_strategic_gate_blocked",
   "scope": "local_devnet_audit_only",
   "decisionNeededBeforeApply": false,
   "strategicDecisionGate": {
@@ -12,7 +12,7 @@
     "sentinelExpectedStatus": "blocked until independently verifiable immutable Board approval evidence exists"
   },
   "guardText": [
-    "The implemented slice is local, devnet-only, disabled by default, non-custodial, audit-only, and fail closed.",
+    "The implemented slice is local, devnet-only, disabled by default, non-custodial, and audit-only. Hosted evidence fails closed; MCP audit delivery fails open without changing the downstream result.",
     "No signing, submission, delegation, simulation, authorization, Solana RPC, base-layer effect, checkpoint, trust-anchor, registry, key/custody, or production activation is included.",
     "The strategic checkpoint and registry remain future and blocked."
   ],
@@ -51,10 +51,27 @@
       ]
     },
     {
+      "id": "MBP-MCP-1",
+      "title": "Implement the one-way MagicBlock MCP audit observer",
+      "status": "completed",
+      "dependsOn": ["MBP-RUNTIME-1"],
+      "acceptanceCriteria": [
+        "The real createProxyMcpServerHandlers().callTool boundary extracts only from an allowed actual downstream non-error result after downstream completion, passes a detached frozen closed observation rather than the result to the sink, and returns the exact original result reference and state unchanged.",
+        "The closed extractor inspects only structuredContent at its root and accepts only the exact Wave 14A observation schema with strict identifier, exact-key, decoded-size, canonical base64, and zero-unused-padding-bit bounds.",
+        "The independently authenticated hosted audit client accepts only a canonical HTTPS DNS audit-route URL, rejects redirects and URL ambiguity, bounds payload before transport, enforces at most a one-second timeout even if transport ignores abort, and never reads or returns hosted response data for policy or control flow.",
+        "Missing or invalid optional observer configuration remains disabled and never falls back to ingress or general hosted credentials.",
+        "Observer synchronous throw, rejection, late rejection, timeout, HTTP rejection, wrong authentication, malformed content, and mutation attempts are fail-open and cannot change MCP deep equality, object identity, policy, approval, execution, signing, sending, or delegation behavior.",
+        "Focused entrypoint tests cover off/on, success/failure, malformed/irrelevant/extra-key/oversized/noncanonical-base64 content, auth, timeout, payload bounds, detached immutability, exact identity/state, and denied/error exclusion.",
+        "A no-live-service E2E crosses linked MCP SDK transports, createProxyMcpServer request wiring, the real dispatcher, a fake DownstreamMcpClient, injected hosted-audit and MagicBlock transports, hosted ingress, and PGlite-compatible persistence without injecting a post-dispatch proxy result.",
+        "The dependency verifier enforces exact local edges, external import sets, counted AST-use policies for required globals, and an exact per-role table for every computed member access in each of seven observer/server modules; because those modules require no binding patterns, it rejects every BindingElement and object/array destructuring assignment or loop target, including aliased, shorthand, nested, parameter, string-literal, computed-name, defaulted constructor/__proto__ extraction. It also rejects all unrecognized computed access, CommonJS, createRequire, dynamic imports, runtime module loaders, Object/Reflect/constructor derivation, indirect or reflective global capability access, unexpected bare packages or Node builtins, unresolved and out-of-root paths, permits only the extractor feature ingress, and retains all preflight and protected-boundary isolation guarantees.",
+        "Rollout and rollback are documented in rollout-runbook.md."
+      ]
+    },
+    {
       "id": "MBP-STRATEGIC-1",
       "title": "Obtain the future checkpoint and registry trust decision",
       "status": "blocked",
-      "dependsOn": ["MBP-RUNTIME-1"],
+      "dependsOn": ["MBP-MCP-1"],
       "acceptanceCriteria": [
         "Only independently verifiable immutable Board approval after security review can select the strategic baseline.",
         "A separate proposal and implementation cover trust anchor, predecessor-authorized rotation, durable replay and revocation state, checkpoint authority, registry ownership, signing/custody, privacy, permissions, tests, rollout, and rollback.",
@@ -65,15 +82,20 @@
   "verification": {
     "commands": [
       "npm run preflight:magicblock-devnet",
+      "npm test",
+      "npm run lint",
+      "npm run build",
+      "npm run build:mcp",
       "npm run preflight:magicblock-devnet:strategic-gate (expected blocked)",
       "./node_modules/.bin/tsc --noEmit --pretty false (repo-wide currently blocked by the pre-existing missing ../mcp/mcpProxyContracts import in mcpProxyDispatcher.test.ts)"
     ],
     "evidence": "docs/magicblock-devnet-preflight/verify-report.md"
   },
   "rollout": {
-    "environment": "local devnet evidence only",
+    "environment": "local devnet evidence and MCP audit observer only",
     "default": "disabled",
-    "rollback": "Disable or remove composition; no on-chain state exists.",
+    "runbook": "docs/magicblock-devnet-preflight/rollout-runbook.md",
+    "rollback": "Disable COMPASS_MAGICBLOCK_MCP_OBSERVER_ENABLED first; disable ingress if unused. No on-chain state exists.",
     "strategicActivation": "blocked"
   }
 }

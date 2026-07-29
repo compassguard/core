@@ -1,0 +1,244 @@
+import { PGlite } from "@electric-sql/pglite";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { describe, expect, it, vi } from "vitest";
+
+import {
+	MAGICBLOCK_OBSERVATION_SCHEMA,
+} from "../../magicBlockDevnetObservationContracts";
+import type { MagicBlockPost } from "../../magicBlockDevnetPreflightTypes";
+import { createMagicBlockAuditIngress } from "../../../../hosted/magicblock/magicBlockAuditIngress";
+import { createPgMagicBlockAppendOnlyAuditLedger } from "../../../../hosted/magicblock/magicBlockAuditLedgerPg";
+import { createPgMagicBlockObservationStore } from "../../../../hosted/magicblock/magicBlockObservationStorePg";
+import type { SqlExecutor } from "../../../../hosted/verdict/verdictStorePg";
+import type { DownstreamMcpClient } from "../proxy/mcpProxyContracts";
+import { createProxyMcpServer } from "../server/mcpServer";
+import { createMagicBlockHostedAuditClient } from "./magicBlockHostedAuditClient";
+import { createMagicBlockMcpObserver } from "./magicBlockMcpObserver";
+import type { MagicBlockMcpAuditTransport } from "./magicBlockMcpObserverContracts";
+
+const NOW = "2026-07-28T12:00:00.000Z";
+const AUDIT_URL = "https://audit.example/api/magicblock-devnet/audit";
+
+describe("MagicBlock MCP observer local E2E", () => {
+	it("crosses MCP SDK, dispatcher, fake downstream, hosted ingress, and PGlite", async () => {
+		const db = new PGlite();
+		const sql = executor(db);
+		const observations = createPgMagicBlockObservationStore({ sql });
+		const provider = boundDelegationPost();
+		const ingress = createMagicBlockAuditIngress({
+			enabled: true,
+			apiKey: "observer-secret",
+			runtime: {
+				observations,
+				createLedger: (binding) =>
+					createPgMagicBlockAppendOnlyAuditLedger({
+						sql,
+						...binding,
+						createAuditEventId: () => "aud_mcp_e2e",
+						now: () => NOW,
+					}),
+				post: provider,
+				now: () => NOW,
+				createOpaqueId: (kind) => `${kind}-mcp-e2e`,
+			},
+		});
+		const transport: MagicBlockMcpAuditTransport = vi.fn(async (url, init) =>
+			ingress.handle(
+				new Request(url, {
+					method: init.method,
+					headers: init.headers,
+					body: init.body,
+					signal: init.signal,
+				}),
+			),
+		);
+		const auditClient = createMagicBlockHostedAuditClient({
+			url: AUDIT_URL,
+			apiKey: "observer-secret",
+			timeoutMs: 1_000,
+			transport,
+		});
+		const successfulDownstream = fakeDownstream(
+			downstreamResult("obs-mcp-e2e"),
+		);
+		const returned = await callThroughMcpProtocol({
+			downstream: successfulDownstream,
+			observer: createMagicBlockMcpObserver({ auditClient }),
+		});
+
+		expect(returned).toStrictEqual(downstreamResult("obs-mcp-e2e"));
+		expect(successfulDownstream.listTools).toHaveBeenCalledTimes(1);
+		expect(successfulDownstream.callTool).toHaveBeenCalledWith({
+			toolName: "read_observation",
+			arguments: { id: "controlled-e2e" },
+		});
+		expect(transport).toHaveBeenCalledTimes(1);
+		expect(provider).toHaveBeenCalledTimes(2);
+
+		const wrongAuthClient = createMagicBlockHostedAuditClient({
+			url: AUDIT_URL,
+			apiKey: "wrong-observer-secret",
+			timeoutMs: 1_000,
+			transport,
+		});
+		const wrongAuthDownstream = fakeDownstream(
+			downstreamResult("obs-mcp-wrong-auth"),
+		);
+		const wrongAuthReturned = await callThroughMcpProtocol({
+			downstream: wrongAuthDownstream,
+			observer: createMagicBlockMcpObserver({
+				auditClient: wrongAuthClient,
+			}),
+		});
+
+		expect(wrongAuthReturned).toStrictEqual(
+			downstreamResult("obs-mcp-wrong-auth"),
+		);
+		expect(transport).toHaveBeenCalledTimes(2);
+		expect(provider).toHaveBeenCalledTimes(2);
+		await expect(
+			sql(
+				`SELECT observation_id, status
+				FROM magicblock_devnet_observations`,
+				[],
+			),
+		).resolves.toEqual([
+			{ observation_id: "obs-mcp-e2e", status: "completed" },
+		]);
+		await expect(
+			sql(
+				`SELECT audit_event_id, observation_id
+				FROM magicblock_devnet_audit_ledger`,
+				[],
+			),
+		).resolves.toEqual([
+			{ audit_event_id: "aud_mcp_e2e", observation_id: "obs-mcp-e2e" },
+		]);
+	});
+});
+
+async function callThroughMcpProtocol(input: {
+	readonly downstream: DownstreamMcpClient;
+	readonly observer: ReturnType<typeof createMagicBlockMcpObserver>;
+}): Promise<CallToolResult> {
+	const server = createProxyMcpServer({
+		downstream: input.downstream,
+		executeTool: async (args) =>
+			(await input.downstream.callTool(args)) as CallToolResult,
+		observeMagicBlockObservation: input.observer,
+	});
+	const client = new Client({
+		name: "magicblock-observer-e2e",
+		version: "0.0.0",
+	});
+	const [clientTransport, serverTransport] =
+		InMemoryTransport.createLinkedPair();
+	try {
+		await server.connect(serverTransport);
+		await client.connect(clientTransport);
+		const tools = await client.listTools();
+		expect(tools.tools.map((tool) => tool.name)).toEqual([
+			"read_observation",
+		]);
+		return (await client.callTool({
+			name: "read_observation",
+			arguments: { id: "controlled-e2e" },
+		})) as CallToolResult;
+	} finally {
+		await client.close().catch(() => undefined);
+		await server.close().catch(() => undefined);
+	}
+}
+
+function fakeDownstream(result: CallToolResult): DownstreamMcpClient {
+	return {
+		isAvailable: true,
+		listTools: vi.fn(async () => [
+			{
+				name: "read_observation",
+				description: "Return one controlled unsigned transaction observation.",
+				inputSchema: {
+					type: "object",
+					properties: { id: { type: "string" } },
+					required: ["id"],
+				},
+				descriptor: {
+					name: "read_observation",
+					description:
+						"Return one controlled unsigned transaction observation.",
+					inputSchema: {
+						type: "object",
+						properties: { id: { type: "string" } },
+						required: ["id"],
+					},
+				},
+			},
+		]),
+		callTool: vi.fn(async () => result),
+	};
+}
+
+function downstreamResult(observationId: string): CallToolResult {
+	return {
+		content: [{ type: "text", text: "unsigned transaction built" }],
+		structuredContent: {
+			schemaVersion: MAGICBLOCK_OBSERVATION_SCHEMA,
+			observationId,
+			unsignedTransactionBase64: unsignedV0Transaction(),
+		},
+		isError: false,
+	};
+}
+
+function unsignedV0Transaction(): string {
+	return Buffer.from([
+		1,
+		...Array.from({ length: 64 }, () => 0),
+		0x80,
+		1,
+		0,
+		1,
+		2,
+		...Array.from({ length: 32 }, (_, index) => index + 1),
+		...Array.from({ length: 32 }, (_, index) => index + 33),
+		...Array.from({ length: 32 }, () => 7),
+		1,
+		1,
+		1,
+		0,
+		0,
+		0,
+	]).toString("base64");
+}
+
+function boundDelegationPost(): MagicBlockPost {
+	return vi.fn(async (request) => {
+		const body = JSON.parse(request.body) as {
+			id: number;
+			params: [string];
+		};
+		expect(body.params).toHaveLength(1);
+		expect(typeof body.params[0]).toBe("string");
+		return {
+			status: 200,
+			url: request.url,
+			redirected: false,
+			body: JSON.stringify({
+					jsonrpc: "2.0",
+					id: body.id,
+					result: {
+						isDelegated: true,
+					},
+			}),
+		};
+	});
+}
+
+function executor(db: PGlite): SqlExecutor {
+	return async (text, params) => {
+		const result = await db.query(text, params);
+		return result.rows as Record<string, unknown>[];
+	};
+}
