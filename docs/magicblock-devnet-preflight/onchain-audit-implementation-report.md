@@ -112,6 +112,9 @@ https://explorer.solana.com/tx/<signature>?cluster=devnet
 ## Delivery
 
 The corrected cumulative branch starts from PR #19 head
-`9aaa5f5272ae843a764645c201526b532648d1f7`. A replacement PR against
-`release/compass_migration` will supersede the contradictory three-PR stack;
-its URL and final head are added after push.
+`9aaa5f5272ae843a764645c201526b532648d1f7`. Replacement
+[PR #20](https://github.com/compassguard/core/pull/20) targets
+`release/compass_migration` and supersedes the contradictory three-PR stack.
+The implementation commit is
+`6c42222f69c4acf5e3c343a00fbea95064698e01`; the PR head also includes this
+report update.
