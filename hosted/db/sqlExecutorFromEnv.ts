@@ -26,7 +26,22 @@ export function createSqlExecutorFromEnv(
 	getEnv: (key: string) => string | undefined = readEnv,
 ): SqlExecutor | undefined {
 	const url = getEnv("COMPASS_VERDICT_DB_URL")?.trim();
-	if (!url) return undefined;
+	if (!url) {
+		// Fail loudly in production. An unconfigured durable store makes both the credential and
+		// verdict stores silently fall back to a per-instance in-memory store — on serverless that
+		// is lost across invocations (a signed-up token 401s on the next request; verdicts vanish).
+		// A hard boot failure is preferable to silent data loss; non-prod keeps the in-memory
+		// fallback for local dev, tests, and Vercel preview.
+		if (isProductionDeployment(getEnv)) {
+			throw new Error(
+				"COMPASS_VERDICT_DB_URL is required in production but is not set. The durable " +
+					"credential/verdict store is unconfigured, so data would be silently lost to an " +
+					"in-memory fallback. Set COMPASS_VERDICT_DB_URL to the Supabase transaction-mode " +
+					"pooler URL (port 6543).",
+			);
+		}
+		return undefined;
+	}
 
 	if (!cachedClient || cachedUrl !== url) {
 		try {
@@ -59,4 +74,18 @@ export function createSqlExecutorFromEnv(
 		return rows as unknown as Record<string, unknown>[];
 	};
 	return sql;
+}
+
+/**
+ * Whether this process is a production deployment (where an in-memory store is unacceptable).
+ * On Vercel, VERCEL_ENV is authoritative — builds run with NODE_ENV=production even for previews,
+ * so only VERCEL_ENV=production counts and preview/development keep the in-memory fallback. Off
+ * Vercel (self-hosted / bun), NODE_ENV=production is the signal.
+ */
+function isProductionDeployment(
+	getEnv: (key: string) => string | undefined,
+): boolean {
+	const vercelEnv = getEnv("VERCEL_ENV")?.trim();
+	if (vercelEnv) return vercelEnv === "production";
+	return getEnv("NODE_ENV")?.trim() === "production";
 }
