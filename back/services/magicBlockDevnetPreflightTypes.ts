@@ -2,6 +2,10 @@ export const MAGICBLOCK_ROUTER_URL = "https://devnet-router.magicblock.app/" as 
 export const MAGICBLOCK_ROUTER_HOST = "devnet-router.magicblock.app" as const;
 export const MAGICBLOCK_METHOD = "getDelegationStatus" as const;
 export const MAGICBLOCK_MAX_RESPONSE_BYTES = 16_384 as const;
+export const MAGICBLOCK_MAX_CANDIDATE_ACCOUNTS = 8 as const;
+export const MAGICBLOCK_MAX_PROVIDER_CONCURRENCY = 4 as const;
+export const MAGICBLOCK_PROVIDER_TIMEOUT_MS = 2_000 as const;
+export const MAGICBLOCK_ROUTE_DEADLINE_MS = 8_000 as const;
 
 export type MagicBlockAccountFlags = {
 	readonly isSigner: boolean;
@@ -105,6 +109,8 @@ export type MagicBlockPostRequest = {
 	readonly body: string;
 	/** The transport MUST enforce this limit while streaming, before buffering. */
 	readonly maxResponseBytes: typeof MAGICBLOCK_MAX_RESPONSE_BYTES;
+	/** Absolute caller deadline; the transport uses the smaller of this and its fixed timeout. */
+	readonly deadlineAtEpochMs: number;
 };
 
 export type MagicBlockPostResponse = {

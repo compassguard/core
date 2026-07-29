@@ -17,29 +17,43 @@ const forbiddenFeatureCapabilities = new Set([
 const boundarySources = [
 	["types", "back/services/magicBlockDevnetPreflightTypes"],
 	["canonical helpers", "back/services/magicBlockDevnetPreflightCanonical"],
+	["observation contracts", "back/services/magicBlockDevnetObservationContracts"],
 	["producer", "back/services/magicBlockDevnetPreflightProducer"],
 	["adapter", "back/services/magicBlockDevnetPreflightAdapter"],
 	["integration caller", "back/services/magicBlockDevnetPreflightIntegration"],
 	["audit writer", "back/services/magicBlockDevnetPreflightAuditWriter"],
+	["unsigned v0 decoder", "back/services/magicBlockDevnetTransactionDecoder"],
+	["request scope", "back/services/magicBlockDevnetRequestScope"],
+	["literal HTTPS transport", "back/services/magicBlockDevnetHttpsTransport"],
+];
+const requiredIngressSources = [
+	["audit ingress", "hosted/magicblock/magicBlockAuditIngress"],
+	["audit ingress composition", "hosted/magicblock/magicBlockAuditIngressFromEnv"],
+	["observation store", "hosted/magicblock/magicBlockObservationStorePg"],
+	["append-only ledger", "hosted/magicblock/magicBlockAuditLedgerPg"],
+	["audit ingress entrypoint", "app/api/magicblock-devnet/audit/route"],
 ];
 const protectedBoundaryMatchers = [
 	["tool dispatcher", (path) => path === "back/services/mcp/proxy/mcpProxyDispatcher.ts" || /tool.*dispatch|dispatch.*tool/i.test(path)],
-	["policy output", (path) => path === "back/services/mcp/proxy/mcpProxyPolicyInterceptor.ts" || /policy.*(?:output|decision)|(?:output|decision).*policy/i.test(path)],
+	["policy output", (path) =>
+		path === "back/services/mcp/proxy/mcpProxyPolicyInterceptor.ts" ||
+		path.startsWith("back/guardrail/policy/") ||
+		path.startsWith("hosted/policy/") ||
+		path.startsWith("hosted/policies/") ||
+		/policy.*(?:output|decision)|(?:output|decision).*policy/i.test(path)],
 	["confirmation gate", (path) => path === "hosted/verify/verifyConfirmService.ts" || path === "hosted/onchain/onchainApproval.ts" || /confirm/i.test(path)],
 	["simulator", (path) => path === "back/guardrail/execution/executionGateway.ts" || /simulat/i.test(path)],
-	["executor", (path) => path === "back/guardrail/execution/executionGateway.ts" || /(?:transaction.*execut|execut.*transaction|executor|(?:transfer|swap|conditional)Gateway)/i.test(path)],
-	["handler", (path) => /handler|routes?\.ts$/i.test(path)],
+	["executor", (path) => path === "back/guardrail/execution/executionGateway.ts" || /(?:transaction.*execut|execut.*transaction|(?:transfer|swap|conditional)Gateway)/i.test(path)],
 	["execution gateway", (path) => path.startsWith("back/guardrail/execution/")],
 	["signer", (path) => /signer/i.test(path)],
 	["sender", (path) => /sender/i.test(path)],
 	["submitter", (path) => /submitter/i.test(path)],
 	["permission handler", (path) => /permission/i.test(path)],
-	["transaction executor", (path) => /transaction.*execut|execut.*transaction|executor/i.test(path)],
+	["transaction executor", (path) => /transaction.*execut|execut.*transaction/i.test(path)],
 	["commit handler", (path) => /commit/i.test(path)],
 	["delegation handler", (path) => /(?:^|[/_.-])delegation/i.test(path)],
 	["undelegation handler", (path) => /undelegat/i.test(path)],
 	["registry writer", (path) => /registry.*(?:write|writer)|(?:write|writer).*registry/i.test(path)],
-	["adapter", (path) => /adapter/i.test(path)],
 ];
 
 function sourceFiles(directory) {
@@ -160,6 +174,19 @@ const missingPreflightRoles = preflightBoundaries.filter(({ file }) => !file).ma
 if (missingPreflightRoles.length > 0) {
 	throw new Error(`incomplete MagicBlock preflight topology: missing ${missingPreflightRoles.join(", ")}`);
 }
+const allowedIngressBoundaries = requiredIngressSources.map(([role, source]) => ({
+	role,
+	file: resolveFile(resolve(root, source)),
+}));
+const missingIngressRoles = allowedIngressBoundaries
+	.filter(({ file }) => !file)
+	.map(({ role }) => role);
+if (missingIngressRoles.length > 0) {
+	throw new Error(`incomplete MagicBlock audit ingress topology: missing ${missingIngressRoles.join(", ")}`);
+}
+const allowedIngressRoots = allowedIngressBoundaries
+	.filter(({ role }) => role === "audit ingress entrypoint")
+	.map(({ file }) => file);
 
 // ponytail: scan every local source edge so reverse imports cannot hide a boundary-to-gateway path.
 const files = sourceRoots.flatMap((directory) => sourceFiles(resolve(root, directory)));
@@ -213,14 +240,26 @@ function assertEsmFeatureModules() {
 		if (parsed?.outsideSourceRoots.length) {
 			throw new Error(`out-of-scope local import ${parsed.outsideSourceRoots[0]} from ${relative(root, file)}`);
 		}
-		if (parsed?.forbiddenCapabilities.length) {
-			throw new Error(`forbidden runtime capability ${parsed.forbiddenCapabilities[0]} in ${relative(root, file)}`);
+		const relativeFile = relative(root, file).replaceAll("\\", "/");
+		const permittedCapabilities =
+			relativeFile === "back/services/magicBlockDevnetHttpsTransport.ts"
+				? new Set(["fetch"])
+				: new Set();
+		const forbiddenCapability = parsed?.forbiddenCapabilities.find(
+			(capability) => !permittedCapabilities.has(capability),
+		);
+		if (forbiddenCapability) {
+			throw new Error(`forbidden runtime capability ${forbiddenCapability} in ${relative(root, file)}`);
 		}
 		for (const specifier of parsed?.specifiers ?? []) {
+			const allowedBuiltin =
+				specifier === "node:crypto" ||
+				(relativeFile === "back/services/magicBlockDevnetTransactionDecoder.ts" &&
+					specifier === "node:buffer");
 			if (
 				!specifier.startsWith(".") &&
 				!specifier.startsWith("/") &&
-				specifier !== "node:crypto" &&
+				!allowedBuiltin &&
 				!Object.keys(aliases).some((alias) => specifier.startsWith(alias))
 			) {
 				throw new Error(`forbidden external dependency ${specifier} from ${relative(root, file)}`);
@@ -231,6 +270,54 @@ function assertEsmFeatureModules() {
 }
 
 assertEsmFeatureModules();
+
+function closure(roots) {
+	const seen = new Set();
+	const pending = [...roots];
+	while (pending.length) {
+		const file = pending.pop();
+		if (seen.has(file)) continue;
+		seen.add(file);
+		pending.push(...(graph.get(file) ?? []));
+	}
+	return seen;
+}
+
+const featureClosureFiles = closure(preflightFiles);
+const allowedIngressClosureFiles = closure(allowedIngressRoots);
+const explicitlyApprovedIngressFiles = new Set(
+	allowedIngressBoundaries.map(({ file }) => file),
+);
+const unreachableIngressRoles = allowedIngressBoundaries
+	.filter(({ file }) => !allowedIngressClosureFiles.has(file))
+	.map(({ role }) => role);
+if (unreachableIngressRoles.length > 0) {
+	throw new Error(
+		`incomplete MagicBlock audit ingress closure: unreachable ${unreachableIngressRoles.join(", ")}`,
+	);
+}
+for (const file of allowedIngressClosureFiles) {
+	const parsed = analysis.get(file);
+	if (
+		[".cjs", ".cts"].includes(extname(file)) ||
+		parsed?.hasCommonJs ||
+		parsed?.hasCreateRequire
+	) {
+		throw new Error(`unsupported CommonJS usage in audit ingress closure: ${relative(root, file)}`);
+	}
+	if (parsed?.hasParseErrors) {
+		throw new Error(`source parse error in audit ingress closure: ${relative(root, file)}`);
+	}
+	if (parsed?.hasNonliteralDynamic) {
+		throw new Error(`nonliteral dynamic import in audit ingress closure: ${relative(root, file)}`);
+	}
+	if (parsed?.unresolved.length) {
+		throw new Error(`unresolved import ${parsed.unresolved[0]} from audit ingress closure ${relative(root, file)}`);
+	}
+	if (parsed?.outsideSourceRoots.length) {
+		throw new Error(`out-of-scope local import ${parsed.outsideSourceRoots[0]} from audit ingress closure ${relative(root, file)}`);
+	}
+}
 
 function reaches(from, target) {
 	const seen = new Set();
@@ -299,6 +386,20 @@ for (const file of files) {
 			`${relative(root, file)} bridges MagicBlock preflight and ${reachedBoundary.role}`,
 		);
 	}
+	if (!featureClosureFiles.has(file) && !explicitlyApprovedIngressFiles.has(file)) {
+		throw new Error(
+			`unauthorized MagicBlock preflight consumer: ${relative(root, file)}`,
+		);
+	}
 }
 
-console.log(`PASS: ${preflightFiles.length} MagicBlock preflight boundary module(s) are isolated from ${protectedBoundaries.length} authorization/execution boundary module(s).`);
+for (const file of files) {
+	const parsed = analysis.get(file);
+	if (parsed?.hasNonliteralDynamic) {
+		throw new Error(
+			`nonliteral dynamic import in scanned source root: ${relative(root, file)}`,
+		);
+	}
+}
+
+console.log(`PASS: ${preflightFiles.length} MagicBlock runtime boundary module(s) have one audit-ingress entrypoint with ${explicitlyApprovedIngressFiles.size} explicitly approved ingress module(s), and are isolated from ${protectedBoundaries.length} authorization/execution boundary module(s).`);

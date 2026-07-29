@@ -1,6 +1,6 @@
 {
   "change": "magicblock-devnet-preflight",
-  "status": "local_slice_complete_strategic_gate_blocked",
+  "status": "runtime_foundation_complete_strategic_gate_blocked",
   "scope": "local_devnet_audit_only",
   "decisionNeededBeforeApply": false,
   "strategicDecisionGate": {
@@ -31,15 +31,30 @@
         "The injected append-only ledger atomically persists only a private deep-frozen closed/redacted snapshot and digest, then returns only auditEventId and attestationDigest; caller mutation after validation cannot affect materialization.",
         "The writer derives review_required/confirmed only from all-delegated evidence and incompatible/incompatible only when any account is base_layer; callers cannot supply outcome/rationale and unavailable never creates an audit.",
         "The integration returns only review_required, incompatible, or unavailable audit outcomes and has no authorization/execution import or input.",
-        "AST-based dependency closure treats all six feature modules as roots, traverses the full local closure from every protected boundary, rejects direct or transitive protected parse/CommonJS/unresolved/nonliteral/out-of-root imports, bidirectional and sibling-bridge protected reachability, external feature dependencies, non-crypto builtins, direct network/process capabilities, and feature local imports outside source roots without failing on ordinary unrelated bare packages.",
+        "AST-based dependency closure treats all ten runtime modules as roots, traverses the full local closure from every protected boundary, rejects direct or transitive protected parse/CommonJS/unresolved/nonliteral/out-of-root imports, bidirectional and sibling-bridge protected reachability, external feature dependencies, non-crypto builtins, direct network/process capabilities, and feature local imports outside source roots without failing on ordinary unrelated bare packages.",
         "Focused runtime and guard tests pass."
+      ]
+    },
+    {
+      "id": "MBP-RUNTIME-1",
+      "title": "Implement the disabled-by-default MagicBlock hosted audit runtime foundation",
+      "status": "completed",
+      "dependsOn": ["MBP-LOCAL-1"],
+      "acceptanceCriteria": [
+        "A closed request accepts only an opaque observation ID and canonical base64 unsigned Solana v0 transaction; the trusted decoder rejects signed, legacy, ALT, malformed, trailing, or empty-instruction transactions and derives all account flags internally.",
+        "Candidate source and trusted-plan persistence are immutable and request-scoped.",
+        "The only concrete network capability is a literal MagicBlock devnet Router transport with redirects rejected, a 16384-byte streaming cap, a two-second per-call timeout, an eight-second ingress deadline, at most eight accounts, and concurrency four under a 15-second hosted duration.",
+        "Postgres observation idempotency, bounded stale-claim recovery with immutable claim-attempt fencing, causally ordered singleton-tip advance plus SHA-256 append plus observation completion guarded to exactly one transition each, missing-tip rollback/recovery, and commit-ambiguity reconciliation reuse COMPASS_VERDICT_DB_URL without an enabled-mode in-memory fallback.",
+        "The separately authenticated Next audit entrypoint is disabled by default; only the five explicitly named ingress modules may consume feature roots, and transitive dependencies receive no privilege.",
+        "Policy, execution, confirmation, signer, sender, delegation, and MCP dispatcher closures remain isolated.",
+        "Focused unit, Postgres integration, closure, and entrypoint tests pass without live endpoint calls."
       ]
     },
     {
       "id": "MBP-STRATEGIC-1",
       "title": "Obtain the future checkpoint and registry trust decision",
       "status": "blocked",
-      "dependsOn": ["MBP-LOCAL-1"],
+      "dependsOn": ["MBP-RUNTIME-1"],
       "acceptanceCriteria": [
         "Only independently verifiable immutable Board approval after security review can select the strategic baseline.",
         "A separate proposal and implementation cover trust anchor, predecessor-authorized rotation, durable replay and revocation state, checkpoint authority, registry ownership, signing/custody, privacy, permissions, tests, rollout, and rollback.",

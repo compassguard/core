@@ -14,6 +14,28 @@ The attestation is audit evidence only. It cannot approve, deny, route, simulate
 | Exact MagicBlock devnet endpoint allowlist | Keys, custody, signing/submission, fund movement, permission changes, delegation/undelegation, commit, registry mutation, or undelegation |
 | Redacted audit-attestation schema and review gate | Production activation, external publication, outreach, on-chain writes, or any external commitment |
 
+## Wave 14A runtime foundation
+
+The hosted runtime accepts exactly one closed audit observation at `POST /api/magicblock-devnet/audit`:
+
+```ts
+type MagicBlockDevnetObservationV1 = {
+  schemaVersion: "compass.magicblock-devnet-observation/v1";
+  observationId: string;
+  unsignedTransactionBase64: string;
+};
+```
+
+The ingress is a separate audit-only entrypoint. It is absent unless `COMPASS_MAGICBLOCK_AUDIT_INGRESS_ENABLED=true`, requires the dedicated `COMPASS_MAGICBLOCK_AUDIT_INGRESS_API_KEY`, and requires the existing `COMPASS_VERDICT_DB_URL`. It is not mounted in the general `/v1` hosted router and does not accept public signup credentials.
+
+The transaction decoder accepts only canonical base64 for one unsigned Solana versioned transaction, version `0`, at most 1232 bytes and eight static accounts, with an all-zero signature vector matching the message header and zero address-table lookups. It derives the complete ordered static-account list and every signer, writable, program, and payer flag from message bytes. Legacy messages, signed transactions, lookup tables, invalid indexes, trailing bytes, empty instruction lists, a ninth account, and caller-supplied accounts, flags, decoded plans, or digests fail closed.
+
+Each accepted request creates a private request-scoped immutable candidate source and trusted-plan store. Nothing is shared across requests. The concrete transport validates the literal Router URL and fixed POST contract again, rejects redirects, uses the smaller of a two-second per-call timeout and the remaining eight-second ingress deadline, and cancels a response stream as soon as it exceeds 16384 bytes. At most four account observations run concurrently, so eight accepted accounts require at most two provider batches. The hosted entrypoint declares 15 seconds, leaving headroom above the eight-second runtime budget and the twelve-second stale-claim lease.
+
+`observationId` is an idempotency key. Postgres stores only its request digest, lifecycle, claim time/attempt, timestamps, and closed result; raw transaction bytes and provider bodies are not persisted. Reuse with a different request digest is rejected, an active pending request is not dispatched again, a pending claim older than twelve seconds may be claimed once for deterministic recovery, and a completed result is returned without a provider call. Every successful claim returns its positive `claimAttempt`; both an audit append and an `unavailable` completion require that exact attempt in their Postgres predicate. A stale claimant therefore loses all finalization authority as soon as recovery increments the attempt. Successful attestations use one Postgres statement to lock the observation for that attempt and advance one singleton ledger-tip row. The tip update serializes concurrent appenders, preserves the prior digest, computes the next SHA-256 event link, inserts the immutable event, and only then completes the observation with the exact closed audit result. An in-statement transition guard requires exactly one locked observation, tip advance, ledger insert, and completion; a missing tip or any incomplete transition raises an error and rolls back the statement. If the SQL response is lost after commit, a read of the same observation ID/request digest reconciles to that completed result; it is never downgraded to `unavailable`.
+
+There is no MCP observer in this wave. There is also no live endpoint verification, mainnet support, policy decision, signer, sender, submission, delegation, checkpoint, registry write, or strategic activation.
+
 ## Requirements
 
 ### Fail-closed evidence boundary
@@ -63,7 +85,7 @@ type MagicBlockDelegationStatus = {
 
 The existing `simulate_transaction` classification may return `ALLOW`. That result is not an authorization decision for this slice. The MagicBlock adapter is audit-only and MUST be structurally unreachable from every authorization or execution path: tool dispatcher, policy decision output, confirmation gate, signer, sender, submitter, delegation/permission handler, and transaction executor. No adapter output may be mapped to `ALLOW`, a capability, an approval, or an executable input.
 
-The implemented TypeScript-AST dependency-closure guard treats Types, Canonical, Producer, Adapter, AuditWriter, and Integration as feature roots and traverses their complete import closure. It resolves static imports, static re-exports, and literal dynamic imports. Feature use of external packages, non-`node:crypto` builtins, direct network/process capabilities (`fetch`, `globalThis.fetch`, WebSocket-family APIs, or `process`), unresolved/nonliteral imports, or local imports outside `app`, `back`, `hosted`, and `shared` fails closed. From every protected boundary, the guard separately traverses the entire reachable local closure and applies parse, CommonJS, nonliteral dynamic, unresolved, and out-of-source-root checks to every node, preventing a protected helper from hiding a reverse edge. It rejects reachability in either direction with authorization/execution paths and rejects any non-feature source module that bridges a feature node and a protected node. Ordinary bare packages outside the feature closure remain permitted.
+The implemented TypeScript-AST dependency-closure guard treats the ten runtime modules (Types, Canonical, ObservationContracts, Producer, Adapter, AuditWriter, Integration, TransactionDecoder, RequestScope, and HttpsTransport) as feature roots and traverses their complete import closure. It resolves static imports, static re-exports, and literal dynamic imports. The only network exception is `fetch` inside the literal HTTPS transport; the only additional builtin exception is `node:buffer` inside the transaction decoder. All other external packages, non-crypto builtins, direct network/process capabilities, unresolved imports, or local imports outside `app`, `back`, `hosted`, and `shared` fail closed. Only the five explicitly named audit-ingress, persistence, composition, and entrypoint modules may directly consume a feature root; transitive shared dependencies do not inherit that privilege. The ingress dependency closure is validated separately, and every nonliteral dynamic import anywhere under the scanned source roots fails closed. From every protected boundary, the guard separately traverses the entire reachable local closure and rejects reachability in either direction with the tool dispatcher, policy, confirmation, signer, sender, submission, delegation/permission, or execution paths.
 
 ### Internal attestation authority and source of truth
 
@@ -149,6 +171,9 @@ The only proposed on-chain value is the immutable digest of a reviewed attestati
 - [ ] Rationale is one of the defined codes and the domain-separated canonical digest can be reproduced without sensitive or raw inputs.
 - [ ] The attestation cannot be consumed as authorization or an execution input.
 - [x] The runnable closure guard covers every feature entrypoint, integration caller, and concrete audit writer; it resolves static imports/re-exports/literal dynamic imports, fails closed for unresolved/nonliteral imports or external feature dependencies, and proves no authorization or execution reachability.
+- [x] The hosted audit ingress is disabled by default, uses a separate bearer, reuses `COMPASS_VERDICT_DB_URL`, and is the only allowed runtime consumer.
+- [x] The trusted decoder accepts only unsigned v0/no-ALT transactions and derives account flags without caller-supplied decoded material.
+- [x] Observation idempotency and the append-only SHA-256 ledger are durable Postgres controls; tests use PGlite/fakes and make no live MagicBlock calls.
 - [ ] Any Solana registration remains `not_requested` until Board review and a separate security-approved implementation change; the Chief of Staff may approve routine internal planning only.
 - [ ] A future registry proposal cannot proceed unless it rejects duplicate `(schemaVersion, auditEventId, attestationDigest)` registrations; rejects a digest whose review binding, schema, cluster, or event digest differs; and rejects evidence more than 24 hours old.
 - [ ] That proposal includes a tested rollback: disable prevents new writes, a recorded revocation makes the digest unusable on resolution, and replay or stale resolution fails closed. It must prove those controls before devnet rollout.

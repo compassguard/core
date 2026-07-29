@@ -789,10 +789,22 @@ function completeFeature(files: Record<string, string>) {
 	return {
 		"back/services/magicBlockDevnetPreflightTypes.ts": "export {};",
 		"back/services/magicBlockDevnetPreflightCanonical.ts": "export {};",
+		"back/services/magicBlockDevnetObservationContracts.ts": "export {};",
 		"back/services/magicBlockDevnetPreflightProducer.ts": "export {};",
 		"back/services/magicBlockDevnetPreflightAdapter.ts": "export {};",
 		"back/services/magicBlockDevnetPreflightIntegration.ts": "export {};",
 		"back/services/magicBlockDevnetPreflightAuditWriter.ts": "export {};",
+		"back/services/magicBlockDevnetTransactionDecoder.ts": "export {};",
+		"back/services/magicBlockDevnetRequestScope.ts": "export {};",
+		"back/services/magicBlockDevnetHttpsTransport.ts": "export {};",
+		"hosted/magicblock/magicBlockAuditIngress.ts":
+			'import "../../back/services/magicBlockDevnetObservationContracts"; export {};',
+		"hosted/magicblock/magicBlockAuditIngressFromEnv.ts":
+			'import "./magicBlockAuditIngress"; import "./magicBlockObservationStorePg"; import "./magicBlockAuditLedgerPg"; export {};',
+		"hosted/magicblock/magicBlockObservationStorePg.ts": "export {};",
+		"hosted/magicblock/magicBlockAuditLedgerPg.ts": "export {};",
+		"app/api/magicblock-devnet/audit/route.ts":
+			'import "../../../../hosted/magicblock/magicBlockAuditIngressFromEnv"; export {};',
 		"back/guardrail/execution/executionGateway.ts": "export {};",
 		...files,
 	};
@@ -866,6 +878,77 @@ describe("MagicBlock dependency and strategic gates", () => {
 		}
 	});
 
+	it("rejects every feature consumer outside the exact audit-ingress closure", () => {
+		const directory = fixture(
+			completeFeature({
+				"shared/rogueMagicBlockConsumer.ts":
+					'import "../back/services/magicBlockDevnetObservationContracts"; export {};',
+			}),
+		);
+		try {
+			const result = verify(directory);
+			expect(result.status).not.toBe(0);
+			expect(result.stderr).toContain("unauthorized MagicBlock preflight consumer");
+		} finally {
+			rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
+	it("does not grant feature privilege to a transitive shared ingress dependency", () => {
+		const directory = fixture(
+			completeFeature({
+				"hosted/magicblock/magicBlockAuditIngress.ts":
+					'import "../../back/services/magicBlockDevnetObservationContracts"; import "../../shared/ingressHelper"; export {};',
+				"shared/ingressHelper.ts":
+					'import "../back/services/magicBlockDevnetPreflightTypes"; export {};',
+			}),
+		);
+		try {
+			const result = verify(directory);
+			expect(result.status).not.toBe(0);
+			expect(result.stderr).toContain("unauthorized MagicBlock preflight consumer");
+		} finally {
+			rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects nonliteral dynamic imports anywhere in scanned source roots", () => {
+		const directory = fixture(
+			completeFeature({
+				"shared/runtimeLoader.ts":
+					"const target = './runtimeTarget'; import(target);",
+				"shared/runtimeTarget.ts": "export {};",
+			}),
+		);
+		try {
+			const result = verify(directory);
+			expect(result.status).not.toBe(0);
+			expect(result.stderr).toContain(
+				"nonliteral dynamic import in scanned source root",
+			);
+		} finally {
+			rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
+	it("validates the ingress dependency closure independently", () => {
+		const directory = fixture(
+			completeFeature({
+				"hosted/magicblock/magicBlockAuditIngressFromEnv.ts":
+					'import "./magicBlockAuditIngress"; import "./magicBlockObservationStorePg"; import "./magicBlockAuditLedgerPg"; const target = "./magicBlockAuditIngress"; import(target);',
+			}),
+		);
+		try {
+			const result = verify(directory);
+			expect(result.status).not.toBe(0);
+			expect(result.stderr).toContain(
+				"nonliteral dynamic import in audit ingress closure",
+			);
+		} finally {
+			rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
 	it.each([
 		[
 			"forward execution reachability",
@@ -896,6 +979,14 @@ describe("MagicBlock dependency and strategic gates", () => {
 			{
 				"back/guardrail/execution/executionGateway.ts":
 					'import "../../services/magicBlockDevnetPreflightTypes";',
+			},
+			"MagicBlock preflight reaches",
+		],
+		[
+			"MCP dispatcher import of observation contracts",
+			{
+				"back/services/mcp/proxy/mcpProxyDispatcher.ts":
+					'import "../../magicBlockDevnetObservationContracts";',
 			},
 			"MagicBlock preflight reaches",
 		],

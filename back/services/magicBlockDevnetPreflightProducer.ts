@@ -20,6 +20,7 @@ import type {
 	TrustedMagicBlockPlanSnapshot,
 	TrustedMagicBlockPlanStore,
 } from "./magicBlockDevnetPreflightTypes";
+import { MAGICBLOCK_MAX_CANDIDATE_ACCOUNTS } from "./magicBlockDevnetPreflightTypes";
 
 const ACCOUNT_DOMAIN = "compass.magicblock-devnet-preflight/v1/account\0";
 const PLAN_DOMAIN = "compass.magicblock-devnet-preflight/v1/decoded-plan\0";
@@ -229,7 +230,7 @@ function cloneAndValidateCandidate(
 		value.cluster !== "devnet" ||
 		!Array.isArray(value.accounts) ||
 		value.accounts.length === 0 ||
-		value.accounts.length > 256
+		value.accounts.length > MAGICBLOCK_MAX_CANDIDATE_ACCOUNTS
 	) {
 		throw new Error("trusted plan unavailable");
 	}
@@ -277,7 +278,7 @@ function validateStoredCandidate(value: unknown): TrustedMagicBlockPlanSnapshot[
 		value.cluster !== "devnet" ||
 		!Array.isArray(value.accounts) ||
 		value.accounts.length === 0 ||
-		value.accounts.length > 256
+		value.accounts.length > MAGICBLOCK_MAX_CANDIDATE_ACCOUNTS
 	) {
 		throw new Error("trusted plan unavailable");
 	}

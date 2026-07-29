@@ -1,8 +1,8 @@
-# MagicBlock Devnet Preflight Verification Report
+# MagicBlock Devnet Runtime Foundation Verification Report
 
 Date: 2026-07-29
 
-## Implemented local slice
+## Wave 14A focused preflight
 
 Status: **PASS**
 
@@ -14,37 +14,60 @@ npm run preflight:magicblock-devnet
 
 Evidence:
 
-- Dependency closure: PASS; all 6 canonical feature roots isolated from 38 authorization/execution boundary matches.
-- Focused Vitest: PASS; 1 file, 64 tests.
-- Runtime coverage includes disabled zero-call behavior; the official single-base58-string parameter and integer JSON-RPC ID; required `isDelegated`; documented optional `fqdn` and official delegation-record metadata; rejection of the former Compass request object and invented delegation-record envelope; transport streaming cap; redirect/host, malformed, oversized, over-depth, extra, duplicate, unsafe-integer, and replayed-ID response rejection; candidate/plan/account digest and flag recomputation; writer-derived outcomes; TOCTOU mutation resistance; redaction; append failure; canonical domain-separated digest; opaque candidate-source input; and `simulate_transaction` `ALLOW` isolation.
-- Closure fixtures cover all six required roots, forward/reverse reachability, direct and transitive protected unresolved/nonliteral/out-of-root imports, Producer/Types consumption, sibling bridge consumers, feature imports outside source roots, external SDK/non-crypto builtins, direct/global fetch, WebSocket, process/child-process capability bypasses, and comment/string false-positive resistance. Ordinary unrelated bare packages remain accepted.
+- Dependency closure: PASS; all 10 core runtime roots have one dedicated audit-ingress entrypoint. Only five explicitly named ingress/persistence/composition modules may directly consume feature roots; transitive helpers receive no privilege.
+- Focused Vitest: PASS; 4 files and 95 tests.
+- Focused Vitest covers the official one-base58-string request, integer IDs, required `isDelegated`, documented optional metadata, rejection of the former Compass envelope, unsigned v0/no-ALT decoding, the eight-account limit, internally derived account flags, request-scoped immutable source/store behavior, four-call provider concurrency, the shared eight-second deadline, literal URL and redirect enforcement, stream cancellation over 16384 bytes, disabled and separately authenticated ingress behavior, bounded stale-claim recovery, claim-attempt fencing, idempotent observation replay/conflict handling, causally ordered and guarded Postgres singleton-tip advance plus ledger append plus observation completion, missing-tip rollback/recovery, lost-response reconciliation, prior-digest preservation, SHA-256 ledger links, fail-closed redaction, and prior preflight binding/TOCTOU/parser cases.
+- Closure fixtures cover every required root, the exact five-module audit-ingress allowlist, an unauthorized transitive consumer, MCP dispatcher, policy/execution reverse and forward edges, sibling bridges, unresolved/nonliteral/out-of-root imports, global nonliteral dynamic imports, and prohibited runtime capabilities.
+- All transport tests inject a fake fetch implementation. Integration tests use fakes and in-process PGlite. No live MagicBlock, Solana, or external endpoint was called.
 
-## Focused static checks
+## Confirmed review remediation
 
 Status: **PASS**
 
-Commands:
+- The ledger no longer relies on a session advisory lock or a stale pre-lock read. One singleton Postgres tip row serializes appenders. One data-modifying-CTE statement locks the current claim, advances the tip, inserts the immutable event, and completes the observation from that insert; its scalar guard raises an in-statement error unless all four transitions affect exactly one row.
+- A missing-tip regression proves that the failed guarded statement leaves the observation pending with no ledger event, after which explicit tip restoration permits the current claimant to retry successfully.
+- A concurrent PGlite regression test runs two appends through `Promise.all` and verifies contiguous sequences plus an exact prior-digest link. This is compatibility evidence for the SQL design, not a live Supabase concurrency claim.
+- A lost-SQL-response-after-commit test verifies that ingress reconciles the completed observation and returns its audit result without creating another event or downgrading it to `unavailable`.
+- The decoder and producer reject a ninth candidate account before provider access. Eight-account collection is ordered and bounded to four concurrent calls, each limited to two seconds and the remaining part of one eight-second ingress deadline. The hosted route declares 15 seconds.
+- Pending observation claims use a twelve-second lease and one conditional Postgres upsert. The returned positive `claimAttempt` fences both success append and `unavailable` completion; tests keep claimant 1 alive, reclaim with claimant 2, reject both stale writes, and allow claimant 2 to create exactly one event.
+- The closure guard grants direct-consumer privilege by exact file identity, independently validates the ingress closure, and rejects nonliteral dynamic imports anywhere under the scanned source roots.
+
+## Repository test, lint, and build
+
+Status: **PASS**
+
+Commands and results:
 
 ```text
-./node_modules/.bin/eslint back/services/magicBlockDevnetPreflightTypes.ts back/services/magicBlockDevnetPreflightCanonical.ts back/services/magicBlockDevnetPreflightProducer.ts back/services/magicBlockDevnetPreflightSchema.ts back/services/magicBlockDevnetPreflightAdapter.ts back/services/magicBlockDevnetPreflightAuditWriter.ts back/services/magicBlockDevnetPreflightIntegration.ts back/services/__tests__/magicBlockDevnetPreflight.test.ts scripts/verify-magicblock-preflight-dependency-closure.mjs scripts/verify-magicblock-preflight-approval.mjs
+npm test
 ```
+
+56 files passed, 2 live suites skipped; 626 tests passed and 22 live tests skipped.
 
 ```text
-./node_modules/.bin/tsc --noEmit --pretty false --target ES2022 --module ESNext --moduleResolution Bundler --lib ESNext,DOM --skipLibCheck back/services/magicBlockDevnetPreflightTypes.ts back/services/magicBlockDevnetPreflightCanonical.ts back/services/magicBlockDevnetPreflightProducer.ts back/services/magicBlockDevnetPreflightSchema.ts back/services/magicBlockDevnetPreflightAdapter.ts back/services/magicBlockDevnetPreflightAuditWriter.ts back/services/magicBlockDevnetPreflightIntegration.ts
+npm run lint
+npm run build
 ```
 
-Both commands exited successfully with no diagnostics.
+Both exited successfully. The production build includes the dynamic `/api/magicblock-devnet/audit` route.
 
-## Repository closure checks
+## Repository-wide typecheck
 
-Status: **PASS WITH KNOWN BASELINE TYPECHECK**
+Status: **BLOCKED BY PRE-EXISTING UNRELATED ERROR**
 
-- `npm test`: PASS; 53 files passed, 2 live suites skipped; 595 tests passed, 22 live tests skipped.
-- `npm run lint`: PASS.
-- `npm run build`: PASS; Next.js production build completed.
-- `npm run build:mcp`: PASS.
-- MagicBlock task and strategic-baseline JSON parse checks: PASS.
-- `git diff --check`: PASS.
+Command:
+
+```text
+npx tsc --noEmit
+```
+
+Evidence:
+
+```text
+back/services/__tests__/mcpProxyDispatcher.test.ts(134,29): error TS2307: Cannot find module '../mcp/mcpProxyContracts' or its corresponding type declarations.
+```
+
+No Wave 14A diagnostic was emitted after correcting the focused test types. The unrelated test import remains untouched.
 
 ## Strategic Board sentinel
 
@@ -56,36 +79,8 @@ Command:
 npm run preflight:magicblock-devnet:strategic-gate
 ```
 
-Evidence: exits non-zero with `immutable Board approval evidence is required; local proposal metadata is non-authoritative and cannot authorize strategic or external action`.
+The expected non-zero result continues to block checkpoint, trust-anchor, registry, custody, and strategic/external activation work. It does not invalidate this disabled runtime foundation.
 
-This expected failure blocks only future checkpoint, trust-anchor, registry, custody, and strategic/external activation work. It does not invalidate the completed local evidence-and-audit slice.
+## Environment note
 
-## Repository-wide typecheck
-
-Status: **BLOCKED BY PRE-EXISTING UNRELATED ERROR**
-
-Command:
-
-```text
-./node_modules/.bin/tsc --noEmit --pretty false
-```
-
-Evidence:
-
-```text
-back/services/__tests__/mcpProxyDispatcher.test.ts(134,29): error TS2307: Cannot find module '../mcp/mcpProxyContracts' or its corresponding type declarations.
-```
-
-The focused MagicBlock TypeScript check passes. This report does not modify the unrelated missing import.
-
-## Dependency setup baseline
-
-`npm ci` cannot reproduce the base checkout because the committed `package.json` and `package-lock.json` are already out of sync (the lockfile omits the `@solana/spl-token` dependency closure). Verification reused the already-installed dependency tree from the Wave 14B worktree without changing either manifest. This remediation adds no dependency and leaves that unrelated lockfile repair out of scope.
-
-## Remaining strategic placeholders
-
-- Immutable Board approval evidence: pending.
-- Checkpoint trust anchor and authority rotation design: pending.
-- Durable checkpoint replay/revocation state: pending.
-- Registry ownership, custody/signing, privacy, permissions, rollout, and rollback: pending.
-- Any checkpoint or on-chain registry implementation: not started and not authorized.
+`npm ci` is currently blocked because the pre-existing `package-lock.json` is not synchronized with `package.json` (missing existing Solana transitive dependencies). Verification installed dependencies with `npm install --no-package-lock --ignore-scripts --no-audit --no-fund`; neither dependency manifest was regenerated by that install.
