@@ -11,6 +11,7 @@ import type {
 	MagicBlockAuditRecordStore,
 } from "@back/services/magicBlockOnchainAuditContracts";
 import { materializeMagicBlockAuditCommitment } from "@back/services/magicBlockOnchainAudit";
+import { isMagicBlockRouterDiagnostics } from "@back/services/magicBlockRouterDiagnostics";
 
 import type { SqlExecutor } from "../verdict/verdictStorePg";
 
@@ -229,6 +230,7 @@ function validateRecord(record: MagicBlockAuditRecord): void {
 				"commitmentDigest",
 				"memo",
 				"retryable",
+				"routerDiagnostics",
 				"signature",
 				"status",
 			].includes(key),
@@ -268,9 +270,15 @@ function validateRecord(record: MagicBlockAuditRecord): void {
 			![
 				"SIGNER_UNAVAILABLE",
 				"ROUTER_UNAVAILABLE",
+				"ROUTER_PREFLIGHT_REJECTED",
 				"SUBMISSION_UNCONFIRMED",
+				"TRANSACTION_EXECUTION_FAILED",
 				"TRANSACTION_VERIFICATION_FAILED",
 			].includes(record.registration.code) ||
+			(record.registration.routerDiagnostics !== undefined &&
+				!isMagicBlockRouterDiagnostics(
+					record.registration.routerDiagnostics,
+				)) ||
 			(record.registration.signature !== undefined &&
 				!/^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(
 					record.registration.signature,

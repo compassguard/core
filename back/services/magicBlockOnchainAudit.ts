@@ -18,17 +18,20 @@ import {
 	type MagicBlockConfirmedAuditProof,
 	type MagicBlockOnchainAuditRegistration,
 	type MagicBlockOnchainAuditSubmitter,
+	type MagicBlockOnchainAuditVerifier,
 	type MagicBlockRetryableAuditFailure,
+	type MagicBlockRouterDiagnostics,
+	type MagicBlockRouterRpc,
 } from "./magicBlockOnchainAuditContracts";
 import { MAGICBLOCK_ROUTER_URL } from "./magicBlockDevnetPreflightTypes";
+import {
+	createMagicBlockRouterDiagnostics,
+	isMagicBlockRouterPreflightRejection,
+	MagicBlockRouterRpcError,
+} from "./magicBlockRouterDiagnostics";
 
 const COMMITMENT_DOMAIN = "compass.magicblock-audit-commitment/v1\0";
 const SIGNATURE = /^[1-9A-HJ-NP-Za-km-z]{64,88}$/;
-
-export type MagicBlockRouterRpc = (
-	method: string,
-	params: readonly unknown[],
-) => Promise<unknown>;
 
 export function materializeMagicBlockAuditCommitment(
 	details: MagicBlockAuditCommitmentDetails,
@@ -66,13 +69,13 @@ export function createMagicBlockOnchainAuditSubmitter(input: {
 	const waitBetweenAttempts =
 		input.waitBetweenAttempts ??
 		(() => new Promise((resolve) => setTimeout(resolve, 500)));
-	if (
-		!Number.isSafeInteger(confirmationAttempts) ||
-		confirmationAttempts < 1 ||
-		confirmationAttempts > 20
-	) {
-		throw new Error("MagicBlock on-chain audit unavailable");
-	}
+	validateConfirmationAttempts(confirmationAttempts);
+	const verifier = createMagicBlockOnchainAuditVerifier({
+		rpc: solanaRpc,
+		now,
+		confirmationAttempts,
+		waitBetweenAttempts,
+	});
 
 	return {
 		async register(details, onPrepared) {
@@ -82,22 +85,32 @@ export function createMagicBlockOnchainAuditSubmitter(input: {
 			let signature: string | undefined;
 			try {
 				materialized = materializeMagicBlockAuditCommitment(details);
-				const latest = asRecord(
-					await routerRpc("getLatestBlockhash", [{ commitment: "confirmed" }]),
-				);
-				const value = asRecord(latest.value);
-				if (typeof value.blockhash !== "string") return retry("ROUTER_UNAVAILABLE");
-
-				const transaction = new Transaction({
-					feePayer: input.signer.publicKey,
-					recentBlockhash: value.blockhash,
-				}).add(
+				const transaction = new Transaction();
+				transaction.feePayer = input.signer.publicKey;
+				transaction.add(
 					new TransactionInstruction({
 						programId: new PublicKey(MAGICBLOCK_MEMO_PROGRAM_ID),
 						keys: [{ pubkey: input.signer.publicKey, isSigner: true, isWritable: false }],
 						data: Buffer.from(materialized.memo, "utf8"),
 					}),
 				);
+				const routingAccounts = deriveMagicBlockRoutingAccounts(transaction);
+				const latest = asRecord(
+					await routerRpc("getBlockhashForAccounts", [routingAccounts]),
+				);
+				if (
+					!isCanonicalBlockhash(latest.blockhash) ||
+					!Number.isSafeInteger(latest.lastValidBlockHeight) ||
+					Number(latest.lastValidBlockHeight) < 0
+				) {
+					return retry("ROUTER_UNAVAILABLE", {
+						routerDiagnostics: createMagicBlockRouterDiagnostics({
+							rpcMethod: "getBlockhashForAccounts",
+							message: "Magic Router returned an invalid blockhash response",
+						}),
+					});
+				}
+				transaction.recentBlockhash = latest.blockhash;
 				transaction.sign(input.signer);
 				signature = transaction.signature
 					? bs58.encode(transaction.signature)
@@ -137,18 +150,20 @@ export function createMagicBlockOnchainAuditSubmitter(input: {
 						memo: materialized.memo,
 					});
 				}
-				return await verifyTransaction({
-					rpc: solanaRpc,
+				return await verifier.verify({
 					signature,
-					signerAddress,
+					expectedSigner: signerAddress,
 					expectedCommitmentDigest: materialized.commitmentDigest,
 					expectedMemo: materialized.memo,
-					now,
-					confirmationAttempts,
-					waitBetweenAttempts,
 				});
-			} catch {
-				return retry("ROUTER_UNAVAILABLE", {
+			} catch (error) {
+				const routerError =
+					error instanceof MagicBlockRouterRpcError ? error : undefined;
+				return retry(
+					routerError?.preflightRejected
+						? "ROUTER_PREFLIGHT_REJECTED"
+						: "ROUTER_UNAVAILABLE",
+					{
 					...(signature ? { signature } : {}),
 					...(materialized
 						? {
@@ -156,25 +171,71 @@ export function createMagicBlockOnchainAuditSubmitter(input: {
 								memo: materialized.memo,
 							}
 						: {}),
-				});
+						...(routerError
+							? { routerDiagnostics: routerError.diagnostics }
+							: {}),
+					},
+				);
 			}
 		},
 
 		async verify({ signature, expectedCommitmentDigest, expectedMemo }) {
-			if (!SIGNATURE.test(signature)) return retry("TRANSACTION_VERIFICATION_FAILED");
+			return verifier.verify({
+				signature,
+				expectedSigner: signerAddress,
+				expectedCommitmentDigest,
+				expectedMemo,
+			});
+		},
+	};
+}
+
+export function createMagicBlockOnchainAuditVerifier(input: {
+	readonly rpc?: MagicBlockRouterRpc;
+	readonly now?: () => string;
+	readonly confirmationAttempts?: number;
+	readonly waitBetweenAttempts?: () => Promise<void>;
+}): MagicBlockOnchainAuditVerifier {
+	const rpc = input.rpc ?? createSolanaDevnetRpc();
+	const now = input.now ?? (() => new Date().toISOString());
+	const confirmationAttempts = input.confirmationAttempts ?? 4;
+	const waitBetweenAttempts =
+		input.waitBetweenAttempts ??
+		(() => new Promise((resolve) => setTimeout(resolve, 500)));
+	validateConfirmationAttempts(confirmationAttempts);
+
+	return {
+		async verify({
+			signature,
+			expectedSigner,
+			expectedCommitmentDigest,
+			expectedMemo,
+		}) {
+			if (
+				!SIGNATURE.test(signature) ||
+				!isCanonicalPublicKey(expectedSigner)
+			) {
+				return retry("TRANSACTION_VERIFICATION_FAILED");
+			}
 			try {
 				return await verifyTransaction({
-					rpc: solanaRpc,
+					rpc,
 					signature,
-					signerAddress,
+					signerAddress: expectedSigner,
 					expectedCommitmentDigest,
 					expectedMemo,
 					now,
 					confirmationAttempts,
 					waitBetweenAttempts,
 				});
-			} catch {
-				return retry("ROUTER_UNAVAILABLE");
+			} catch (error) {
+				const routerError =
+					error instanceof MagicBlockRouterRpcError ? error : undefined;
+				return retry("ROUTER_UNAVAILABLE", {
+					...(routerError
+						? { routerDiagnostics: routerError.diagnostics }
+						: {}),
+				});
 			}
 		},
 	};
@@ -220,21 +281,61 @@ export function createMagicBlockRouterRpc(
 ): MagicBlockRouterRpc {
 	let requestId = 0;
 	return async (method, params) => {
-		const response = await fetchImpl(MAGICBLOCK_ROUTER_URL, {
-			method: "POST",
-			redirect: "error",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ jsonrpc: "2.0", id: ++requestId, method, params }),
-		});
-		if (
-			response.status !== 200 ||
-			response.redirected ||
-			response.url !== MAGICBLOCK_ROUTER_URL
-		) {
-			throw new Error("Magic Router unavailable");
+		let response: Response;
+		try {
+			response = await fetchImpl(MAGICBLOCK_ROUTER_URL, {
+				method: "POST",
+				redirect: "error",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ jsonrpc: "2.0", id: ++requestId, method, params }),
+			});
+		} catch {
+			throw new MagicBlockRouterRpcError(
+				requireRouterDiagnostics({
+					rpcMethod: method,
+					message: "Magic Router transport failed",
+				}),
+				false,
+			);
 		}
-		const body = asRecord(await response.json());
-		if (body.error !== undefined) throw new Error("Magic Router RPC error");
+		const safeRequestId =
+			response.headers.get("x-request-id") ??
+			response.headers.get("x-correlation-id") ??
+			undefined;
+		let body: Record<string, unknown> = {};
+		let invalidJson = false;
+		try {
+			body = asRecord(await response.json());
+		} catch {
+			invalidJson = true;
+		}
+		const rpcError = asRecord(body.error);
+		const diagnostics = requireRouterDiagnostics({
+			rpcMethod: method,
+			httpStatus: response.status,
+			rpcErrorCode: rpcError.code,
+			message:
+				rpcError.message ??
+				(invalidJson ? "Magic Router returned invalid JSON" : undefined),
+			requestId: safeRequestId,
+		});
+		if (response.redirected || response.url !== MAGICBLOCK_ROUTER_URL) {
+			throw new MagicBlockRouterRpcError(diagnostics, false);
+		}
+		if (response.status !== 200) {
+			throw new MagicBlockRouterRpcError(
+				diagnostics,
+				body.error !== undefined &&
+					isMagicBlockRouterPreflightRejection(diagnostics),
+			);
+		}
+		if (body.error !== undefined) {
+			throw new MagicBlockRouterRpcError(
+				diagnostics,
+				isMagicBlockRouterPreflightRejection(diagnostics),
+			);
+		}
+		if (invalidJson) throw new MagicBlockRouterRpcError(diagnostics, false);
 		return body.result;
 	};
 }
@@ -289,7 +390,7 @@ async function verifyTransaction(input: {
 			: [];
 		const status = asRecord(statuses[0]);
 		if (status.err !== undefined && status.err !== null) {
-			return retry("TRANSACTION_VERIFICATION_FAILED", {
+			return retry("TRANSACTION_EXECUTION_FAILED", {
 				signature: input.signature,
 				...(input.expectedCommitmentDigest
 					? { commitmentDigest: input.expectedCommitmentDigest }
@@ -362,6 +463,15 @@ async function verifyTransaction(input: {
 	const parsedCommitment = parsePublicCommitment(memo);
 	const commitmentDigest = parsedCommitment?.c;
 	const verifiedAt = input.now();
+	if (meta.err !== undefined && meta.err !== null) {
+		return retry("TRANSACTION_EXECUTION_FAILED", {
+			signature: input.signature,
+			...(input.expectedCommitmentDigest
+				? { commitmentDigest: input.expectedCommitmentDigest }
+				: {}),
+			...(input.expectedMemo ? { memo: input.expectedMemo } : {}),
+		});
+	}
 	if (
 		meta.err !== null ||
 		!Number.isSafeInteger(requiredSignatures) ||
@@ -392,11 +502,12 @@ async function verifyTransaction(input: {
 }
 
 function retry(
-	code: "SIGNER_UNAVAILABLE" | "ROUTER_UNAVAILABLE" | "SUBMISSION_UNCONFIRMED" | "TRANSACTION_VERIFICATION_FAILED",
+	code: MagicBlockRetryableAuditFailure["code"],
 	context: {
 		readonly signature?: string;
 		readonly commitmentDigest?: string;
 		readonly memo?: string;
+		readonly routerDiagnostics?: MagicBlockRouterDiagnostics;
 	} = {},
 ): MagicBlockRetryableAuditFailure {
 	return Object.freeze({
@@ -405,6 +516,56 @@ function retry(
 		code,
 		...context,
 	});
+}
+
+export function deriveMagicBlockRoutingAccounts(
+	transaction: Transaction,
+): readonly string[] {
+	if (!transaction.feePayer) {
+		throw new Error("MagicBlock routing accounts unavailable");
+	}
+	const accounts = new Set<string>([transaction.feePayer.toBase58()]);
+	for (const instruction of transaction.instructions) {
+		for (const key of instruction.keys) {
+			if (key.isWritable) accounts.add(key.pubkey.toBase58());
+		}
+	}
+	return Object.freeze([...accounts]);
+}
+
+function requireRouterDiagnostics(input: {
+	readonly rpcMethod: unknown;
+	readonly httpStatus?: unknown;
+	readonly rpcErrorCode?: unknown;
+	readonly message?: unknown;
+	readonly requestId?: unknown;
+}): MagicBlockRouterDiagnostics {
+	const diagnostics = createMagicBlockRouterDiagnostics(input);
+	if (!diagnostics) throw new Error("Magic Router diagnostics unavailable");
+	return diagnostics;
+}
+
+function isCanonicalBlockhash(value: unknown): value is string {
+	if (typeof value !== "string") return false;
+	try {
+		return new PublicKey(value).toBase58() === value;
+	} catch {
+		return false;
+	}
+}
+
+function isCanonicalPublicKey(value: unknown): value is string {
+	return isCanonicalBlockhash(value);
+}
+
+function validateConfirmationAttempts(value: number): void {
+	if (
+		!Number.isSafeInteger(value) ||
+		value < 1 ||
+		value > 20
+	) {
+		throw new Error("MagicBlock on-chain audit unavailable");
+	}
 }
 
 function parsePublicCommitment(
