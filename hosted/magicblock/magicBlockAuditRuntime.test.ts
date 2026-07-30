@@ -255,6 +255,62 @@ describe("MagicBlock authenticated audit ingress", () => {
 		});
 	});
 
+	it("persists only closed sanitized Router diagnostics", async () => {
+		const db = new PGlite();
+		const records = createPgMagicBlockAuditRecordStore({
+			sql: executor(db),
+		});
+		const details = {
+			schemaVersion: "compass.magicblock-audit-commitment/v1" as const,
+			cluster: "devnet" as const,
+			observationId: "obs-router-diagnostics",
+			auditEventId: "aud_router_diagnostics",
+			transactionDigest: "1".repeat(64),
+			requestDigest: "2".repeat(64),
+			resultDigest: "3".repeat(64),
+			attestationDigest: "4".repeat(64),
+			previousLedgerDigest: "5".repeat(64),
+			ledgerDigest: "6".repeat(64),
+			outcome: "review_required" as const,
+		};
+		const commitment = materializeMagicBlockAuditCommitment(details);
+		const record: MagicBlockAuditRecord = {
+			details,
+			canonicalDetails: commitment.canonicalDetails,
+			registration: {
+				status: "retryable_failure",
+				retryable: true,
+				code: "ROUTER_PREFLIGHT_REJECTED",
+				routerDiagnostics: {
+					rpcMethod: "sendTransaction",
+					httpStatus: 200,
+					rpcErrorCode: -32002,
+					message: "Transaction simulation failed: Blockhash not found",
+					requestId: "router-request-123",
+				},
+			},
+		};
+
+		await records.save(record);
+		await expect(
+			records.findByAuditEventId(details.auditEventId),
+		).resolves.toEqual(record);
+		await expect(
+			records.save({
+				...record,
+				registration: {
+					...record.registration,
+					routerDiagnostics: {
+						...(record.registration.status === "retryable_failure"
+							? record.registration.routerDiagnostics
+							: {}),
+						rawRequestBody: "forbidden",
+					},
+				},
+			} as unknown as MagicBlockAuditRecord),
+		).rejects.toThrow("audit record unavailable");
+	});
+
 	it("decodes, observes, appends once, and returns the cached idempotent result", async () => {
 		const observations = createMemoryObservationStore();
 		const createLedger = createMemoryLedgerFactory(observations);

@@ -46,10 +46,27 @@ previous/current ledger digests, cluster, and outcome. Raw transactions, raw
 requests, raw results, API keys, signer material, wallet secrets, and provider
 payloads are never published in the Memo.
 
-The signing key is a dedicated, funded devnet audit authority. It may be loaded
-from one explicit environment value or an absolute key-file path. The submitted
-Memo instruction requires that authority as a signer. No user wallet is asked
-to sign an audit record.
+The signing key is a dedicated, Compass-controlled, funded devnet audit
+authority. It may be loaded from one explicit environment value or an absolute
+key-file path. That authority MUST remain both the transaction fee payer and
+the required Memo signer. No user wallet is asked to sign an audit record, and
+the flow must never substitute a user, treasury, demo, mainnet, or fallback
+payer/key.
+
+Compass owns signer funding and public-balance monitoring. The expected public
+key must be pinned and verified before an authorized smoke or production
+operation. If its balance is below the operator-approved minimum for the
+planned operation and reserve, the flow is fail-closed: do not authorize or
+enable new audited operations, alert the Compass operator, replenish only that
+dedicated authority, and recheck its balance and pin before continuing. No
+balance check, alert, or replenishment may expose signer secret material.
+
+Before signing, Compass constructs the final legacy transaction and asks Magic
+Router `getBlockhashForAccounts` for a route-aware blockhash using one
+deduplicated account list: fee payer first, followed by every writable
+instruction account. An undelegated fee payer therefore selects the Solana base
+layer rather than an unrelated ER blockhash. Root `getLatestBlockhash` is not a
+valid preparation source for this flow.
 
 ## Confirmation, retry, and idempotency
 
@@ -65,6 +82,19 @@ only after independent Solana devnet RPC verification proves:
 
 A signed but unconfirmed transaction remains queryable as
 `retryable_failure`; it is not a completed observation.
+
+Retryable Router failures may include only closed, bounded diagnostic fields:
+RPC method, HTTP status, JSON-RPC error code, sanitized message, and safe
+request/correlation ID. A Router `sendTransaction` preflight rejection is
+reported as `ROUTER_PREFLIGHT_REJECTED`, distinct from generic
+`ROUTER_UNAVAILABLE`. Serialized transactions, request bodies, Memo/private
+audit details, secrets, arbitrary response keys, and unvalidated URLs are never
+copied into diagnostics.
+
+`TRANSACTION_EXECUTION_FAILED` is reserved for an explicit non-null on-chain
+`status.err` or transaction `meta.err`. Missing/malformed transaction proof,
+unexpected signer, Memo/commitment mismatch, or other proof ambiguity remains
+`TRANSACTION_VERIFICATION_FAILED` and must not authorize replacement.
 
 ## Query and verification
 
@@ -85,3 +115,19 @@ unconfirmed, mismatched, or failed transactions do not verify.
   signed Magic Router submission -> independent retrieval and verification.
 - Live devnet proof is recorded only when a dedicated funded credential is
   available; tests never synthesize a claimed live signature.
+- The direct smoke reconciles a supplied known signature without submitting and
+  requires a durable, atomically consumed one-run nonce before creating one new
+  transaction.
+- Before send, its `onPrepared` callback atomically persists only the prepared
+  public signer address, signature, commitment digest, public Memo, and closed
+  run identifiers. Active or pending local state refuses another authorization
+  or submission until terminal reconciliation; it never stores signer secret
+  material or serialized transactions.
+- Reconciliation uses the persisted signer address and therefore does not
+  require the current signer secret or assume that the configured signer has
+  not rotated. Only dual explicit `TRANSACTION_EXECUTION_FAILED` results may
+  close a pending signature as failed; proof ambiguity remains pending.
+- Authorized smoke and production operation require a verified public-key pin
+  and sufficient monitored balance on the same Compass-controlled fee payer.
+  Low balance blocks new operation until that authority is replenished and
+  reverified; no fallback payer or key substitution is allowed.
