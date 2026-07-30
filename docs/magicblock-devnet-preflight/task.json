@@ -1,0 +1,52 @@
+{
+  "change": "magicblock-devnet-onchain-audit",
+  "status": "implemented_live_devnet_proof_pending_credential",
+  "scope": "devnet_only",
+  "tasks": [
+    {
+      "id": "MB-1",
+      "title": "Persist canonical private audit and hash chain",
+      "status": "completed"
+    },
+    {
+      "id": "MB-2",
+      "title": "Submit privacy-safe signed Memo through Magic Router devnet",
+      "status": "completed"
+    },
+    {
+      "id": "MB-3",
+      "title": "Confirm independently and complete only after proof",
+      "status": "completed"
+    },
+    {
+      "id": "MB-4",
+      "title": "Add authenticated query and re-verification",
+      "status": "completed"
+    },
+    {
+      "id": "MB-5",
+      "title": "Prove the full path with deterministic E2E",
+      "status": "completed"
+    },
+    {
+      "id": "MB-6",
+      "title": "Capture live devnet signature and explorer proof",
+      "status": "blocked",
+      "blocker": "A dedicated funded devnet audit signer was not available to the worker."
+    }
+  ],
+  "verification": [
+    "npm run preflight:magicblock-devnet",
+    "npm test",
+    "npm run lint",
+    "npm run build",
+    "npm run build:mcp",
+    "npm run smoke:magicblock-devnet-onchain (credential-gated)"
+  ],
+  "safety": {
+    "mainnet": "disabled",
+    "signer": "dedicated funded devnet audit authority only",
+    "onchainData": "stable audit id, aggregate commitment, ledger links, outcome, version",
+    "excludedOnchainData": "raw transaction, request, result, provider payload, credentials, secrets"
+  }
+}

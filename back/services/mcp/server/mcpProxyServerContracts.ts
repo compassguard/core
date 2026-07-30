@@ -20,6 +20,7 @@ import type {
 	ProxyCallToolResult,
 	ProxyListToolsResult,
 } from "../proxy/mcpProxyContracts";
+import type { MagicBlockMcpObserver } from "../observer/magicBlockMcpObserverContracts";
 
 // ---------------------------------------------------------------------------
 // Proxy server handler types
@@ -34,6 +35,8 @@ export type ProxyMcpServerHandlerDependencies = {
 		toolName: string;
 		arguments?: Record<string, unknown>;
 	}) => Promise<ProxyCallToolResult>;
+	/** Awaited audit-only sink for a detached closed downstream observation. */
+	observeMagicBlockObservation?: MagicBlockMcpObserver;
 };
 
 /** Proxy MCP server handler functions. */

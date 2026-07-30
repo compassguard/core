@@ -86,3 +86,6 @@ cdp_api_key.json
 
 # Clippy local run state (not shared)
 .clippy/
+
+# Local MagicBlock smoke authorization and prepared-signature state
+.compass-magicblock-devnet-smoke/
