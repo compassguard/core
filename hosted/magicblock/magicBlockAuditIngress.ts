@@ -27,6 +27,10 @@ import { createRequestScopedMagicBlockDependencies } from "@back/services/magicB
 import { decodeTrustedUnsignedV0NoAltCandidate } from "@back/services/magicBlockDevnetTransactionDecoder";
 import { MAGICBLOCK_ROUTE_DEADLINE_MS } from "@back/services/magicBlockDevnetPreflightTypes";
 import { materializeMagicBlockAuditCommitment } from "@back/services/magicBlockOnchainAudit";
+import type {
+	MagicBlockAuditRecord,
+	MagicBlockPreparedAuditTransaction,
+} from "@back/services/magicBlockOnchainAuditContracts";
 
 const REQUEST_DIGEST_DOMAIN = "compass.magicblock-devnet-observation/v1/request\0";
 
@@ -89,7 +93,7 @@ export function createMagicBlockAuditIngress(
 					record.registration.status !== "confirmed" &&
 					!record.registration.signature
 				) {
-					return Response.json(record, { status: 503 });
+					return Response.json(publicAuditRecord(record), { status: 503 });
 				}
 				const commitment = materializeMagicBlockAuditCommitment(record.details);
 				let verified;
@@ -104,7 +108,7 @@ export function createMagicBlockAuditIngress(
 				}
 				const refreshed = { ...record, registration: verified };
 				await input.runtime.auditRecords.save(refreshed);
-				return Response.json(refreshed, {
+				return Response.json(publicAuditRecord(refreshed), {
 					status: verified.status === "confirmed" ? 200 : 503,
 				});
 			}
@@ -289,6 +293,8 @@ export function createMagicBlockAuditIngress(
 						"signature" in existingRecord.registration
 							? existingRecord.registration.signature
 							: undefined;
+					let durablePreparedTransaction =
+						existingRecord?.preparedTransaction;
 					const registration = priorSignature
 						? await input.runtime.onchainAudit.verify({
 								signature: priorSignature,
@@ -305,7 +311,16 @@ export function createMagicBlockAuditIngress(
 												details: effectiveDetails,
 												canonicalDetails:
 													effectiveCommitment.canonicalDetails,
-												registration: prepared,
+												registration: {
+													status: "retryable_failure",
+													retryable: true,
+													code: "SUBMISSION_UNCONFIRMED",
+													signature: prepared.signature,
+													commitmentDigest:
+														prepared.commitmentDigest,
+													memo: prepared.memo,
+												},
+												preparedTransaction: prepared,
 											},
 											requestDigest,
 											claimAttempt: claim.claimAttempt,
@@ -318,7 +333,12 @@ export function createMagicBlockAuditIngress(
 											"audit reservation unavailable",
 										);
 									}
-									return reserved.registration;
+									durablePreparedTransaction =
+										reserved.preparedTransaction;
+									return selectReservedPreparedTransaction(
+										prepared,
+										reserved.preparedTransaction,
+									);
 								},
 							);
 					result = deepFreeze({
@@ -332,6 +352,9 @@ export function createMagicBlockAuditIngress(
 						details: effectiveDetails,
 						canonicalDetails: effectiveCommitment.canonicalDetails,
 						registration,
+						...(durablePreparedTransaction
+							? { preparedTransaction: durablePreparedTransaction }
+							: {}),
 					});
 					if (registration.status === "retryable_failure") {
 						return Response.json(result, { status: 503 });
@@ -363,6 +386,25 @@ export function createMagicBlockAuditIngress(
 			}
 			return Response.json(result);
 		},
+	};
+}
+
+export function selectReservedPreparedTransaction(
+	prepared: MagicBlockPreparedAuditTransaction,
+	reserved: MagicBlockPreparedAuditTransaction | undefined,
+): MagicBlockPreparedAuditTransaction {
+	return reserved ?? { ...prepared, serializedTransactionDigest: "" };
+}
+
+function publicAuditRecord(record: MagicBlockAuditRecord): {
+	readonly details: MagicBlockAuditRecord["details"];
+	readonly canonicalDetails: string;
+	readonly registration: MagicBlockAuditRecord["registration"];
+} {
+	return {
+		details: record.details,
+		canonicalDetails: record.canonicalDetails,
+		registration: record.registration,
 	};
 }
 

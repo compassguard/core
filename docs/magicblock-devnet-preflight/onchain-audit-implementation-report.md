@@ -183,8 +183,9 @@ https://explorer.solana.com/tx/<signature>?cluster=devnet
 ## Remaining risks
 
 - A prepared transaction that never lands remains bound to its stable signature
-  and explicit retryable state; an operator recovery policy for replacing a
-  permanently expired transaction is still needed.
+  until the implemented dual-endpoint expired-and-not-landed recovery proves
+  safe replacement. Legacy records without cryptographically recoverable
+  blockhash evidence remain blocked.
 - Production operation requires Compass-owned devnet signer funding, rotation,
   public-balance monitoring, alerting, and public-key pin verification.
   This correction adds neither an automated balance monitor nor replenishment;
@@ -196,23 +197,44 @@ https://explorer.solana.com/tx/<signature>?cluster=devnet
 
 ## Delivery
 
-The corrected cumulative parent branch starts from PR #19 head
-`9aaa5f5272ae843a764645c201526b532648d1f7`. The open parent
-[PR #20](https://github.com/compassguard/core/pull/20) has head
-`ram4-dev/magicblock-onchain-audit-review`, targets
-`release/compass_migration`, and is intended to supersede the contradictory
-three-PR stack. At the time of the final read-only GitHub verification, this
-incident-remediation feature branch had no PR.
-
-Delivery therefore requires two reviewed merges in order: first a new stacked
-incident-remediation PR into `ram4-dev/magicblock-onchain-audit-review`, then
-the updated parent PR #20 into `release/compass_migration`. Neither targets
-`main`. Production deployment must use the reviewed resulting release merge
-commit, or an exact commit explicitly instructed after both merges, never an
-unmerged feature head. The earlier parent implementation commit is
-`6c42222f69c4acf5e3c343a00fbea95064698e01`.
+Delivery requires two reviewed merges in order: first this self-contained
+recovery PR into the PR #22 line,
+`ram4-dev/magicblock-legacy-pending-recovery`, then the independently approved
+PR #22 line into `release/compass_migration`. Neither targets `main`.
+Production deployment must use the explicitly approved exact SHA resulting
+from that recovery line, never
+`be897a95721046922b6e934bba9b8071428289e1`, an unmerged feature head, or an
+older stack commit. This report does not claim either merge or a deployment.
 
 The user authorizes a Vercel Production deployment only after the correction
 has been independently reviewed, the final verification is green, and the
-two-stage stack above is merged. This documentation pass performs no merge,
+two-stage recovery line above is merged. This documentation pass performs no merge,
 deployment, configuration mutation, live RPC call, or live smoke.
+
+## 2026-07-30 legacy pending exact-once recovery
+
+Implemented smoke-state schema v2 and strict v1 normalization. New preparation
+persists signature, signer, commitment/Memo, recent blockhash, and
+last-valid height atomically before send. Reconciliation now requires matching
+dual-endpoint terminal evidence and supports `expired_not_landed` only with
+independent no-signature plus expired-blockhash proof.
+
+Implemented one exceptional enrichment operation for v1 legacy records. It
+requires bounded signed transaction evidence, cryptographic stored
+signer/signature verification, explicit authorization metadata and exact risk
+acknowledgement. It persists only SHA-256, derived blockhash, original public
+evidence, and sanitized metadata. It cannot close, reset, authorize, or submit.
+
+Regression coverage includes the exact historical v1 pending shape, safe
+migration/enrichment, evidence replay refusal, dual disagreement, missing
+expiry evidence, expired proof, terminal replay/idempotency, prepared
+blockhash/height persistence, and bounded expiry diagnostics. No network or
+external side effect was used.
+
+Independent review remediation makes expiry evidence a coherent post-expiry
+observation: finalized invalidity is established first, signature history is
+re-read at an equal-or-later context, and endpoint/signature/blockhash/slots/
+timestamp are durably bound. Processed fork errors no longer terminalize;
+confirmed/finalized failure requires `getTransaction.meta.err`
+corroboration. The submit mode now invokes dual reconciliation instead of
+closing from its single Solana verification.

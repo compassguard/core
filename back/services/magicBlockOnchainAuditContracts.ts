@@ -9,6 +9,8 @@ export const MAGICBLOCK_RPC_METHODS = [
 	"sendTransaction",
 	"getSignatureStatuses",
 	"getTransaction",
+	"isBlockhashValid",
+	"getBlockHeight",
 ] as const;
 
 export type MagicBlockRpcMethod = (typeof MAGICBLOCK_RPC_METHODS)[number];
@@ -24,6 +26,34 @@ export type MagicBlockRouterDiagnostics = {
 	readonly rpcErrorCode?: number;
 	readonly message?: string;
 	readonly requestId?: string;
+};
+
+export type MagicBlockBlockhashValidityEvidence = {
+	readonly endpoint: "solana_devnet" | "magic_router";
+	readonly recentBlockhash: string;
+	readonly commitment: "confirmed";
+	readonly contextSlot: number;
+	readonly validity: "valid" | "invalid" | "ambiguous";
+	readonly observedAt: string;
+};
+
+export type MagicBlockPreparedAuditTransaction = {
+	readonly schemaVersion: "compass.magicblock-prepared-audit-transaction/v1";
+	readonly cluster: "devnet";
+	readonly lane: "magicblock_devnet_audit_memo";
+	readonly valueTransferLamports: 0;
+	readonly signer: string;
+	readonly signature: string;
+	readonly commitmentDigest: string;
+	readonly memo: string;
+	readonly recentBlockhash: string;
+	readonly lastValidBlockHeight: number;
+	readonly serializedTransactionBase64: string;
+	readonly serializedTransactionDigest: string;
+	readonly blockhashValidityEvidence: {
+		readonly solana: MagicBlockBlockhashValidityEvidence;
+		readonly magicRouter: MagicBlockBlockhashValidityEvidence;
+	};
 };
 
 export type MagicBlockAuditCommitmentDetails = {
@@ -59,12 +89,15 @@ export type MagicBlockRetryableAuditFailure = {
 		| "SIGNER_UNAVAILABLE"
 		| "ROUTER_UNAVAILABLE"
 		| "ROUTER_PREFLIGHT_REJECTED"
+		| "BLOCKHASH_VALIDITY_UNCONFIRMED"
 		| "SUBMISSION_UNCONFIRMED"
 		| "TRANSACTION_EXECUTION_FAILED"
 		| "TRANSACTION_VERIFICATION_FAILED";
 	readonly signature?: string;
 	readonly commitmentDigest?: string;
 	readonly memo?: string;
+	readonly recentBlockhash?: string;
+	readonly lastValidBlockHeight?: number;
 	readonly routerDiagnostics?: MagicBlockRouterDiagnostics;
 };
 
@@ -88,9 +121,9 @@ export interface MagicBlockOnchainAuditVerifier {
 export interface MagicBlockOnchainAuditSubmitter {
 	register(
 		details: MagicBlockAuditCommitmentDetails,
-		onPrepared?: (
-			prepared: MagicBlockRetryableAuditFailure,
-		) => Promise<MagicBlockRetryableAuditFailure>,
+		onPrepared: (
+			prepared: MagicBlockPreparedAuditTransaction,
+		) => Promise<MagicBlockPreparedAuditTransaction>,
 	): Promise<MagicBlockOnchainAuditRegistration>;
 	verify(input: {
 		readonly signature: string;
@@ -103,12 +136,15 @@ export type MagicBlockAuditRecord = {
 	readonly details: MagicBlockAuditCommitmentDetails;
 	readonly canonicalDetails: string;
 	readonly registration: MagicBlockOnchainAuditRegistration;
+	readonly preparedTransaction?: MagicBlockPreparedAuditTransaction;
 };
 
 export interface MagicBlockAuditRecordStore {
 	save(record: MagicBlockAuditRecord): Promise<void>;
 	reservePrepared(input: {
-		readonly record: MagicBlockAuditRecord;
+		readonly record: MagicBlockAuditRecord & {
+			readonly preparedTransaction: MagicBlockPreparedAuditTransaction;
+		};
 		readonly requestDigest: string;
 		readonly claimAttempt: number;
 	}): Promise<MagicBlockAuditRecord>;

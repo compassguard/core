@@ -67,11 +67,19 @@ hash chain. Ledger append no longer marks an observation completed.
 - commitment digest and exact Memo;
 - registration status, code, signature, signer, slot, verification time, and
   optional sanitized Router diagnostics.
+- nullable private `prepared_transaction`: the strict complete prepared
+  transaction contract, including signed base64, SHA-256, and dual blockhash
+  validity evidence. Existing rows without it remain readable and may only
+  reconcile their already-reserved signature; missing legacy material cannot
+  authorize a new send.
 
 Uniqueness constraints prevent one observation, audit ID, or signature from
-being bound to multiple records. Confirmed state is monotonic. The prepared
-signed signature is stored before `sendTransaction`, so a response loss is
-reconciled by verification rather than duplicate submission.
+being bound to multiple records. Confirmed state is monotonic. The complete
+prepared object is stored in the claim-fenced reservation before
+`sendTransaction`, so a response loss is reconciled by verification rather
+than duplicate submission. Conflict replay returns the original object; exact
+mismatch blocks the submitter callback. Retryable and confirmed saves preserve
+the original private column and reject attempted replacement.
 
 `magicblock_devnet_observations` transitions to completed only with a confirmed
 registration. The cached completed result is therefore safe to return as
@@ -113,15 +121,33 @@ submission. Independent verification calls `getSignatureStatuses` and `getTransa
 decodes the compiled Memo instruction, validates the Memo program ID and signer
 index, then compares the exact expected Memo and commitment digest.
 
-`onPrepared` receives the deterministic signature, commitment, and Memo before
-`sendTransaction`. A different persisted signature stops submission. Hosted
-retries find the reserved signature and verify it; they do not sign or submit a
-replacement.
+Before `onPrepared`, the submitter asks both literal Solana devnet and Magic
+Router `isBlockhashValid` at `confirmed`. Each closed observation binds
+endpoint, blockhash, commitment, context slot, validity, and canonical
+timestamp. Both must explicitly return valid; disagreement, malformed data, or
+unavailability returns `BLOCKHASH_VALIDITY_UNCONFIRMED`. Hosted persistence
+retains only the sanitized code, commitment/Memo binding, selected blockhash,
+and last-valid height: it retains no signature or `prepared_transaction`, and
+no send is reachable. After the observation claim lease expires, an eligible
+retry therefore runs `register` again with a fresh Router-selected blockhash.
+This retry applies only to the devnet audit-Memo lane and releases no payment or
+generic execution fence.
+
+Required `onPrepared` receives one closed self-contained object: deterministic
+signer/signature, commitment, Memo, blockhash/last-valid height, exact canonical
+signed transaction base64, plain SHA-256 of those bytes, the two validity
+observations, devnet audit-Memo lane, and `valueTransferLamports=0`. The
+submitter compares the returned object byte-for-byte/canonically and sends the
+exact base64 it originally handed to the callback. Callback omission,
+alteration, or failure makes `sendTransaction` unreachable. Hosted retries find
+the reserved signature and verify it; they do not sign or submit a replacement.
 
 Read-only reconciliation can be constructed with an expected public signer and
 an RPC transport; it does not require a signer secret. An explicit non-null
 signature-status `err` or transaction `meta.err` maps to
-`TRANSACTION_EXECUTION_FAILED`. Null/malformed `getTransaction`, expected
+`TRANSACTION_EXECUTION_FAILED` only when confirmed/finalized status failure is
+corroborated by non-null `getTransaction.meta.err`. Null/malformed
+`getTransaction`, processed-only failure, expected
 signer mismatch, Memo/commitment mismatch, and other proof failures remain
 `TRANSACTION_VERIFICATION_FAILED`.
 
@@ -152,7 +178,9 @@ The route is absent unless `COMPASS_MAGICBLOCK_AUDIT_INGRESS_ENABLED=true` and
 uses a dedicated bearer. `POST` returns `200` only after confirmed on-chain
 verification; retryable registration returns `503` with the stable audit
 metadata. `GET ?auditId=...` or `GET ?signature=...` refreshes verification and
-uses the same success rule.
+uses the same success rule. Both methods explicitly project
+`details/canonicalDetails/registration`; neither returns
+`preparedTransaction` or signed base64.
 
 The MCP client awaits the hosted result with a 20-second default and 45-second
 maximum. It accepts only a closed confirmed proof. All other outcomes are
@@ -184,8 +212,12 @@ Direct-smoke state lives under the ignored local directory
 authorized(one-run nonce)
   -> active(no signature; send is still unreachable)
   -> pending(public signer + signature + commitment digest + public Memo
-             persisted atomically)
-  -> reconciled(confirmed | failed)
+             + blockhash + last-valid height + exact signed bytes/SHA-256
+             + dual valid-blockhash evidence persisted atomically)
+  -> reconciled(confirmed | failed | expired_not_landed)
+
+v1 signature-only legacy_pending -> quarantined(historicalOutcome=unknown)
+quarantined -> archived history + authorized(new one-run nonce/new auditEventId)
 
 active -> reconciled(not_submitted)
 ```
@@ -195,8 +227,12 @@ The authorization nonce is atomically consumed when `active` is written.
 submitter, and `sendTransaction` occurs only after that return. Therefore an
 `active` crash is provably not submitted, while a `pending` crash must reconcile
 the same signature. New authorization refuses any non-reconciled state.
-Reconciled states are archived before a new nonce is created. The manifest
-never contains a signer secret or serialized transaction.
+Reconciled and quarantined states are archived before a new nonce is created.
+The v3 manifest intentionally contains public signed transaction bytes for
+self-contained recovery, but every read recomputes their SHA-256, parses the
+legacy transaction, verifies its signature, and binds the fee payer, signer,
+signature, blockhash, sole Memo instruction, and exact Memo. It never contains
+a signer secret, and CLI output/diagnostics never include the base64.
 
 Pending reconciliation uses the stored signer address, not the currently
 configured secret or public-key pin. It closes as `failed` only when both
@@ -219,9 +255,83 @@ COMPASS_MAGICBLOCK_DEVNET_AUTHORIZATION_NONCE=<nonce> \
   npm run smoke:magicblock-devnet-onchain -- submit
 ```
 
-Successful output contains only the public audit ID, signer, signature, slot,
-commitment digest, and
-`https://explorer.solana.com/tx/<signature>?cluster=devnet`. If the credential
-is unavailable, deterministic injected-RPC tests are the verification evidence
-and live proof remains explicitly blocked. This remediation does not claim a
-live rerun.
+The reconciliation output contains only `mode`, durable `state`, terminal
+`outcome`, the public signature when one exists, sanitized per-endpoint
+status/code/slot observations, and bounded expiry evidence. The CLI does not
+emit the audit ID, signer, commitment digest, signed transaction base64, or an
+explorer URL. An operator may construct a devnet explorer URL separately from
+the public signature. If the credential is unavailable, deterministic
+injected-RPC tests are the verification evidence and live proof remains
+explicitly blocked. This remediation does not claim a live rerun.
+
+## Smoke state v3 and legacy recovery
+
+`compass.magicblock-devnet-smoke-state/v3` makes future pending state
+self-contained. One fsync + rename stores the signed transaction base64 and
+SHA-256 with its complete public binding and both pre-send validity
+observations before send is reachable. A restart never regenerates or resigns
+those bytes. The reader strictly accepts v1/v2 shapes and normalizes their
+non-self-contained pending states to blocking `legacy_pending`, retaining all
+available original evidence.
+
+The exceptional `import-legacy-evidence` mode accepts one absolute, regular,
+at-most-4096-byte base64 transaction file outside the state directory.
+`Transaction.from`,
+the matching signer entry, exact stored base58 signature, and
+`verifySignatures(false)` must all validate. The durable enrichment is
+`compass.magicblock-legacy-evidence/v1`: authorization metadata, exact risk
+acknowledgement, SHA-256 of serialized bytes, derived recent blockhash, and
+import timestamp. Raw bytes and keys are excluded. A second import is rejected.
+
+Reconciliation collects separately from literal devnet and Magic Router:
+verified registration, finalized `isBlockhashValid`, optional finalized
+`getBlockHeight`, then
+`getSignatureStatuses(searchTransactionHistory=true)`. Persisted evidence binds
+endpoint, signature, recent blockhash, finalized commitment, expiry/status
+context slots, observation timestamp, and optional height.
+`expired_not_landed` requires both
+registrations to remain `SUBMISSION_UNCONFIRMED`, both explicit null signature
+lookups at context slots not older than their endpoint's expiry observation,
+both invalid-blockhash results, and every available height to exceed
+the stored last-valid height. Only identical endpoint outcomes terminalize;
+conflicts and malformed/unavailable evidence preserve state.
+
+The exact signature-only v1 incident cannot be deterministically reconstructed:
+Solana signatures cover the serialized Message, while the Message—not the
+signature—contains the recent blockhash and instructions. Null
+`getSignatureStatuses`/`getTransaction` results are non-terminal and
+endpoint-relative. See the Solana
+[transaction structure](https://solana.com/docs/core/transactions/transaction-structure),
+[signature status](https://solana.com/docs/rpc/http/getsignaturestatuses), and
+[transaction lookup](https://solana.com/docs/rpc/http/gettransaction)
+contracts.
+
+`quarantine-legacy` first performs read-only reconciliation. Dual confirmed or
+dual execution-failed evidence reconciles normally. Otherwise, the mode
+requires exact acknowledgement plus authorization ID, incident reference,
+operator, reason, and authorization timestamp. Strict v3 quarantine state
+preserves the complete v1 evidence and stores only bounded endpoint/status/time
+observations (or a structured read-only-unavailable reason),
+`historicalOutcome="unknown"`, and the fixed terminalization-impossible reason.
+It prohibits retry of the old signature, sets `valueTransferLamports=0`, and
+keeps `genericExecutionFenceReleased=false`. A matching replay is idempotent;
+metadata changes conflict. Authorize archives the quarantine before issuing a
+new one-run nonce, so the old record remains in history and the new run creates
+a new `auditEventId`.
+
+This is lane-specific administrative containment, not terminalization. Its
+residual exposure is at most one new devnet audit Memo and its possible fee;
+it cannot execute a user payment. Solana fee documentation is not proof that a
+historical transaction did or did not execute, and failed transactions may
+charge fees; see the [transaction pipeline](https://solana.com/docs/core/transactions/transaction-pipeline).
+
+```text
+v1/v2 pending -> v3 legacy_pending(blocking, original evidence retained)
+legacy_pending -> legacy_pending(+ verified evidence digest/blockhash)
+v3 pending | enriched legacy_pending
+  -> reconciled(confirmed | failed | expired_not_landed)
+exact v1 signature-only legacy_pending
+  -> quarantined(unknown; old signature prohibited; devnet Memo lane only)
+  -> archived + authorized(new one-run audit)
+active -> reconciled(not_submitted)
+```

@@ -16,12 +16,19 @@ import {
 import {
 	consumeMagicBlockSmokeAuthorization,
 	classifyMagicBlockSmokeReconciliation,
+	collectMagicBlockSmokeEndpointExpiryEvidence,
 	createMagicBlockSmokeAuthorization,
+	importLegacyMagicBlockTransactionEvidence,
 	importLegacyPendingMagicBlockSmoke,
 	persistPreparedMagicBlockSmoke,
+	quarantineLegacyPendingMagicBlockSmoke,
 	readMagicBlockSmokeState,
 	reconcileMagicBlockSmoke,
 } from "./magicBlockDevnetSmokeState";
+import {
+	MAGICBLOCK_LEGACY_EVIDENCE_RISK_ACKNOWLEDGEMENT,
+	MAGICBLOCK_LEGACY_QUARANTINE_ACKNOWLEDGEMENT,
+} from "./magicBlockDevnetSmokeStateContracts";
 
 const mode = process.argv[2];
 const stateDirectory = resolve(
@@ -44,12 +51,50 @@ if (mode === "authorize") {
 	});
 } else if (mode === "reconcile") {
 	await reconcilePendingSmoke();
+} else if (mode === "import-legacy-evidence") {
+	importLegacyEvidence();
+} else if (mode === "quarantine-legacy") {
+	await quarantineLegacySmoke();
 } else if (mode === "submit") {
 	await submitAuthorizedSmoke();
 } else {
 	throw new Error(
-		"Smoke mode is required: authorize, reconcile, or submit.",
+		"Smoke mode is required: authorize, import-legacy-evidence, quarantine-legacy, reconcile, or submit.",
 	);
+}
+
+function importLegacyEvidence(): void {
+	const evidence = importLegacyMagicBlockTransactionEvidence({
+		stateDirectory,
+		evidenceFile: requireEnv(
+			"COMPASS_MAGICBLOCK_DEVNET_LEGACY_EVIDENCE_FILE",
+		),
+		authorizationId: requireEnv(
+			"COMPASS_MAGICBLOCK_DEVNET_LEGACY_EVIDENCE_AUTHORIZATION_ID",
+		),
+		operator: requireEnv(
+			"COMPASS_MAGICBLOCK_DEVNET_LEGACY_EVIDENCE_OPERATOR",
+		),
+		reason: requireEnv(
+			"COMPASS_MAGICBLOCK_DEVNET_LEGACY_EVIDENCE_REASON",
+		),
+		authorizedAt: requireEnv(
+			"COMPASS_MAGICBLOCK_DEVNET_LEGACY_EVIDENCE_AUTHORIZED_AT",
+		),
+		riskAcknowledgement: requireEnv(
+			"COMPASS_MAGICBLOCK_DEVNET_LEGACY_EVIDENCE_RISK_ACKNOWLEDGEMENT",
+		),
+		importedAt: now(),
+	});
+	writePublicResult({
+		mode: "legacy-evidence-imported",
+		state: evidence.status,
+		signature: evidence.signature,
+		transactionDigest: evidence.evidenceImport?.transactionDigest,
+		recentBlockhash: evidence.evidenceImport?.recentBlockhash,
+		authorizationId: evidence.evidenceImport?.authorizationId,
+		importedAt: evidence.evidenceImport?.importedAt,
+	});
 }
 
 async function reconcilePendingSmoke(): Promise<void> {
@@ -98,6 +143,15 @@ async function reconcilePendingSmoke(): Promise<void> {
 		});
 		return;
 	}
+	if (state.status === "quarantined") {
+		writePublicResult({
+			mode: "reconcile-only",
+			state: state.status,
+			historicalOutcome: state.historicalOutcome,
+			signature: state.legacyEvidence.signature,
+		});
+		return;
+	}
 
 	const verificationOptions = {
 		confirmationAttempts: 1,
@@ -109,11 +163,20 @@ async function reconcilePendingSmoke(): Promise<void> {
 					expectedCommitmentDigest: state.commitmentDigest,
 					expectedMemo: state.memo,
 				}
-			: {};
+			: state.originalEvidence?.commitmentDigest &&
+				  state.originalEvidence.memo
+				? {
+						expectedCommitmentDigest:
+							state.originalEvidence.commitmentDigest,
+						expectedMemo: state.originalEvidence.memo,
+					}
+				: {};
+	const solanaRpc = createSolanaDevnetRpc();
+	const magicRouterRpc = createMagicBlockRouterRpc();
 	const [solana, magicRouter] = await Promise.all([
 		createMagicBlockOnchainAuditVerifier({
 			...verificationOptions,
-			rpc: createSolanaDevnetRpc(),
+			rpc: solanaRpc,
 		}).verify({
 			signature: state.signature,
 			expectedSigner: state.signer,
@@ -121,14 +184,42 @@ async function reconcilePendingSmoke(): Promise<void> {
 		}),
 		createMagicBlockOnchainAuditVerifier({
 			...verificationOptions,
-			rpc: createMagicBlockRouterRpc(),
+			rpc: magicRouterRpc,
 		}).verify({
 			signature: state.signature,
 			expectedSigner: state.signer,
 			...expected,
 		}),
 	]);
-	const outcome = classifyMagicBlockSmokeReconciliation(solana, magicRouter);
+	const recentBlockhash =
+		state.status === "pending"
+			? state.recentBlockhash
+			: state.evidenceImport?.recentBlockhash ??
+				state.originalEvidence?.recentBlockhash;
+	const expiry = recentBlockhash
+		? {
+				solana: await collectMagicBlockSmokeEndpointExpiryEvidence(
+					solanaRpc,
+					"solana_devnet",
+					state.signature,
+					recentBlockhash,
+				),
+				magicRouter: await collectMagicBlockSmokeEndpointExpiryEvidence(
+					magicRouterRpc,
+					"magic_router",
+					state.signature,
+					recentBlockhash,
+				),
+				...(state.status === "pending"
+					? { lastValidBlockHeight: state.lastValidBlockHeight }
+					: {}),
+			}
+		: undefined;
+	const outcome = classifyMagicBlockSmokeReconciliation(
+		solana,
+		magicRouter,
+		expiry,
+	);
 	if (!outcome) {
 		writePublicResult({
 			mode: "reconcile-only",
@@ -136,6 +227,7 @@ async function reconcilePendingSmoke(): Promise<void> {
 			signature: state.signature,
 			solana: publicReconciliationResult(solana),
 			magicRouter: publicReconciliationResult(magicRouter),
+			...(expiry ? { expiry } : {}),
 			outcome: "ambiguous",
 		});
 		throw new Error(
@@ -147,6 +239,9 @@ async function reconcilePendingSmoke(): Promise<void> {
 		outcome,
 		signature: state.signature,
 		reconciledAt: now(),
+		...(outcome === "expired_not_landed" && expiry
+			? { expiryEvidence: expiry }
+			: {}),
 	});
 	writePublicResult({
 		mode: "reconcile-only",
@@ -155,7 +250,143 @@ async function reconcilePendingSmoke(): Promise<void> {
 		signature: reconciled.signature,
 		solana: publicReconciliationResult(solana),
 		magicRouter: publicReconciliationResult(magicRouter),
+		...(expiry ? { expiry } : {}),
 	});
+}
+
+async function quarantineLegacySmoke(): Promise<void> {
+	const state = readMagicBlockSmokeState(stateDirectory);
+	if (state?.status === "quarantined") {
+		const administration = state.administration;
+		if (
+			administration.authorizationId !==
+				requireEnv("COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_AUTHORIZATION_ID") ||
+			administration.incidentReference !==
+				requireEnv(
+					"COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_INCIDENT_REFERENCE",
+				) ||
+			administration.operator !==
+				requireEnv("COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_OPERATOR") ||
+			administration.reason !==
+				requireEnv("COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_REASON") ||
+			administration.authorizedAt !==
+				requireEnv("COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_AUTHORIZED_AT") ||
+			administration.acknowledgement !==
+				requireEnv("COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_ACKNOWLEDGEMENT")
+		) {
+			throw new Error("MagicBlock legacy quarantine conflicts.");
+		}
+		writePublicResult({
+			mode: "quarantine-legacy",
+			state: state.status,
+			historicalOutcome: state.historicalOutcome,
+			signature: state.legacyEvidence.signature,
+			valueTransferLamports: state.scope.valueTransferLamports,
+			genericExecutionFenceReleased:
+				state.scope.genericExecutionFenceReleased,
+			quarantinedAt: administration.quarantinedAt,
+		});
+		return;
+	}
+	if (
+		state?.status !== "legacy_pending" ||
+		state.sourceSchemaVersion !==
+			"compass.magicblock-devnet-smoke-state/v1" ||
+		state.originalEvidence !== undefined ||
+		state.evidenceImport !== undefined
+	) {
+		throw new Error("Exact signature-only v1 legacy pending state is required.");
+	}
+	const observedAt = now();
+	const verificationOptions = {
+		confirmationAttempts: 1,
+		waitBetweenAttempts: async () => undefined,
+	} as const;
+	const [solana, magicRouter] = await Promise.all([
+		createMagicBlockOnchainAuditVerifier({
+			...verificationOptions,
+			rpc: createSolanaDevnetRpc(),
+		}).verify({
+			signature: state.signature,
+			expectedSigner: state.signer,
+		}),
+		createMagicBlockOnchainAuditVerifier({
+			...verificationOptions,
+			rpc: createMagicBlockRouterRpc(),
+		}).verify({
+			signature: state.signature,
+			expectedSigner: state.signer,
+		}),
+	]);
+	const outcome = classifyMagicBlockSmokeReconciliation(solana, magicRouter);
+	if (outcome === "confirmed" || outcome === "failed") {
+		const reconciled = reconcileMagicBlockSmoke({
+			stateDirectory,
+			outcome,
+			signature: state.signature,
+			reconciledAt: now(),
+		});
+		writePublicResult({
+			mode: "quarantine-legacy",
+			state: reconciled.status,
+			outcome: reconciled.outcome,
+			signature: reconciled.signature,
+		});
+		return;
+	}
+	const quarantined = quarantineLegacyPendingMagicBlockSmoke({
+		stateDirectory,
+		authorizationId: requireEnv(
+			"COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_AUTHORIZATION_ID",
+		),
+		incidentReference: requireEnv(
+			"COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_INCIDENT_REFERENCE",
+		),
+		operator: requireEnv("COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_OPERATOR"),
+		reason: requireEnv("COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_REASON"),
+		authorizedAt: requireEnv(
+			"COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_AUTHORIZED_AT",
+		),
+		quarantinedAt: now(),
+		acknowledgement: requireEnv(
+			"COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_ACKNOWLEDGEMENT",
+		),
+		endpointObservations: {
+			solana: {
+				endpoint: "solana_devnet",
+				signature: state.signature,
+				status: quarantineObservationStatus(solana),
+				observedAt,
+			},
+			magicRouter: {
+				endpoint: "magic_router",
+				signature: state.signature,
+				status: quarantineObservationStatus(magicRouter),
+				observedAt,
+			},
+		},
+	});
+	writePublicResult({
+		mode: "quarantine-legacy",
+		state: quarantined.status,
+		historicalOutcome: quarantined.historicalOutcome,
+		signature: quarantined.legacyEvidence.signature,
+		valueTransferLamports: quarantined.scope.valueTransferLamports,
+		genericExecutionFenceReleased:
+			quarantined.scope.genericExecutionFenceReleased,
+		quarantinedAt: quarantined.administration.quarantinedAt,
+	});
+}
+
+function quarantineObservationStatus(
+	registration: MagicBlockOnchainAuditRegistration,
+): "confirmed" | "execution_failed" | "ambiguous" | "unavailable" {
+	if (registration.status === "confirmed") return "confirmed";
+	if (registration.code === "TRANSACTION_EXECUTION_FAILED") {
+		return "execution_failed";
+	}
+	if (registration.code === "ROUTER_UNAVAILABLE") return "unavailable";
+	return "ambiguous";
 }
 
 async function submitAuthorizedSmoke(): Promise<void> {
@@ -218,23 +449,9 @@ async function submitAuthorizedSmoke(): Promise<void> {
 			`Devnet audit submission is retryable: ${registration.code}${
 				registration.signature ? ` (${registration.signature})` : ""
 			}. Reconcile the durable state before any new authorization.`,
-		);
+			);
 	}
-	reconcileMagicBlockSmoke({
-		stateDirectory,
-		outcome: "confirmed",
-		signature: registration.signature,
-		reconciledAt: now(),
-	});
-	writePublicResult({
-		mode: "submitted-and-confirmed",
-		auditEventId,
-		signer: registration.signer,
-		signature: registration.signature,
-		slot: registration.slot,
-		commitmentDigest: registration.commitmentDigest,
-		explorerUrl: `https://explorer.solana.com/tx/${registration.signature}?cluster=devnet`,
-	});
+	await reconcilePendingSmoke();
 }
 
 function requireSigner() {
@@ -245,6 +462,24 @@ function requireSigner() {
 		);
 	}
 	return signer;
+}
+
+function requireEnv(key: string): string {
+	const value = process.env[key]?.trim();
+	if (!value) throw new Error(`Required ${key} is unavailable.`);
+	if (
+		key.endsWith("_RISK_ACKNOWLEDGEMENT") &&
+		value !== MAGICBLOCK_LEGACY_EVIDENCE_RISK_ACKNOWLEDGEMENT
+	) {
+		throw new Error("Legacy evidence risk acknowledgement is not exact.");
+	}
+	if (
+		key.endsWith("_QUARANTINE_ACKNOWLEDGEMENT") &&
+		value !== MAGICBLOCK_LEGACY_QUARANTINE_ACKNOWLEDGEMENT
+	) {
+		throw new Error("Legacy quarantine acknowledgement is not exact.");
+	}
+	return value;
 }
 
 function publicReconciliationResult(

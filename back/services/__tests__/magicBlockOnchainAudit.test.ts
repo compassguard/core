@@ -19,7 +19,7 @@ import {
 	MAGICBLOCK_AUDIT_COMMITMENT_PREFIX,
 	MAGICBLOCK_MEMO_PROGRAM_ID,
 	type MagicBlockAuditCommitmentDetails,
-	type MagicBlockRetryableAuditFailure,
+	type MagicBlockPreparedAuditTransaction,
 	type MagicBlockRouterRpc,
 } from "../magicBlockOnchainAuditContracts";
 import { sanitizeMagicBlockRouterMessage } from "../magicBlockRouterDiagnostics";
@@ -83,10 +83,16 @@ describe("MagicBlock devnet on-chain audit", () => {
 				expect(transaction.feePayer?.toBase58()).toBe(signer.publicKey.toBase58());
 				return signature;
 			}
+			if (method === "isBlockhashValid") {
+				return { context: { slot: 40 }, value: true };
+			}
 			throw new Error(`unexpected Router method ${method}`);
 		});
 		const solanaRpc: MagicBlockRouterRpc = vi.fn(async (method) => {
-			if (method === "getSignatureStatuses") {
+			if (method === "isBlockhashValid") {
+				return { context: { slot: 41 }, value: true };
+			}
+				if (method === "getSignatureStatuses") {
 				return { value: [{ err: null, confirmationStatus: "confirmed" }] };
 			}
 			if (method === "getTransaction") {
@@ -121,7 +127,7 @@ describe("MagicBlock devnet on-chain audit", () => {
 			waitBetweenAttempts: async () => undefined,
 		});
 
-		const proof = await submitter.register(DETAILS);
+		const proof = await submitter.register(DETAILS, async (prepared) => prepared);
 
 		expect(proof).toMatchObject({
 			status: "confirmed",
@@ -157,10 +163,15 @@ describe("MagicBlock devnet on-chain audit", () => {
 				);
 				return signature;
 			}
+			if (method === "isBlockhashValid") {
+				return { context: { slot: 1 }, value: true };
+			}
 			throw new Error("unexpected Router method");
 		};
-		const solanaRpc: MagicBlockRouterRpc = async () => {
-			return { value: [{ err: null, confirmationStatus: "processed" }] };
+		const solanaRpc: MagicBlockRouterRpc = async (method) => {
+			return method === "isBlockhashValid"
+				? { context: { slot: 1 }, value: true }
+				: { value: [{ err: null, confirmationStatus: "processed" }] };
 		};
 
 		const result = await createMagicBlockOnchainAuditSubmitter({
@@ -168,7 +179,7 @@ describe("MagicBlock devnet on-chain audit", () => {
 			routerRpc,
 			solanaRpc,
 			confirmationAttempts: 1,
-		}).register(DETAILS);
+		}).register(DETAILS, async (prepared) => prepared);
 		expect(result).toMatchObject({
 			status: "retryable_failure",
 			retryable: true,
@@ -181,6 +192,7 @@ describe("MagicBlock devnet on-chain audit", () => {
 		const signer = Keypair.generate();
 		const events: string[] = [];
 		let sentSignature = "";
+		let preparedBytes = "";
 		const routerRpc: MagicBlockRouterRpc = async (method, params) => {
 			if (method === "getBlockhashForAccounts") {
 				return {
@@ -190,23 +202,31 @@ describe("MagicBlock devnet on-chain audit", () => {
 			}
 			if (method === "sendTransaction") {
 				events.push("send");
+				expect(params[0]).toBe(preparedBytes);
 				sentSignature = bs58.encode(
 					Transaction.from(Buffer.from(String(params[0]), "base64"))
 						.signature as Buffer,
 				);
 				return sentSignature;
 			}
+			if (method === "isBlockhashValid") {
+				return { context: { slot: 1 }, value: true };
+			}
 			throw new Error(`unexpected Router method ${method}`);
 		};
-		const onPrepared = vi.fn(async (prepared: MagicBlockRetryableAuditFailure) => {
+		const onPrepared = vi.fn(async (prepared: MagicBlockPreparedAuditTransaction) => {
 			events.push("prepared");
+			preparedBytes = prepared.serializedTransactionBase64;
 			expect(prepared.signature).toMatch(/^[1-9A-HJ-NP-Za-km-z]{64,88}$/);
+			expect(prepared.serializedTransactionDigest).toMatch(/^[a-f0-9]{64}$/);
 			return prepared;
 		});
 		const result = await createMagicBlockOnchainAuditSubmitter({
 			signer,
 			routerRpc,
-			solanaRpc: async () => ({
+			solanaRpc: async (method) => method === "isBlockhashValid" ? ({
+				context: { slot: 1 }, value: true,
+			}) : ({
 				value: [{ err: null, confirmationStatus: "processed" }],
 			}),
 			confirmationAttempts: 1,
@@ -230,24 +250,69 @@ describe("MagicBlock devnet on-chain audit", () => {
 					lastValidBlockHeight: 1,
 				};
 			}
+			if (method === "isBlockhashValid") {
+				return { context: { slot: 1 }, value: true };
+			}
 			throw new Error(`unexpected Router method ${method}`);
 		});
 		const result = await createMagicBlockOnchainAuditSubmitter({
 			signer,
 			routerRpc,
-			solanaRpc: vi.fn(),
+			solanaRpc: vi.fn(async (method) =>
+				method === "isBlockhashValid"
+					? { context: { slot: 1 }, value: true }
+					: null,
+			),
 		}).register(DETAILS, async (prepared) => ({
 			...prepared,
 			signature: "3".repeat(64),
 		}));
 		expect(result).toMatchObject({
 			status: "retryable_failure",
-			signature: "3".repeat(64),
+			code: "TRANSACTION_VERIFICATION_FAILED",
 		});
+		expect(result).not.toMatchObject({ signature: "3".repeat(64) });
 		expect(routerRpc).not.toHaveBeenCalledWith(
 			"sendTransaction",
 			expect.anything(),
 		);
+	});
+
+	it("fails closed before persistence or send on dual-endpoint blockhash disagreement", async () => {
+		const signer = Keypair.generate();
+		const blockhash = Keypair.generate().publicKey.toBase58();
+		const routerRpc: MagicBlockRouterRpc = vi.fn(async (method) => {
+			if (method === "getBlockhashForAccounts") {
+				return { blockhash, lastValidBlockHeight: 100 };
+			}
+			if (method === "isBlockhashValid") {
+				return { context: { slot: 10 }, value: false };
+			}
+			throw new Error(`unexpected Router method ${method}`);
+		});
+		const onPrepared = vi.fn(async (prepared) => prepared);
+		const result = await createMagicBlockOnchainAuditSubmitter({
+			signer,
+			routerRpc,
+			solanaRpc: vi.fn(async () => ({
+				context: { slot: 11 },
+				value: true,
+			})),
+		}).register(DETAILS, onPrepared);
+
+		expect(result).toMatchObject({
+			status: "retryable_failure",
+			code: "BLOCKHASH_VALIDITY_UNCONFIRMED",
+			recentBlockhash: blockhash,
+			lastValidBlockHeight: 100,
+		});
+		expect(result).not.toHaveProperty("signature");
+		expect(onPrepared).not.toHaveBeenCalled();
+		expect(routerRpc).not.toHaveBeenCalledWith(
+			"sendTransaction",
+			expect.anything(),
+		);
+		expect(JSON.stringify(result)).not.toContain("serializedTransaction");
 	});
 
 	it("derives the fee payer plus every writable account once in transaction order", () => {
@@ -290,7 +355,8 @@ describe("MagicBlock devnet on-chain audit", () => {
 			};
 			return {
 				status:
-					request.method === "getBlockhashForAccounts"
+					request.method === "getBlockhashForAccounts" ||
+					request.method === "isBlockhashValid"
 						? 200
 						: preflightHttpStatus,
 				redirected: false,
@@ -304,7 +370,9 @@ describe("MagicBlock devnet on-chain audit", () => {
 									lastValidBlockHeight: 467_685_491,
 								},
 							}
-						: {
+						: request.method === "isBlockhashValid"
+							? { result: { context: { slot: 1 }, value: true } }
+							: {
 								error: {
 									code: -32002,
 									message:
@@ -320,8 +388,12 @@ describe("MagicBlock devnet on-chain audit", () => {
 		const result = await createMagicBlockOnchainAuditSubmitter({
 			signer,
 			routerRpc: createMagicBlockRouterRpc(fetchImpl),
-			solanaRpc: vi.fn(),
-		}).register(DETAILS);
+			solanaRpc: vi.fn(async (method) =>
+				method === "isBlockhashValid"
+					? { context: { slot: 1 }, value: true }
+					: null,
+			),
+		}).register(DETAILS, async (prepared) => prepared);
 
 		expect(result).toMatchObject({
 			status: "retryable_failure",
@@ -447,6 +519,36 @@ describe("MagicBlock devnet on-chain audit", () => {
 		});
 	});
 
+	it("keeps a processed fork error non-terminal without confirmed transaction proof", async () => {
+		const rpc: MagicBlockRouterRpc = async (method) => {
+			if (method === "getSignatureStatuses") {
+				return {
+					value: [
+						{
+							err: { InstructionError: [0, "InvalidArgument"] },
+							confirmationStatus: "processed",
+						},
+					],
+				};
+			}
+			throw new Error(`unexpected method ${method}`);
+		};
+
+		await expect(
+			createMagicBlockOnchainAuditVerifier({
+				rpc,
+				confirmationAttempts: 1,
+			}).verify({
+				signature: "6".repeat(64),
+				expectedSigner: Keypair.generate().publicKey.toBase58(),
+			}),
+		).resolves.toMatchObject({
+			status: "retryable_failure",
+			code: "SUBMISSION_UNCONFIRMED",
+			signature: "6".repeat(64),
+		});
+	});
+
 	it("classifies an explicit signature status error as execution failure", async () => {
 		const rpc: MagicBlockRouterRpc = async (method) => {
 			if (method === "getSignatureStatuses") {
@@ -457,6 +559,15 @@ describe("MagicBlock devnet on-chain audit", () => {
 							confirmationStatus: "confirmed",
 						},
 					],
+				};
+			}
+			if (method === "getTransaction") {
+				return {
+					slot: 99,
+					meta: {
+						err: { InstructionError: [0, "InvalidArgument"] },
+					},
+					transaction: {},
 				};
 			}
 			throw new Error(`unexpected method ${method}`);

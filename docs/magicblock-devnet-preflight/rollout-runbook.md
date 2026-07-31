@@ -61,16 +61,16 @@ deployment, Production configuration mutation, live RPC call, or live smoke.
 After those gates are green, the connector operator must complete and record
 this checklist:
 
-1. Preserve the two-stage stacked merge order:
-   - open and review the new incident-remediation PR from
-     `ram4-dev/magic-router-incident-remediation` into the parent branch
-     `ram4-dev/magicblock-onchain-audit-review`, then merge it there;
-   - only after that merge updates the parent branch, review and merge the
-     still-open parent PR #20 into `release/compass_migration`.
-   Neither PR targets `main`. Resolve the reviewed resulting release merge
-   commit—or an exact commit explicitly instructed after both merges—and use
-   that as the Vercel Production deployment source. Never deploy an unmerged
-   feature head, the pre-remediation parent head, or an older stack commit.
+1. Preserve the two-stage recovery merge order:
+   - review and merge this self-contained recovery PR into the PR #22 line,
+     `ram4-dev/magicblock-legacy-pending-recovery`;
+   - only after the resulting recovery line is independently approved, merge
+     the PR #22 line into `release/compass_migration`.
+   Neither step targets `main`. Resolve and explicitly approve the exact
+   resulting recovery SHA before using it as the Vercel Production deployment
+   source. Do not deploy `be897a95721046922b6e934bba9b8071428289e1`, an
+   unmerged feature head, or any older stack commit. This runbook does not claim
+   that either merge or the deployment has occurred.
 2. In Vercel Production for `ramirocshubs-projects/compass-verify-api`, verify:
    - `COMPASS_VERDICT_DB_URL` is the intended durable database;
    - `COMPASS_MAGICBLOCK_AUDIT_INGRESS_API_KEY` is the dedicated hosted bearer;
@@ -94,10 +94,12 @@ this checklist:
    balance checks. Never substitute another payer/key.
 5. Reconcile the incident signature first. Then perform exactly one direct
    devnet smoke using the durable `authorize`, `submit`, and `reconcile` modes
-   below. Consume one nonce once. A successful `submit` already writes terminal
-   reconciled state; invoke `reconcile` to read that state or to resolve any
-   interruption/retryable result, and never authorize or submit a replacement
-   while it is unresolved.
+   below. Consume one nonce once. `submit` persists the exact prepared
+   transaction before at most one send and immediately attempts reconciliation,
+   but endpoint disagreement or unavailability can leave the state pending and
+   throw. Inspect durable state and invoke `reconcile` until it reaches a
+   terminal result; never authorize or submit a replacement while it is
+   unresolved.
 6. Enable `COMPASS_MAGICBLOCK_AUDIT_INGRESS_ENABLED=true`, verify authenticated
    hosted ingress, then enable one devnet-only MCP instance with
    `COMPASS_MAGICBLOCK_MCP_OBSERVER_ENABLED=true`.
@@ -124,7 +126,9 @@ this checklist:
    ```
 
    If both sources cannot produce a terminal result, the local
-   `legacy_pending` manifest remains and the rollout stays blocked.
+   `legacy_pending` manifest remains and the rollout stays blocked unless the
+   exact signature-only v1 administrative quarantine procedure below is
+   separately authorized and completed.
 3. Confirm focused tests, full tests, lint, application build, MCP build, signer
    balance, and expected pinned public key. Confirm independent review approval.
 4. Atomically create exactly one authorization nonce:
@@ -140,8 +144,13 @@ this checklist:
      npm run smoke:magicblock-devnet-onchain -- submit
    ```
 
-   Retain only its public signature, slot, commitment, and devnet explorer URL.
-   On a retryable result or process interruption, run
+   Retain only the fields actually emitted by reconciliation: `mode`, durable
+   `state`, terminal `outcome`, the public signature when present, sanitized
+   per-endpoint status/code/slot observations, and bounded expiry evidence. The
+   CLI does not emit an audit ID, signer, commitment digest, signed transaction
+   bytes, or explorer URL; an operator may construct the devnet explorer URL
+   separately from the signature. On a retryable result, endpoint disagreement,
+   or process interruption, run
    `npm run smoke:magicblock-devnet-onchain -- reconcile`; never invoke another
    `submit` for that state.
 6. Enable hosted ingress with
@@ -177,10 +186,19 @@ this checklist:
   ambiguity, not evidence that a landed transaction failed; keep pending.
 - `TRANSACTION_EXECUTION_FAILED`: terminal execution failure is eligible for
   failed reconciliation only when both Solana devnet RPC and Magic Router
-  independently return this explicit result for the prepared signature.
+  independently return a confirmed/finalized status error corroborated by
+  non-null transaction `meta.err` for the prepared signature.
 - `ROUTER_PREFLIGHT_REJECTED`: stop automatic retry, preserve the allowlisted
   Router diagnostics, and reconcile any prepared signature before deciding on
   operator recovery.
+- `BLOCKHASH_VALIDITY_UNCONFIRMED`: persist only the sanitized diagnosis,
+  commitment/Memo binding, selected blockhash, and last-valid height. Persist no
+  signature or `prepared_transaction`, and do not send. Both literal devnet and
+  Magic Router must explicitly report the selected blockhash valid at
+  `confirmed`; disagreement or missing/malformed evidence is fail-closed. Once
+  the claim lease expires, the same eligible observation may run `register`
+  again with a fresh blockhash. This is limited to the devnet audit-Memo lane
+  and does not release a payment or generic execution fence.
 - `ROUTER_UNAVAILABLE` or `AUDIT_TIMEOUT`: keep the result retryable; investigate
   Magic Router, Solana devnet RPC, and route duration.
 - Low signer balance: fail closed. Keep ingress/observer or new audited
@@ -188,22 +206,25 @@ this checklist:
   replenish only the dedicated Compass-controlled fee payer, and reverify its
   public balance and pinned key before continuing. Never substitute a fallback
   payer/key.
-- Repeated expired prepared signature: use an operator recovery procedure
-  before replacement; never silently create competing audit records.
+- Repeated expired prepared signature: use the exceptional evidence-import
+  procedure below when legacy blockhash evidence is missing; never replace
+  until dual expired-and-not-landed proof is durably reconciled.
 
 ## Local smoke-state recovery
 
 - The default ignored state directory is
   `.compass-magicblock-devnet-smoke/`.
 - Never delete or edit `state.json` to bypass `active`, `pending`, or
-  `legacy_pending`.
+  `legacy_pending`. Never print or copy v3
+  `serializedTransactionBase64` into tickets, logs, or CLI output.
 - `active` can be transitioned by the `reconcile` mode to
   `reconciled/not_submitted` because send is unreachable until `pending` is
   durably written.
-- `pending` and `legacy_pending` transition only after confirmed proof or an
-  unambiguous dual `TRANSACTION_EXECUTION_FAILED`. Null/malformed
-  `getTransaction`, stored-signer mismatch, Memo/commitment mismatch, and
-  unconfirmed/not-found results are ambiguous and stay blocked.
+- `pending` and `legacy_pending` transition only after agreeing dual confirmed
+  proof, agreeing dual `TRANSACTION_EXECUTION_FAILED`, or dual
+  signature-not-found plus invalid-blockhash proof. Null/malformed
+  `getTransaction`, stored-signer mismatch, Memo/commitment mismatch, missing
+  signature-bound blockhash, and endpoint disagreement stay blocked.
 - Reconciliation reads the public signer from the pending manifest. It does not
   require the old signer secret after rotation. Importing a legacy signature
   requires its prepared public signer through
@@ -212,3 +233,85 @@ this checklist:
 - If a process dies while holding `state.lock`, first prove no smoke process is
   still running, preserve `state.json`, remove only the stale lock, and run
   `reconcile`. Never remove a lock while a smoke process may still be active.
+
+### Exceptional legacy expiry evidence import
+
+Use this only when a historical `legacy_pending` manifest lacks its
+signature-bound blockhash and the original signed transaction is available.
+The command rejects evidence inside the state directory. Preserve the original
+evidence file outside it. Do not use a
+secret-key file or reconstruct/resign the transaction.
+
+Set the exact acknowledgement:
+
+```text
+I acknowledge this exceptional import only enriches legacy evidence and cannot by itself authorize, submit, reset, or close the pending transaction.
+```
+
+Then run:
+
+```sh
+COMPASS_MAGICBLOCK_DEVNET_LEGACY_EVIDENCE_FILE=<absolute-base64-tx-file> \
+COMPASS_MAGICBLOCK_DEVNET_LEGACY_EVIDENCE_AUTHORIZATION_ID=<change-or-incident-id> \
+COMPASS_MAGICBLOCK_DEVNET_LEGACY_EVIDENCE_OPERATOR=<operator-id> \
+COMPASS_MAGICBLOCK_DEVNET_LEGACY_EVIDENCE_REASON=<bounded-reason> \
+COMPASS_MAGICBLOCK_DEVNET_LEGACY_EVIDENCE_AUTHORIZED_AT=<ISO-8601-UTC> \
+COMPASS_MAGICBLOCK_DEVNET_LEGACY_EVIDENCE_RISK_ACKNOWLEDGEMENT='<exact-text-above>' \
+  npm run smoke:magicblock-devnet-onchain -- import-legacy-evidence
+```
+
+Review the stored authorization ID, SHA-256, derived blockhash, signer,
+signature, and timestamps. The import must leave status `legacy_pending`.
+Then run `reconcile`. Permit `expired_not_landed` only if both literal devnet
+and Magic Router independently establish finalized blockhash-invalid first,
+then return signature-not-found at an equal-or-later context slot
+(and every available block height exceeds the stored last-valid height).
+Endpoint disagreement, missing/invalid import evidence, null status without
+invalid-blockhash proof, or any operator-metadata mismatch remains blocking.
+
+For the preserved incident state, the default remains `legacy_pending`. First
+attempt read-only evidence recovery without reading any signer secret. If the
+original transaction cannot be recovered, the only supported mutation is the
+explicit administrative quarantine below.
+
+### Signature-only v1 administrative quarantine
+
+This procedure applies only to the exact v1 `legacy_pending` incident shape
+with no verified serialized transaction bytes. It does not determine whether
+the historical transaction landed and does not create a terminal result.
+`quarantine-legacy` performs a fresh read-only check of literal devnet and
+Magic Router first. If both provide confirmed or execution-failed evidence,
+the command reconciles normally instead of quarantining. Endpoint disagreement,
+null/not-found, or unavailable proof remains `historicalOutcome=unknown`.
+
+Use this exact acknowledgement:
+
+```text
+I acknowledge this quarantine does not determine or terminalize the historical transaction, prohibits retrying its signature, preserves its evidence, releases only the Compass devnet audit Memo smoke lane for one newly authorized run, and does not release any payment or generic execution fence.
+```
+
+Then run:
+
+```sh
+COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_AUTHORIZATION_ID=<approved-change-id> \
+COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_INCIDENT_REFERENCE=<incident-id> \
+COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_OPERATOR=<operator-id> \
+COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_REASON=<bounded-reason> \
+COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_AUTHORIZED_AT=<ISO-8601-UTC> \
+COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_ACKNOWLEDGEMENT='<exact-text-above>' \
+  npm run smoke:magicblock-devnet-onchain -- quarantine-legacy
+```
+
+Review only the sanitized output: `state=quarantined`,
+`historicalOutcome=unknown`, the public old signature,
+`valueTransferLamports=0`, `genericExecutionFenceReleased=false`, and the
+quarantine timestamp. A repeat with the same authorization metadata is a
+no-op; different metadata is a conflict. Never retry the old signature.
+
+After independent approval, `authorize` archives the complete quarantine in
+`history/` and emits exactly one new nonce. The subsequent `submit` creates a
+new audit event ID and can produce only the dedicated devnet Memo transaction;
+it cannot execute a user payment. The residual risk is at most one additional
+devnet Memo transaction and fee. A fee schedule or unchanged balance is not
+proof about the old transaction, and a failed Solana transaction may charge a
+fee. Quarantine never releases any payment or generic execution fence.
