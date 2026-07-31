@@ -1,6 +1,10 @@
 import {
+	createHash,
+} from "node:crypto";
+import {
 	mkdtempSync,
 	readFileSync,
+	readdirSync,
 	rmSync,
 	symlinkSync,
 	writeFileSync,
@@ -12,6 +16,8 @@ import {
 	Keypair,
 	SystemProgram,
 	Transaction,
+	TransactionInstruction,
+	PublicKey,
 } from "@solana/web3.js";
 import bs58 from "bs58";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -21,6 +27,7 @@ import {
 } from "../magicBlockOnchainAudit";
 import type {
 	MagicBlockAuditCommitmentDetails,
+	MagicBlockPreparedAuditTransaction,
 	MagicBlockRouterRpc,
 } from "../magicBlockOnchainAuditContracts";
 import {
@@ -29,12 +36,15 @@ import {
 	collectMagicBlockSmokeEndpointExpiryEvidence,
 	createMagicBlockSmokeAuthorization,
 	importLegacyMagicBlockTransactionEvidence,
+	quarantineLegacyPendingMagicBlockSmoke,
 	persistPreparedMagicBlockSmoke,
 	readMagicBlockSmokeState,
 	reconcileMagicBlockSmoke,
 } from "../../../scripts/magicBlockDevnetSmokeState";
 import {
 	MAGICBLOCK_LEGACY_EVIDENCE_RISK_ACKNOWLEDGEMENT,
+	MAGICBLOCK_LEGACY_QUARANTINE_ACKNOWLEDGEMENT,
+	MAGICBLOCK_LEGACY_TERMINALIZATION_IMPOSSIBLE_REASON,
 	MAGICBLOCK_SMOKE_STATE_SCHEMA,
 } from "../../../scripts/magicBlockDevnetSmokeStateContracts";
 
@@ -147,12 +157,16 @@ describe("MagicBlock direct-smoke durable state", () => {
 			startedAt: NOW,
 		});
 		let serializedTransaction = "";
+		const recentBlockhash = Keypair.generate().publicKey.toBase58();
 		const routerRpc: MagicBlockRouterRpc = vi.fn(async (method, params) => {
 			if (method === "getBlockhashForAccounts") {
 				return {
-					blockhash: Keypair.generate().publicKey.toBase58(),
+					blockhash: recentBlockhash,
 					lastValidBlockHeight: 1,
 				};
+			}
+			if (method === "isBlockhashValid") {
+				return { context: { slot: 10 }, value: true };
 			}
 			if (method === "sendTransaction") {
 				serializedTransaction = String(params[0]);
@@ -173,7 +187,11 @@ describe("MagicBlock direct-smoke durable state", () => {
 		const registration = await createMagicBlockOnchainAuditSubmitter({
 			signer,
 			routerRpc,
-			solanaRpc: vi.fn(),
+			solanaRpc: vi.fn(async (method) =>
+				method === "isBlockhashValid"
+					? { context: { slot: 11 }, value: true }
+					: null,
+			),
 		}).register(DETAILS, async (prepared) => {
 			persistPreparedMagicBlockSmoke({
 				stateDirectory,
@@ -189,6 +207,8 @@ describe("MagicBlock direct-smoke durable state", () => {
 			status: "retryable_failure",
 			code: "ROUTER_UNAVAILABLE",
 		});
+		expect(JSON.stringify(registration)).not.toContain(serializedTransaction);
+		expect(JSON.stringify(registration)).not.toContain(signerSecret);
 		const pending = readMagicBlockSmokeState(stateDirectory);
 		expect(pending).toMatchObject({
 			status: "pending",
@@ -197,7 +217,12 @@ describe("MagicBlock direct-smoke durable state", () => {
 			signer: signer.publicKey.toBase58(),
 		});
 		const persisted = readFileSync(join(stateDirectory, "state.json"), "utf8");
-		expect(persisted).not.toContain(serializedTransaction);
+		expect(persisted).toContain(serializedTransaction);
+		expect(persisted).toContain(
+			createHash("sha256")
+				.update(Buffer.from(serializedTransaction, "base64"))
+				.digest("hex"),
+		);
 		expect(persisted).not.toContain(signerSecret);
 		expect(() =>
 			createMagicBlockSmokeAuthorization({
@@ -255,6 +280,67 @@ describe("MagicBlock direct-smoke durable state", () => {
 		).toMatchObject({ status: "authorized" });
 	});
 
+	it("never sends across crashes before or immediately after prepared persistence", async () => {
+		for (const persistBeforeCrash of [false, true]) {
+			const stateDirectory = createStateDirectory();
+			const signer = Keypair.generate();
+			const authorizationNonce = `authorization-crash-${persistBeforeCrash ? "after" : "before"}`;
+			createMagicBlockSmokeAuthorization({
+				stateDirectory,
+				authorizationNonce,
+				createdAt: NOW,
+			});
+			consumeMagicBlockSmokeAuthorization({
+				stateDirectory,
+				authorizationNonce,
+				auditEventId: DETAILS.auditEventId,
+				observationId: DETAILS.observationId,
+				startedAt: NOW,
+			});
+			const blockhash = Keypair.generate().publicKey.toBase58();
+			const routerRpc: MagicBlockRouterRpc = vi.fn(async (method) => {
+				if (method === "getBlockhashForAccounts") {
+					return { blockhash, lastValidBlockHeight: 100 };
+				}
+				if (method === "isBlockhashValid") {
+					return { context: { slot: 10 }, value: true };
+				}
+				throw new Error(`unexpected method ${method}`);
+			});
+			const registration = await createMagicBlockOnchainAuditSubmitter({
+				signer,
+				routerRpc,
+				solanaRpc: vi.fn(async () => ({
+					context: { slot: 11 },
+					value: true,
+				})),
+			}).register(DETAILS, async (prepared) => {
+				if (persistBeforeCrash) {
+					persistPreparedMagicBlockSmoke({
+						stateDirectory,
+						authorizationNonce,
+						signer: signer.publicKey.toBase58(),
+						prepared,
+						preparedAt: NOW,
+					});
+				}
+				throw new Error("simulated crash");
+			});
+
+			expect(registration).toMatchObject({
+				status: "retryable_failure",
+				code: "ROUTER_UNAVAILABLE",
+			});
+			expect(readMagicBlockSmokeState(stateDirectory)?.status).toBe(
+				persistBeforeCrash ? "pending" : "active",
+			);
+			expect(routerRpc).not.toHaveBeenCalledWith(
+				"sendTransaction",
+				expect.anything(),
+			);
+		}
+	});
+
 	it("reads the exact historical v1 pending shape as blocking legacy evidence", () => {
 		const stateDirectory = createStateDirectory();
 		const signer = Keypair.generate();
@@ -299,6 +385,60 @@ describe("MagicBlock direct-smoke durable state", () => {
 		).toThrow("requires reconciliation");
 	});
 
+	it("strictly migrates v2 pending state to blocking legacy evidence", () => {
+		const stateDirectory = createStateDirectory();
+		const signer = Keypair.generate();
+		const recentBlockhash = Keypair.generate().publicKey.toBase58();
+		writeFileSync(
+			join(stateDirectory, "state.json"),
+			`${JSON.stringify({
+				schemaVersion: "compass.magicblock-devnet-smoke-state/v2",
+				status: "pending",
+				authorizationNonce: "authorization-nonce-v2-legacy",
+				auditEventId: "aud_v2_legacy",
+				observationId: "obs_v2_legacy",
+				signer: signer.publicKey.toBase58(),
+				signature: "2".repeat(64),
+				commitmentDigest: "3".repeat(64),
+				memo: "compass:audit:v1:{}",
+				recentBlockhash,
+				lastValidBlockHeight: 100,
+				preparedAt: NOW,
+			})}\n`,
+		);
+
+		expect(readMagicBlockSmokeState(stateDirectory)).toMatchObject({
+			status: "legacy_pending",
+			sourceSchemaVersion: "compass.magicblock-devnet-smoke-state/v2",
+			originalEvidence: { recentBlockhash, lastValidBlockHeight: 100 },
+		});
+	});
+
+	it("rejects any v3 serialized transaction, digest, or schema tampering on read", () => {
+		for (const mutate of [
+			(state: Record<string, unknown>) => {
+				state.serializedTransactionDigest = "0".repeat(64);
+			},
+			(state: Record<string, unknown>) => {
+				state.serializedTransactionBase64 = "AA==";
+			},
+			(state: Record<string, unknown>) => {
+				state.unexpected = true;
+			},
+		]) {
+			const stateDirectory = createPreparedState();
+			const raw = JSON.parse(
+				readFileSync(join(stateDirectory, "state.json"), "utf8"),
+			) as Record<string, unknown>;
+			mutate(raw);
+			writeFileSync(
+				join(stateDirectory, "state.json"),
+				`${JSON.stringify(raw)}\n`,
+			);
+			expect(() => readMagicBlockSmokeState(stateDirectory)).toThrow();
+		}
+	});
+
 	it("keeps the incident legacy_pending v1 state blocking without evidence", () => {
 		const stateDirectory = createStateDirectory();
 		writeFileSync(
@@ -328,6 +468,173 @@ describe("MagicBlock direct-smoke durable state", () => {
 				createdAt: NOW,
 			}),
 		).toThrow("requires reconciliation");
+	});
+
+	it("quarantines only the exact signature-only v1 incident and preserves it in history", () => {
+		const stateDirectory = createStateDirectory();
+		const signer = "Fpp49ehhybJpUTqQaYingNhnWiQQAVcfcqFQAyL4pVV7";
+		const signature =
+			"56qrw6n6eYdYbobzF3qAdF9n7QYvRe2ZePrpvT6NSnrfAGqgLP1HzE1cXVNMaF3TJgDTDNHDh9UNcwxXACnTKUVT";
+		writeFileSync(
+			join(stateDirectory, "state.json"),
+			`${JSON.stringify({
+				schemaVersion: "compass.magicblock-devnet-smoke-state/v1",
+				status: "legacy_pending",
+				signer,
+				signature,
+				importedAt: NOW,
+			})}\n`,
+		);
+		const request = {
+			stateDirectory,
+			authorizationId: "change-authorization-001",
+			incidentReference: "incident-magic-router-001",
+			operator: "operator@example.test",
+			reason: "Release only a new devnet audit Memo smoke authorization",
+			authorizedAt: NOW,
+			quarantinedAt: NOW,
+			acknowledgement: MAGICBLOCK_LEGACY_QUARANTINE_ACKNOWLEDGEMENT,
+			endpointObservations: {
+				solana: {
+					endpoint: "solana_devnet" as const,
+					signature,
+					status: "ambiguous" as const,
+					observedAt: NOW,
+				},
+				magicRouter: {
+					endpoint: "magic_router" as const,
+					signature,
+					status: "unavailable" as const,
+					observedAt: NOW,
+				},
+			},
+		};
+		const quarantined = quarantineLegacyPendingMagicBlockSmoke(request);
+
+		expect(quarantined).toMatchObject({
+			status: "quarantined",
+			historicalOutcome: "unknown",
+			terminalizationImpossibleReason:
+				MAGICBLOCK_LEGACY_TERMINALIZATION_IMPOSSIBLE_REASON,
+			scope: {
+				valueTransferLamports: 0,
+				noPaymentExecution: true,
+				oldSignatureRetryProhibited: true,
+				genericExecutionFenceReleased: false,
+			},
+			legacyEvidence: { signer, signature, status: "legacy_pending" },
+			administration: { verifiedSerializedTransactionAvailable: false },
+		});
+		expect(quarantineLegacyPendingMagicBlockSmoke(request)).toEqual(quarantined);
+		expect(() =>
+			quarantineLegacyPendingMagicBlockSmoke({
+				...request,
+				reason: "Conflicting reason",
+			}),
+		).toThrow("quarantine conflicts");
+
+		createMagicBlockSmokeAuthorization({
+			stateDirectory,
+			authorizationNonce: "authorization-after-quarantine",
+			createdAt: NOW,
+		});
+		const archives = readdirSync(join(stateDirectory, "history"));
+		expect(archives).toHaveLength(1);
+		const archived = readFileSync(
+			join(stateDirectory, "history", archives[0] as string),
+			"utf8",
+		);
+		expect(archived).toContain(signature);
+		expect(archived).toContain('"historicalOutcome":"unknown"');
+		expect(readMagicBlockSmokeState(stateDirectory)).toMatchObject({
+			status: "authorized",
+			authorizationNonce: "authorization-after-quarantine",
+		});
+	});
+
+	it("rejects quarantine schema additions and any non-exact legacy shape", () => {
+		const stateDirectory = createStateDirectory();
+		const signer = Keypair.generate();
+		writeFileSync(
+			join(stateDirectory, "state.json"),
+			`${JSON.stringify({
+				schemaVersion: "compass.magicblock-devnet-smoke-state/v1",
+				status: "pending",
+				authorizationNonce: "authorization-nonce-historical",
+				auditEventId: "aud_historical",
+				observationId: "obs_historical",
+				signer: signer.publicKey.toBase58(),
+				signature: "2".repeat(64),
+				commitmentDigest: "3".repeat(64),
+				memo: "compass:audit:v1:{}",
+				preparedAt: NOW,
+			})}\n`,
+		);
+		expect(() =>
+			quarantineLegacyPendingMagicBlockSmoke({
+				stateDirectory,
+				authorizationId: "change-authorization-001",
+				incidentReference: "incident-magic-router-001",
+				operator: "operator@example.test",
+				reason: "Must remain blocked",
+				authorizedAt: NOW,
+				quarantinedAt: NOW,
+				acknowledgement: MAGICBLOCK_LEGACY_QUARANTINE_ACKNOWLEDGEMENT,
+				observationUnavailableReason: {
+					code: "READ_ONLY_RECONCILIATION_UNAVAILABLE",
+					observedAt: NOW,
+				},
+			}),
+		).toThrow("quarantine unavailable");
+
+		const signature = "2".repeat(64);
+		writeFileSync(
+			join(stateDirectory, "state.json"),
+			`${JSON.stringify({
+				schemaVersion: "compass.magicblock-devnet-smoke-state/v1",
+				status: "legacy_pending",
+				signer: signer.publicKey.toBase58(),
+				signature,
+				importedAt: NOW,
+			})}\n`,
+		);
+		const baseRequest = {
+			stateDirectory,
+			authorizationId: "change-authorization-001",
+			incidentReference: "incident-magic-router-001",
+			operator: "operator@example.test",
+			reason: "Strict quarantine validation",
+			authorizedAt: NOW,
+			quarantinedAt: NOW,
+			acknowledgement: MAGICBLOCK_LEGACY_QUARANTINE_ACKNOWLEDGEMENT,
+		};
+		expect(() =>
+			quarantineLegacyPendingMagicBlockSmoke({
+				...baseRequest,
+				endpointObservations: {
+					solana: { endpoint: "solana_devnet", signature, status: "confirmed", observedAt: NOW },
+					magicRouter: { endpoint: "magic_router", signature, status: "confirmed", observedAt: NOW },
+				},
+			}),
+		).toThrow("terminal evidence");
+		quarantineLegacyPendingMagicBlockSmoke({
+			...baseRequest,
+			observationUnavailableReason: {
+				code: "READ_ONLY_RECONCILIATION_UNAVAILABLE",
+				observedAt: NOW,
+			},
+		});
+		const quarantined = JSON.parse(
+			readFileSync(join(stateDirectory, "state.json"), "utf8"),
+		) as Record<string, unknown>;
+		quarantined.unexpected = true;
+		writeFileSync(
+			join(stateDirectory, "state.json"),
+			`${JSON.stringify(quarantined)}\n`,
+		);
+		expect(() => readMagicBlockSmokeState(stateDirectory)).toThrow(
+			"state unavailable",
+		);
 	});
 
 	it("cryptographically enriches legacy evidence without retaining transaction bytes or closing", () => {
@@ -702,19 +1009,67 @@ function createPreparedState(): string {
 		stateDirectory,
 		authorizationNonce,
 		signer: signer.publicKey.toBase58(),
-		prepared: {
-			status: "retryable_failure",
-			retryable: true,
-			code: "SUBMISSION_UNCONFIRMED",
-			signature: "2".repeat(64),
-			commitmentDigest: "3".repeat(64),
-			memo: "compass:audit:v1:{}",
-			recentBlockhash: Keypair.generate().publicKey.toBase58(),
-			lastValidBlockHeight: 100,
-		},
+		prepared: createPreparedTransaction(signer),
 		preparedAt: NOW,
 	});
 	return stateDirectory;
+}
+
+function createPreparedTransaction(
+	signer: Keypair,
+): MagicBlockPreparedAuditTransaction {
+	const recentBlockhash = Keypair.generate().publicKey.toBase58();
+	const memo = "compass:audit:v1:{}";
+	const transaction = new Transaction({
+		feePayer: signer.publicKey,
+		recentBlockhash,
+	}).add(
+		new TransactionInstruction({
+			programId: new PublicKey(
+				"MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+			),
+			keys: [
+				{ pubkey: signer.publicKey, isSigner: true, isWritable: false },
+			],
+			data: Buffer.from(memo, "utf8"),
+		}),
+	);
+	transaction.sign(signer);
+	const serialized = transaction.serialize();
+	return {
+		schemaVersion: "compass.magicblock-prepared-audit-transaction/v1",
+		cluster: "devnet",
+		lane: "magicblock_devnet_audit_memo",
+		valueTransferLamports: 0,
+		signer: signer.publicKey.toBase58(),
+		signature: bs58.encode(transaction.signature as Buffer),
+		commitmentDigest: "3".repeat(64),
+		memo,
+		recentBlockhash,
+		lastValidBlockHeight: 100,
+		serializedTransactionBase64: serialized.toString("base64"),
+		serializedTransactionDigest: createHash("sha256")
+			.update(serialized)
+			.digest("hex"),
+		blockhashValidityEvidence: {
+			solana: {
+				endpoint: "solana_devnet",
+				recentBlockhash,
+				commitment: "confirmed",
+				contextSlot: 10,
+				validity: "valid",
+				observedAt: NOW,
+			},
+			magicRouter: {
+				endpoint: "magic_router",
+				recentBlockhash,
+				commitment: "confirmed",
+				contextSlot: 11,
+				validity: "valid",
+				observedAt: NOW,
+			},
+		},
+	};
 }
 
 function endpointEvidence(

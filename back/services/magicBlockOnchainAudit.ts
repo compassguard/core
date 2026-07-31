@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { isAbsolute } from "node:path";
 
@@ -6,6 +7,7 @@ import bs58 from "bs58";
 
 import {
 	canonicalJson,
+	hasExactKeys,
 	isCanonicalTimestamp,
 	isDigest,
 	sha256Hex,
@@ -15,10 +17,12 @@ import {
 	MAGICBLOCK_MEMO_PROGRAM_ID,
 	SOLANA_DEVNET_RPC_URL,
 	type MagicBlockAuditCommitmentDetails,
+	type MagicBlockBlockhashValidityEvidence,
 	type MagicBlockConfirmedAuditProof,
 	type MagicBlockOnchainAuditRegistration,
 	type MagicBlockOnchainAuditSubmitter,
 	type MagicBlockOnchainAuditVerifier,
+	type MagicBlockPreparedAuditTransaction,
 	type MagicBlockRetryableAuditFailure,
 	type MagicBlockRouterDiagnostics,
 	type MagicBlockRouterRpc,
@@ -51,6 +55,139 @@ export function materializeMagicBlockAuditCommitment(
 		commitmentDigest,
 		memo: `${MAGICBLOCK_AUDIT_COMMITMENT_PREFIX}${publicCommitment}`,
 	};
+}
+
+export function isValidMagicBlockPreparedAuditTransaction(
+	value: unknown,
+	expected?: {
+		readonly commitmentDigest: string;
+		readonly memo: string;
+	},
+): value is MagicBlockPreparedAuditTransaction {
+	if (value === null || typeof value !== "object" || Array.isArray(value)) {
+		return false;
+	}
+	const prepared = value as Record<string, unknown>;
+	if (
+		!hasExactKeys(prepared, [
+			"blockhashValidityEvidence",
+			"cluster",
+			"commitmentDigest",
+			"lane",
+			"lastValidBlockHeight",
+			"memo",
+			"recentBlockhash",
+			"schemaVersion",
+			"serializedTransactionBase64",
+			"serializedTransactionDigest",
+			"signature",
+			"signer",
+			"valueTransferLamports",
+		]) ||
+		prepared.schemaVersion !==
+			"compass.magicblock-prepared-audit-transaction/v1" ||
+		prepared.cluster !== "devnet" ||
+		prepared.lane !== "magicblock_devnet_audit_memo" ||
+		prepared.valueTransferLamports !== 0 ||
+		!isCanonicalPublicKey(prepared.signer) ||
+		typeof prepared.signature !== "string" ||
+		!SIGNATURE.test(prepared.signature) ||
+		!isDigest(prepared.commitmentDigest) ||
+		typeof prepared.memo !== "string" ||
+		!prepared.memo.startsWith(MAGICBLOCK_AUDIT_COMMITMENT_PREFIX) ||
+		Buffer.byteLength(prepared.memo, "utf8") > 400 ||
+		!isCanonicalBlockhash(prepared.recentBlockhash) ||
+		!Number.isSafeInteger(prepared.lastValidBlockHeight) ||
+		Number(prepared.lastValidBlockHeight) < 0 ||
+		typeof prepared.serializedTransactionBase64 !== "string" ||
+		Buffer.byteLength(prepared.serializedTransactionBase64, "utf8") > 4_096 ||
+		!isDigest(prepared.serializedTransactionDigest) ||
+		(expected !== undefined &&
+			(prepared.commitmentDigest !== expected.commitmentDigest ||
+				prepared.memo !== expected.memo))
+	) {
+		return false;
+	}
+	const validity = prepared.blockhashValidityEvidence;
+	if (
+		validity === null ||
+		typeof validity !== "object" ||
+		Array.isArray(validity) ||
+		!hasExactKeys(validity as Record<string, unknown>, ["magicRouter", "solana"]) ||
+		!isValidPreparedBlockhashObservation(
+			(validity as Record<string, unknown>).solana,
+			"solana_devnet",
+			prepared.recentBlockhash,
+		) ||
+		!isValidPreparedBlockhashObservation(
+			(validity as Record<string, unknown>).magicRouter,
+			"magic_router",
+			prepared.recentBlockhash,
+		)
+	) {
+		return false;
+	}
+	try {
+		const serialized = Buffer.from(prepared.serializedTransactionBase64, "base64");
+		if (
+			serialized.length < 1 ||
+			serialized.toString("base64") !== prepared.serializedTransactionBase64 ||
+			createHash("sha256").update(serialized).digest("hex") !==
+				prepared.serializedTransactionDigest
+		) {
+			return false;
+		}
+		const transaction = Transaction.from(serialized);
+		const signer = new PublicKey(prepared.signer);
+		const signerEntry = transaction.signatures.find((entry) =>
+			entry.publicKey.equals(signer),
+		);
+		const instruction = transaction.instructions[0];
+		return Boolean(
+			transaction.signatures.length === 1 &&
+				signerEntry?.signature &&
+				bs58.encode(signerEntry.signature) === prepared.signature &&
+				transaction.verifySignatures(false) &&
+				transaction.feePayer?.equals(signer) &&
+				transaction.recentBlockhash === prepared.recentBlockhash &&
+				transaction.instructions.length === 1 &&
+				instruction?.programId.toBase58() === MAGICBLOCK_MEMO_PROGRAM_ID &&
+				instruction.keys.length === 1 &&
+				instruction.keys[0]?.pubkey.equals(signer) &&
+				instruction.keys[0]?.isSigner === true &&
+				instruction.data.toString("utf8") === prepared.memo,
+		);
+	} catch {
+		return false;
+	}
+}
+
+function isValidPreparedBlockhashObservation(
+	value: unknown,
+	endpoint: "solana_devnet" | "magic_router",
+	recentBlockhash: unknown,
+): boolean {
+	if (value === null || typeof value !== "object" || Array.isArray(value)) {
+		return false;
+	}
+	const record = value as Record<string, unknown>;
+	return (
+		hasExactKeys(record, [
+			"commitment",
+			"contextSlot",
+			"endpoint",
+			"observedAt",
+			"recentBlockhash",
+			"validity",
+		]) &&
+		record.endpoint === endpoint &&
+		record.recentBlockhash === recentBlockhash &&
+		record.commitment === "confirmed" &&
+		record.validity === "valid" &&
+		Number.isSafeInteger(record.contextSlot) &&
+		Number(record.contextSlot) >= 0 &&
+		isCanonicalTimestamp(record.observedAt)
+	);
 }
 
 export function createMagicBlockOnchainAuditSubmitter(input: {
@@ -120,30 +257,50 @@ export function createMagicBlockOnchainAuditSubmitter(input: {
 					? bs58.encode(transaction.signature)
 					: "";
 				if (!SIGNATURE.test(signature)) return retry("SIGNER_UNAVAILABLE");
-				if (onPrepared) {
-					const persisted = await onPrepared(
-						retry("SUBMISSION_UNCONFIRMED", {
-							signature,
-							commitmentDigest: materialized.commitmentDigest,
-							memo: materialized.memo,
-							recentBlockhash,
-							lastValidBlockHeight,
-						}),
-					);
-					if (
-						persisted.signature !== signature ||
-						persisted.commitmentDigest !==
-							materialized.commitmentDigest ||
-						persisted.memo !== materialized.memo
-						|| persisted.recentBlockhash !== recentBlockhash
-						|| persisted.lastValidBlockHeight !== lastValidBlockHeight
-					) {
-						return persisted;
-					}
-				}
 				const encoded = transaction.serialize().toString("base64");
+				const blockhashValidityEvidence = await collectBlockhashValidityEvidence({
+					solanaRpc,
+					routerRpc,
+					recentBlockhash,
+					now,
+				});
+				if (!blockhashValidityEvidence) {
+					return retry("BLOCKHASH_VALIDITY_UNCONFIRMED", {
+						commitmentDigest: materialized.commitmentDigest,
+						memo: materialized.memo,
+						recentBlockhash,
+						lastValidBlockHeight,
+					});
+				}
+				const prepared: MagicBlockPreparedAuditTransaction = Object.freeze({
+					schemaVersion: "compass.magicblock-prepared-audit-transaction/v1",
+					cluster: "devnet",
+					lane: "magicblock_devnet_audit_memo",
+					valueTransferLamports: 0,
+					signer: signerAddress,
+					signature,
+					commitmentDigest: materialized.commitmentDigest,
+					memo: materialized.memo,
+					recentBlockhash,
+					lastValidBlockHeight,
+					serializedTransactionBase64: encoded,
+					serializedTransactionDigest: createHash("sha256")
+						.update(Buffer.from(encoded, "base64"))
+						.digest("hex"),
+					blockhashValidityEvidence,
+				});
+				const persisted = await onPrepared(prepared);
+				if (!preparedTransactionsEqual(prepared, persisted)) {
+					return retry("TRANSACTION_VERIFICATION_FAILED", {
+						signature,
+						commitmentDigest: materialized.commitmentDigest,
+						memo: materialized.memo,
+						recentBlockhash,
+						lastValidBlockHeight,
+					});
+				}
 				const sent = await routerRpc("sendTransaction", [
-					encoded,
+					prepared.serializedTransactionBase64,
 					{
 						encoding: "base64",
 						skipPreflight: false,
@@ -253,6 +410,82 @@ export function createMagicBlockOnchainAuditVerifier(input: {
 			}
 		},
 	};
+}
+
+async function collectBlockhashValidityEvidence(input: {
+	readonly solanaRpc: MagicBlockRouterRpc;
+	readonly routerRpc: MagicBlockRouterRpc;
+	readonly recentBlockhash: string;
+	readonly now: () => string;
+}): Promise<MagicBlockPreparedAuditTransaction["blockhashValidityEvidence"] | null> {
+	const [solana, magicRouter] = await Promise.all([
+		observeBlockhashValidity(
+			input.solanaRpc,
+			"solana_devnet",
+			input.recentBlockhash,
+			input.now,
+		),
+		observeBlockhashValidity(
+			input.routerRpc,
+			"magic_router",
+			input.recentBlockhash,
+			input.now,
+		),
+	]);
+	if (solana.validity !== "valid" || magicRouter.validity !== "valid") {
+		return null;
+	}
+	return Object.freeze({ solana, magicRouter });
+}
+
+async function observeBlockhashValidity(
+	rpc: MagicBlockRouterRpc,
+	endpoint: MagicBlockBlockhashValidityEvidence["endpoint"],
+	recentBlockhash: string,
+	now: () => string,
+): Promise<MagicBlockBlockhashValidityEvidence> {
+	let contextSlot = 0;
+	let validity: MagicBlockBlockhashValidityEvidence["validity"] = "ambiguous";
+	try {
+		const response = asRecord(
+			await rpc("isBlockhashValid", [
+				recentBlockhash,
+				{ commitment: "confirmed" },
+			]),
+		);
+		const context = asRecord(response.context);
+		if (Number.isSafeInteger(context.slot) && Number(context.slot) >= 0) {
+			contextSlot = Number(context.slot);
+			if (typeof response.value === "boolean") {
+				validity = response.value ? "valid" : "invalid";
+			}
+		}
+	} catch {
+		// A missing or malformed observation is explicit ambiguity and blocks send.
+	}
+	const observedAt = now();
+	if (!isCanonicalTimestamp(observedAt)) {
+		throw new Error("MagicBlock blockhash observation timestamp unavailable");
+	}
+	return Object.freeze({
+		endpoint,
+		recentBlockhash,
+		commitment: "confirmed",
+		contextSlot,
+		validity,
+		observedAt,
+	});
+}
+
+function preparedTransactionsEqual(
+	expected: MagicBlockPreparedAuditTransaction,
+	actual: MagicBlockPreparedAuditTransaction,
+): boolean {
+	try {
+		return canonicalJson(expected) === canonicalJson(actual);
+	} catch {
+		return false;
+	}
 }
 
 export function createMagicBlockAuditSignerFromEnv(

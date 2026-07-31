@@ -197,25 +197,18 @@ https://explorer.solana.com/tx/<signature>?cluster=devnet
 
 ## Delivery
 
-The corrected cumulative parent branch starts from PR #19 head
-`9aaa5f5272ae843a764645c201526b532648d1f7`. The open parent
-[PR #20](https://github.com/compassguard/core/pull/20) has head
-`ram4-dev/magicblock-onchain-audit-review`, targets
-`release/compass_migration`, and is intended to supersede the contradictory
-three-PR stack. At the time of the final read-only GitHub verification, this
-incident-remediation feature branch had no PR.
-
-Delivery therefore requires two reviewed merges in order: first a new stacked
-incident-remediation PR into `ram4-dev/magicblock-onchain-audit-review`, then
-the updated parent PR #20 into `release/compass_migration`. Neither targets
-`main`. Production deployment must use the reviewed resulting release merge
-commit, or an exact commit explicitly instructed after both merges, never an
-unmerged feature head. The earlier parent implementation commit is
-`6c42222f69c4acf5e3c343a00fbea95064698e01`.
+Delivery requires two reviewed merges in order: first this self-contained
+recovery PR into the PR #22 line,
+`ram4-dev/magicblock-legacy-pending-recovery`, then the independently approved
+PR #22 line into `release/compass_migration`. Neither targets `main`.
+Production deployment must use the explicitly approved exact SHA resulting
+from that recovery line, never
+`be897a95721046922b6e934bba9b8071428289e1`, an unmerged feature head, or an
+older stack commit. This report does not claim either merge or a deployment.
 
 The user authorizes a Vercel Production deployment only after the correction
 has been independently reviewed, the final verification is green, and the
-two-stage stack above is merged. This documentation pass performs no merge,
+two-stage recovery line above is merged. This documentation pass performs no merge,
 deployment, configuration mutation, live RPC call, or live smoke.
 
 ## 2026-07-30 legacy pending exact-once recovery

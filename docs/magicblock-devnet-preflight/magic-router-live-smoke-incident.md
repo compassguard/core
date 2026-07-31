@@ -91,9 +91,11 @@ Devnet audit submission is retryable: ROUTER_UNAVAILABLE
 ```
 
 Repeated `getSignatureStatuses` queries against both the standard Solana devnet
-RPC and Magic Router found no transaction. The signer balance remained
-unchanged, providing additional evidence that the transaction did not land.
-The operation was not retried after a signature had been prepared.
+RPC and Magic Router found no transaction at those endpoints. The signer
+balance appeared unchanged. These are endpoint-relative observations only:
+null/not-found and balance/fee observations do not mathematically prove that a
+transaction never landed or executed. The operation was not retried after a
+signature had been prepared.
 
 ## Root-cause analysis
 
@@ -256,3 +258,44 @@ establish finalized blockhash invalidity before re-reading signature history at
 an equal-or-later context, with endpoint, signature, blockhash, slots, and
 timestamp persisted. Processed errors and single-endpoint submit confirmation
 remain non-terminal.
+
+## 2026-07-31 self-contained recovery and quarantine correction
+
+The historical signature cannot be inverted into its transaction. Solana signs
+the serialized Message, and that Message contains the recent blockhash and
+instructions. Without verified serialized bytes, neither the signed Memo nor
+its expiry window can be reconstructed. `getSignatureStatuses` and
+`getTransaction` returning null mean only “not found by this endpoint”; even
+dual null is not terminal or mathematical non-execution proof. See the official
+[transaction structure](https://solana.com/docs/core/transactions/transaction-structure),
+[signature status](https://solana.com/docs/rpc/http/getsignaturestatuses), and
+[transaction lookup](https://solana.com/docs/rpc/http/gettransaction)
+documentation.
+
+Future direct-smoke state is v3. Before every reachable `sendTransaction`, the
+submitter obtains explicit valid-blockhash observations from literal devnet and
+Magic Router, signs once, serializes once, and requires the exact base64 plus
+plain SHA-256 and all signer/signature/Memo/blockhash bindings to be atomically
+fsynced. Every read cryptographically revalidates the bytes. Restarts never
+regenerate them, callback changes stop send, and public output never includes
+base64 or signer secret material.
+
+For only the exact signature-only v1 incident, an explicitly authorized
+`quarantine-legacy` mode performs read-only reconciliation first. Terminal
+evidence reconciles normally. Otherwise it preserves the original signer,
+signature, and timestamps with `historicalOutcome="unknown"`, the fixed reason
+terminalization is impossible, exact operator acknowledgement and authorization
+metadata, and bounded endpoint observations. Quarantine is idempotent,
+conflict-safe, prohibits retrying the old signature, and is not a terminal
+outcome for the old audit.
+
+The quarantine releases only the repo-owned one-run authorization transition
+for the Compass devnet audit Memo lane. It attests
+`valueTransferLamports=0`, no payment execution, and
+`genericExecutionFenceReleased=false`. Authorization archives the quarantine
+before creating a new nonce and new audit event ID. The old record remains in
+history. Residual exposure is at most one additional devnet Memo transaction
+and possible fee, never a user payment. Fee documentation or observed balance
+is not execution proof; failed transactions may charge fees. No RPC call,
+submission, deployment, secret read, or state mutation was performed while
+implementing this correction.
