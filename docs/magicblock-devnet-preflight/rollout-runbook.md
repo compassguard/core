@@ -177,7 +177,8 @@ this checklist:
   ambiguity, not evidence that a landed transaction failed; keep pending.
 - `TRANSACTION_EXECUTION_FAILED`: terminal execution failure is eligible for
   failed reconciliation only when both Solana devnet RPC and Magic Router
-  independently return this explicit result for the prepared signature.
+  independently return a confirmed/finalized status error corroborated by
+  non-null transaction `meta.err` for the prepared signature.
 - `ROUTER_PREFLIGHT_REJECTED`: stop automatic retry, preserve the allowlisted
   Router diagnostics, and reconcile any prepared signature before deciding on
   operator recovery.
@@ -188,8 +189,9 @@ this checklist:
   replenish only the dedicated Compass-controlled fee payer, and reverify its
   public balance and pinned key before continuing. Never substitute a fallback
   payer/key.
-- Repeated expired prepared signature: use an operator recovery procedure
-  before replacement; never silently create competing audit records.
+- Repeated expired prepared signature: use the exceptional evidence-import
+  procedure below when legacy blockhash evidence is missing; never replace
+  until dual expired-and-not-landed proof is durably reconciled.
 
 ## Local smoke-state recovery
 
@@ -200,10 +202,11 @@ this checklist:
 - `active` can be transitioned by the `reconcile` mode to
   `reconciled/not_submitted` because send is unreachable until `pending` is
   durably written.
-- `pending` and `legacy_pending` transition only after confirmed proof or an
-  unambiguous dual `TRANSACTION_EXECUTION_FAILED`. Null/malformed
-  `getTransaction`, stored-signer mismatch, Memo/commitment mismatch, and
-  unconfirmed/not-found results are ambiguous and stay blocked.
+- `pending` and `legacy_pending` transition only after agreeing dual confirmed
+  proof, agreeing dual `TRANSACTION_EXECUTION_FAILED`, or dual
+  signature-not-found plus invalid-blockhash proof. Null/malformed
+  `getTransaction`, stored-signer mismatch, Memo/commitment mismatch, missing
+  signature-bound blockhash, and endpoint disagreement stay blocked.
 - Reconciliation reads the public signer from the pending manifest. It does not
   require the old signer secret after rotation. Importing a legacy signature
   requires its prepared public signer through
@@ -212,3 +215,46 @@ this checklist:
 - If a process dies while holding `state.lock`, first prove no smoke process is
   still running, preserve `state.json`, remove only the stale lock, and run
   `reconcile`. Never remove a lock while a smoke process may still be active.
+
+### Exceptional legacy expiry evidence import
+
+Use this only when a historical `legacy_pending` manifest lacks its
+signature-bound blockhash and the original signed transaction is available.
+The command rejects evidence inside the state directory. Preserve the original
+evidence file outside it. Do not use a
+secret-key file or reconstruct/resign the transaction.
+
+Set the exact acknowledgement:
+
+```text
+I acknowledge this exceptional import only enriches legacy evidence and cannot by itself authorize, submit, reset, or close the pending transaction.
+```
+
+Then run:
+
+```sh
+COMPASS_MAGICBLOCK_DEVNET_LEGACY_EVIDENCE_FILE=<absolute-base64-tx-file> \
+COMPASS_MAGICBLOCK_DEVNET_LEGACY_EVIDENCE_AUTHORIZATION_ID=<change-or-incident-id> \
+COMPASS_MAGICBLOCK_DEVNET_LEGACY_EVIDENCE_OPERATOR=<operator-id> \
+COMPASS_MAGICBLOCK_DEVNET_LEGACY_EVIDENCE_REASON=<bounded-reason> \
+COMPASS_MAGICBLOCK_DEVNET_LEGACY_EVIDENCE_AUTHORIZED_AT=<ISO-8601-UTC> \
+COMPASS_MAGICBLOCK_DEVNET_LEGACY_EVIDENCE_RISK_ACKNOWLEDGEMENT='<exact-text-above>' \
+  npm run smoke:magicblock-devnet-onchain -- import-legacy-evidence
+```
+
+Review the stored authorization ID, SHA-256, derived blockhash, signer,
+signature, and timestamps. The import must leave status `legacy_pending`.
+Then run `reconcile`. Permit `expired_not_landed` only if both literal devnet
+and Magic Router independently establish finalized blockhash-invalid first,
+then return signature-not-found at an equal-or-later context slot
+(and every available block height exceeds the stored last-valid height).
+Endpoint disagreement, missing/invalid import evidence, null status without
+invalid-blockhash proof, or any operator-metadata mismatch remains blocking.
+
+For the preserved incident state, the safe default is to retain
+`legacy_pending` and keep replacement submission blocked. The next
+connector-operator action is read-only: locate and preserve the original
+base64 signed transaction, if it exists, without reading any signer secret or
+calling an RPC. Only after a separate explicit authorization may the operator
+run `import-legacy-evidence`; if the original transaction cannot be recovered,
+take no state mutation and do not authorize a replacement.

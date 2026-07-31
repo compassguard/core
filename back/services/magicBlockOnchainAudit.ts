@@ -83,6 +83,8 @@ export function createMagicBlockOnchainAuditSubmitter(input: {
 				| ReturnType<typeof materializeMagicBlockAuditCommitment>
 				| undefined;
 			let signature: string | undefined;
+			let recentBlockhash: string | undefined;
+			let lastValidBlockHeight: number | undefined;
 			try {
 				materialized = materializeMagicBlockAuditCommitment(details);
 				const transaction = new Transaction();
@@ -111,6 +113,8 @@ export function createMagicBlockOnchainAuditSubmitter(input: {
 					});
 				}
 				transaction.recentBlockhash = latest.blockhash;
+				recentBlockhash = latest.blockhash;
+				lastValidBlockHeight = Number(latest.lastValidBlockHeight);
 				transaction.sign(input.signer);
 				signature = transaction.signature
 					? bs58.encode(transaction.signature)
@@ -122,6 +126,8 @@ export function createMagicBlockOnchainAuditSubmitter(input: {
 							signature,
 							commitmentDigest: materialized.commitmentDigest,
 							memo: materialized.memo,
+							recentBlockhash,
+							lastValidBlockHeight,
 						}),
 					);
 					if (
@@ -129,6 +135,8 @@ export function createMagicBlockOnchainAuditSubmitter(input: {
 						persisted.commitmentDigest !==
 							materialized.commitmentDigest ||
 						persisted.memo !== materialized.memo
+						|| persisted.recentBlockhash !== recentBlockhash
+						|| persisted.lastValidBlockHeight !== lastValidBlockHeight
 					) {
 						return persisted;
 					}
@@ -148,6 +156,8 @@ export function createMagicBlockOnchainAuditSubmitter(input: {
 						signature,
 						commitmentDigest: materialized.commitmentDigest,
 						memo: materialized.memo,
+						recentBlockhash,
+						lastValidBlockHeight,
 					});
 				}
 				return await verifier.verify({
@@ -169,6 +179,10 @@ export function createMagicBlockOnchainAuditSubmitter(input: {
 						? {
 								commitmentDigest: materialized.commitmentDigest,
 								memo: materialized.memo,
+								...(recentBlockhash ? { recentBlockhash } : {}),
+								...(lastValidBlockHeight !== undefined
+									? { lastValidBlockHeight }
+									: {}),
 							}
 						: {}),
 						...(routerError
@@ -378,6 +392,8 @@ async function verifyTransaction(input: {
 	readonly waitBetweenAttempts: () => Promise<void>;
 }): Promise<MagicBlockOnchainAuditRegistration> {
 	let confirmed = false;
+	let confirmedFailure = false;
+	let transactionCommitment: "confirmed" | "finalized" = "confirmed";
 	for (let attempt = 0; attempt < input.confirmationAttempts; attempt += 1) {
 		const statusResponse = asRecord(
 			await input.rpc("getSignatureStatuses", [
@@ -389,17 +405,13 @@ async function verifyTransaction(input: {
 			? statusResponse.value
 			: [];
 		const status = asRecord(statuses[0]);
-		if (status.err !== undefined && status.err !== null) {
-			return retry("TRANSACTION_EXECUTION_FAILED", {
-				signature: input.signature,
-				...(input.expectedCommitmentDigest
-					? { commitmentDigest: input.expectedCommitmentDigest }
-					: {}),
-				...(input.expectedMemo ? { memo: input.expectedMemo } : {}),
-			});
-		}
 		if (["confirmed", "finalized"].includes(String(status.confirmationStatus))) {
 			confirmed = true;
+			confirmedFailure = status.err !== undefined && status.err !== null;
+			transactionCommitment =
+				status.confirmationStatus === "finalized"
+					? "finalized"
+					: "confirmed";
 			break;
 		}
 		if (attempt + 1 < input.confirmationAttempts) {
@@ -419,7 +431,7 @@ async function verifyTransaction(input: {
 		await input.rpc("getTransaction", [
 			input.signature,
 			{
-				commitment: "confirmed",
+				commitment: transactionCommitment,
 				encoding: "json",
 				maxSupportedTransactionVersion: 0,
 			},
@@ -463,8 +475,22 @@ async function verifyTransaction(input: {
 	const parsedCommitment = parsePublicCommitment(memo);
 	const commitmentDigest = parsedCommitment?.c;
 	const verifiedAt = input.now();
-	if (meta.err !== undefined && meta.err !== null) {
+	if (
+		confirmedFailure &&
+		meta.err !== undefined &&
+		meta.err !== null &&
+		Number.isSafeInteger(transaction.slot)
+	) {
 		return retry("TRANSACTION_EXECUTION_FAILED", {
+			signature: input.signature,
+			...(input.expectedCommitmentDigest
+				? { commitmentDigest: input.expectedCommitmentDigest }
+				: {}),
+			...(input.expectedMemo ? { memo: input.expectedMemo } : {}),
+		});
+	}
+	if (confirmedFailure || (meta.err !== undefined && meta.err !== null)) {
+		return retry("TRANSACTION_VERIFICATION_FAILED", {
 			signature: input.signature,
 			...(input.expectedCommitmentDigest
 				? { commitmentDigest: input.expectedCommitmentDigest }
@@ -507,6 +533,8 @@ function retry(
 		readonly signature?: string;
 		readonly commitmentDigest?: string;
 		readonly memo?: string;
+		readonly recentBlockhash?: string;
+		readonly lastValidBlockHeight?: number;
 		readonly routerDiagnostics?: MagicBlockRouterDiagnostics;
 	} = {},
 ): MagicBlockRetryableAuditFailure {

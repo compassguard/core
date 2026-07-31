@@ -91,8 +91,9 @@ reported as `ROUTER_PREFLIGHT_REJECTED`, distinct from generic
 audit details, secrets, arbitrary response keys, and unvalidated URLs are never
 copied into diagnostics.
 
-`TRANSACTION_EXECUTION_FAILED` is reserved for an explicit non-null on-chain
-`status.err` or transaction `meta.err`. Missing/malformed transaction proof,
+`TRANSACTION_EXECUTION_FAILED` is reserved for a confirmed/finalized non-null
+`status.err` corroborated by a fetched transaction with non-null `meta.err`.
+Processed/fork-only errors and missing/malformed transaction proof,
 unexpected signer, Memo/commitment mismatch, or other proof ambiguity remains
 `TRANSACTION_VERIFICATION_FAILED` and must not authorize replacement.
 
@@ -119,10 +120,11 @@ unconfirmed, mismatched, or failed transactions do not verify.
   requires a durable, atomically consumed one-run nonce before creating one new
   transaction.
 - Before send, its `onPrepared` callback atomically persists only the prepared
-  public signer address, signature, commitment digest, public Memo, and closed
-  run identifiers. Active or pending local state refuses another authorization
-  or submission until terminal reconciliation; it never stores signer secret
-  material or serialized transactions.
+  public signer address, signature, commitment digest, public Memo,
+  signature-bound blockhash/last-valid height, and closed run identifiers.
+  Active or pending local state refuses another authorization or submission
+  until terminal reconciliation; it never stores signer secret material or
+  serialized transactions.
 - Reconciliation uses the persisted signer address and therefore does not
   require the current signer secret or assume that the configured signer has
   not rotated. Only dual explicit `TRANSACTION_EXECUTION_FAILED` results may
@@ -131,3 +133,39 @@ unconfirmed, mismatched, or failed transactions do not verify.
   and sufficient monitored balance on the same Compass-controlled fee payer.
   Low balance blocks new operation until that authority is replenished and
   reverified; no fallback payer or key substitution is allowed.
+
+## Legacy pending exact-once recovery
+
+New prepared state MUST durably retain the signature-bound `recentBlockhash`
+and `lastValidBlockHeight` before `sendTransaction` is reachable. Historical
+v1 pending manifests remain readable, preserve their original identifiers,
+signer, signature, commitment, Memo, and timestamps, and migrate to blocking
+`legacy_pending`; missing expiry evidence is never inferred from age or a null
+status.
+
+A legacy operator may enrich, but never close, that state with one bounded
+base64 signed-transaction evidence file. The import requires an authorization
+ID, operator, reason, authorization timestamp, and the exact documented risk
+acknowledgement. Compass verifies the persisted signature and signer against
+the serialized transaction, derives its recent blockhash, stores only a
+transaction SHA-256 plus derived/public metadata, and never stores the
+transaction or secret key.
+
+Terminal reconciliation is limited to:
+
+- `confirmed`: both literal Solana devnet and Magic Router independently
+  verify the same landed transaction;
+- `failed`: both independently report explicit execution failure for the same
+  signature;
+- `expired_not_landed`: both independently report no signature and
+  finalized `isBlockhashValid=false` for the signature-bound blockhash, then
+  re-query the signature at an equal-or-later context slot, additionally
+  requiring `getBlockHeight > lastValidBlockHeight` whenever an endpoint
+  returns height and the bound height exists;
+- `not_submitted`: only the pre-prepare `active` state, where code ordering
+  proves send was unreachable.
+
+Any endpoint disagreement, unavailable/malformed evidence, missing legacy
+blockhash, swapped endpoint/signature/blockhash binding, stale context ordering,
+or replay with a conflicting outcome remains blocking. A successful submit
+also stays pending until this dual-endpoint reconciliation confirms it.

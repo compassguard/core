@@ -51,8 +51,9 @@ test count, now corrected to 35.
 
 No live RPC, transaction smoke, deployment, Vercel mutation, ingress/MCP
 enablement, or transaction submission is claimed. A permanently unresolved
-prepared signature remains fail-closed and blocks replacement pending an
-operator recovery policy.
+prepared signature remains fail-closed; only the implemented, explicitly
+authorized evidence enrichment plus dual expired-and-not-landed proof permits
+replacement.
 
 ## Historical baseline evidence
 
@@ -110,3 +111,43 @@ later incident scope documented a dedicated signer with 6 devnet SOL at the
 time of the attempt. This non-live remediation did not recheck its current
 balance or credential configuration and claims no new live signature or
 explorer evidence.
+
+## 2026-07-30 legacy recovery verification
+
+Focused local verification covers v2 prepared evidence, exact v1 reads,
+cryptographic legacy enrichment without raw transaction/secret retention,
+dual-endpoint disagreement, missing expiry evidence, dual expiry proof,
+conflicting/idempotent replay, and bounded diagnostics. The implementation
+does not infer expiry from age, missing status, or an operator assertion and
+does not perform a live RPC or transaction.
+
+Current commands and final integration results are recorded in `task.json`.
+
+- `npm run preflight:magicblock-devnet`: pass, dependency-closure gate plus
+  9 files / 222 tests.
+- `npm run test:back`: pass outside the filesystem sandbox on Node 26.4.0,
+  61 files / 753 tests; 2 live suites / 22 tests skipped.
+- `npm run lint -- --quiet`, `npm run build`, and `npm run build:mcp`: pass.
+- `npm ci --ignore-scripts` and its dry run: pass after regenerating the stale
+  lockfile from the existing `package.json`.
+- `npx tsc --noEmit --pretty false`: blocked only by the pre-existing missing
+  `../mcp/mcpProxyContracts` test import in
+  `back/services/__tests__/mcpProxyDispatcher.test.ts`.
+
+The independent-review remediation adds focused regressions for post-expiry
+context ordering/landing race, swapped signature/blockhash evidence,
+processed-fork execution errors, evidence-file isolation, and dual
+reconciliation after submit.
+
+The initially reported Node 26 stdio failure was reproduced inside the
+filesystem sandbox as `listen EPERM` for the `tsx` IPC socket (and localhost in
+the hybrid suite). The same stdio test and the full backend suite passed
+outside that sandbox on Node 26.4.0, proving the failure is environmental and
+unrelated to this branch; no stdio code change was made.
+
+The operator decision gate received no answer before timeout, so verification
+records the fail-closed default: the incident remains `legacy_pending`, no
+replacement is authorized, and the connector operator's next action is limited
+to read-only recovery of the original signed transaction evidence. Without
+that cryptographically verifiable evidence, the existing historical state is
+not safely terminalizable.

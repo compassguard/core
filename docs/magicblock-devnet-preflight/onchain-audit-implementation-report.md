@@ -183,8 +183,9 @@ https://explorer.solana.com/tx/<signature>?cluster=devnet
 ## Remaining risks
 
 - A prepared transaction that never lands remains bound to its stable signature
-  and explicit retryable state; an operator recovery policy for replacing a
-  permanently expired transaction is still needed.
+  until the implemented dual-endpoint expired-and-not-landed recovery proves
+  safe replacement. Legacy records without cryptographically recoverable
+  blockhash evidence remain blocked.
 - Production operation requires Compass-owned devnet signer funding, rotation,
   public-balance monitoring, alerting, and public-key pin verification.
   This correction adds neither an automated balance monitor nor replenishment;
@@ -216,3 +217,31 @@ The user authorizes a Vercel Production deployment only after the correction
 has been independently reviewed, the final verification is green, and the
 two-stage stack above is merged. This documentation pass performs no merge,
 deployment, configuration mutation, live RPC call, or live smoke.
+
+## 2026-07-30 legacy pending exact-once recovery
+
+Implemented smoke-state schema v2 and strict v1 normalization. New preparation
+persists signature, signer, commitment/Memo, recent blockhash, and
+last-valid height atomically before send. Reconciliation now requires matching
+dual-endpoint terminal evidence and supports `expired_not_landed` only with
+independent no-signature plus expired-blockhash proof.
+
+Implemented one exceptional enrichment operation for v1 legacy records. It
+requires bounded signed transaction evidence, cryptographic stored
+signer/signature verification, explicit authorization metadata and exact risk
+acknowledgement. It persists only SHA-256, derived blockhash, original public
+evidence, and sanitized metadata. It cannot close, reset, authorize, or submit.
+
+Regression coverage includes the exact historical v1 pending shape, safe
+migration/enrichment, evidence replay refusal, dual disagreement, missing
+expiry evidence, expired proof, terminal replay/idempotency, prepared
+blockhash/height persistence, and bounded expiry diagnostics. No network or
+external side effect was used.
+
+Independent review remediation makes expiry evidence a coherent post-expiry
+observation: finalized invalidity is established first, signature history is
+re-read at an equal-or-later context, and endpoint/signature/blockhash/slots/
+timestamp are durably bound. Processed fork errors no longer terminalize;
+confirmed/finalized failure requires `getTransaction.meta.err`
+corroboration. The submit mode now invokes dual reconciliation instead of
+closing from its single Solana verification.

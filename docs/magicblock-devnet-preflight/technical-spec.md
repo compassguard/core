@@ -121,7 +121,9 @@ replacement.
 Read-only reconciliation can be constructed with an expected public signer and
 an RPC transport; it does not require a signer secret. An explicit non-null
 signature-status `err` or transaction `meta.err` maps to
-`TRANSACTION_EXECUTION_FAILED`. Null/malformed `getTransaction`, expected
+`TRANSACTION_EXECUTION_FAILED` only when confirmed/finalized status failure is
+corroborated by non-null `getTransaction.meta.err`. Null/malformed
+`getTransaction`, processed-only failure, expected
 signer mismatch, Memo/commitment mismatch, and other proof failures remain
 `TRANSACTION_VERIFICATION_FAILED`.
 
@@ -184,8 +186,8 @@ Direct-smoke state lives under the ignored local directory
 authorized(one-run nonce)
   -> active(no signature; send is still unreachable)
   -> pending(public signer + signature + commitment digest + public Memo
-             persisted atomically)
-  -> reconciled(confirmed | failed)
+             + blockhash + last-valid height persisted atomically)
+  -> reconciled(confirmed | failed | expired_not_landed)
 
 active -> reconciled(not_submitted)
 ```
@@ -225,3 +227,42 @@ commitment digest, and
 is unavailable, deterministic injected-RPC tests are the verification evidence
 and live proof remains explicitly blocked. This remediation does not claim a
 live rerun.
+
+## Smoke state v2 and legacy recovery
+
+`compass.magicblock-devnet-smoke-state/v2` adds
+`recentBlockhash` and `lastValidBlockHeight` to `pending`. The submitter passes
+those values through the existing `onPrepared` callback and rejects altered
+callback evidence, so the exact signed transaction context is fsynced before
+send. The reader strictly accepts historical v1 shapes and normalizes v1
+`pending`/`legacy_pending` to v2 `legacy_pending`, retaining original evidence.
+
+The exceptional `import-legacy-evidence` mode accepts one absolute, regular,
+at-most-4096-byte base64 transaction file outside the state directory.
+`Transaction.from`,
+the matching signer entry, exact stored base58 signature, and
+`verifySignatures(false)` must all validate. The durable enrichment is
+`compass.magicblock-legacy-evidence/v1`: authorization metadata, exact risk
+acknowledgement, SHA-256 of serialized bytes, derived recent blockhash, and
+import timestamp. Raw bytes and keys are excluded. A second import is rejected.
+
+Reconciliation collects separately from literal devnet and Magic Router:
+verified registration, finalized `isBlockhashValid`, optional finalized
+`getBlockHeight`, then
+`getSignatureStatuses(searchTransactionHistory=true)`. Persisted evidence binds
+endpoint, signature, recent blockhash, finalized commitment, expiry/status
+context slots, observation timestamp, and optional height.
+`expired_not_landed` requires both
+registrations to remain `SUBMISSION_UNCONFIRMED`, both explicit null signature
+lookups at context slots not older than their endpoint's expiry observation,
+both invalid-blockhash results, and every available height to exceed
+the stored last-valid height. Only identical endpoint outcomes terminalize;
+conflicts and malformed/unavailable evidence preserve state.
+
+```text
+v1 pending -> v2 legacy_pending(blocking, original evidence retained)
+legacy_pending -> legacy_pending(+ verified evidence digest/blockhash)
+pending | enriched legacy_pending
+  -> reconciled(confirmed | failed | expired_not_landed)
+active -> reconciled(not_submitted)
+```

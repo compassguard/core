@@ -230,3 +230,29 @@ does not perform that deployment or the one authorized live smoke.
   <https://docs.magicblock.gg/api-reference/er-api/getBlockhashForAccounts>
 - Current `getBlockhashForAccounts` equivalent:
   <https://docs.magicblock.gg/pages/ephemeral-rollups-ers/api-reference/er/getBlockhashForAccounts>
+
+## 2026-07-30 legacy pending recovery correction
+
+The earlier remediation could not safely distinguish a permanently expired
+transaction from an unobserved landed transaction because v1 local pending
+state omitted the signature-bound blockhash and last-valid height. It also
+treated one confirmed endpoint as sufficient. No age or null-status inference
+is acceptable for this incident.
+
+The correction versions the smoke manifest, persists blockhash/height before
+send for new transactions, requires agreeing terminal evidence from literal
+devnet and Magic Router, and adds `expired_not_landed` only for dual
+signature-not-found plus invalid-blockhash proof. Historical v1 state stays
+blocking. A one-time, explicitly authorized signed-transaction evidence import
+can derive its blockhash after cryptographically matching the stored
+signer/signature; it stores only a digest and sanitized audit metadata and
+cannot close or reset state.
+
+This change makes no RPC call, submission, deployment, or claim that the
+incident signature is expired or not landed.
+
+Independent review further required race-free evidence. Each endpoint must now
+establish finalized blockhash invalidity before re-reading signature history at
+an equal-or-later context, with endpoint, signature, blockhash, slots, and
+timestamp persisted. Processed errors and single-endpoint submit confirmation
+remain non-terminal.

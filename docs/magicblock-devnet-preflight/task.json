@@ -1,6 +1,6 @@
 {
   "change": "magicblock-devnet-onchain-audit",
-  "status": "implemented_live_devnet_proof_pending_credential",
+  "status": "implemented_legacy_evidence_and_live_proof_pending",
   "scope": "devnet_only",
   "tasks": [
     {
@@ -32,7 +32,13 @@
       "id": "MB-6",
       "title": "Capture live devnet signature and explorer proof",
       "status": "blocked",
-      "blocker": "A dedicated funded devnet audit signer was not available to the worker."
+      "blocker": "This recovery task intentionally performed no transaction submission or credential read; the preserved historical state remains legacy_pending and no new live proof is authorized."
+    },
+    {
+      "id": "MB-7",
+      "title": "Recover legacy pending state without duplicate submission",
+      "status": "completed",
+      "result": "State v2 persists signature-bound expiry evidence before send, reads exact v1 state safely, requires coherent finalized dual endpoint terminal proof with bound context, and provides an authorized cryptographic evidence-only legacy import."
     }
   ],
   "verification": [
@@ -48,5 +54,24 @@
     "signer": "dedicated funded devnet audit authority only",
     "onchainData": "stable audit id, aggregate commitment, ledger links, outcome, version",
     "excludedOnchainData": "raw transaction, request, result, provider payload, credentials, secrets"
+  },
+  "legacyRecovery": {
+    "schema": "compass.magicblock-devnet-smoke-state/v2",
+    "terminalOutcomes": [
+      "confirmed",
+      "failed",
+      "expired_not_landed",
+      "not_submitted"
+    ],
+    "evidenceImport": "enrichment_only_explicit_authorization_and_exact_risk_acknowledgement",
+    "verification": [
+      "PASS: npm run preflight:magicblock-devnet (dependency closure, 9 files, 222 tests after independent-review remediation)",
+      "PASS: npm run test:back outside the filesystem sandbox on Node 26.4.0 (61 files, 753 tests; 2 live suites and 22 tests skipped)",
+      "PASS: npm run lint -- --quiet",
+      "PASS: npm run build",
+      "PASS: npm run build:mcp",
+      "PASS: npm ci --ignore-scripts and npm ci --ignore-scripts --dry-run after lockfile repair",
+      "BLOCKED PRE-EXISTING: npx tsc --noEmit --pretty false cannot resolve ../mcp/mcpProxyContracts from back/services/__tests__/mcpProxyDispatcher.test.ts"
+    ]
   }
 }

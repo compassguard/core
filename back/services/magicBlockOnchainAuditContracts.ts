@@ -9,6 +9,8 @@ export const MAGICBLOCK_RPC_METHODS = [
 	"sendTransaction",
 	"getSignatureStatuses",
 	"getTransaction",
+	"isBlockhashValid",
+	"getBlockHeight",
 ] as const;
 
 export type MagicBlockRpcMethod = (typeof MAGICBLOCK_RPC_METHODS)[number];
@@ -65,6 +67,8 @@ export type MagicBlockRetryableAuditFailure = {
 	readonly signature?: string;
 	readonly commitmentDigest?: string;
 	readonly memo?: string;
+	readonly recentBlockhash?: string;
+	readonly lastValidBlockHeight?: number;
 	readonly routerDiagnostics?: MagicBlockRouterDiagnostics;
 };
 

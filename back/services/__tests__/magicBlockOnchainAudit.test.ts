@@ -86,7 +86,7 @@ describe("MagicBlock devnet on-chain audit", () => {
 			throw new Error(`unexpected Router method ${method}`);
 		});
 		const solanaRpc: MagicBlockRouterRpc = vi.fn(async (method) => {
-			if (method === "getSignatureStatuses") {
+				if (method === "getSignatureStatuses") {
 				return { value: [{ err: null, confirmationStatus: "confirmed" }] };
 			}
 			if (method === "getTransaction") {
@@ -447,6 +447,36 @@ describe("MagicBlock devnet on-chain audit", () => {
 		});
 	});
 
+	it("keeps a processed fork error non-terminal without confirmed transaction proof", async () => {
+		const rpc: MagicBlockRouterRpc = async (method) => {
+			if (method === "getSignatureStatuses") {
+				return {
+					value: [
+						{
+							err: { InstructionError: [0, "InvalidArgument"] },
+							confirmationStatus: "processed",
+						},
+					],
+				};
+			}
+			throw new Error(`unexpected method ${method}`);
+		};
+
+		await expect(
+			createMagicBlockOnchainAuditVerifier({
+				rpc,
+				confirmationAttempts: 1,
+			}).verify({
+				signature: "6".repeat(64),
+				expectedSigner: Keypair.generate().publicKey.toBase58(),
+			}),
+		).resolves.toMatchObject({
+			status: "retryable_failure",
+			code: "SUBMISSION_UNCONFIRMED",
+			signature: "6".repeat(64),
+		});
+	});
+
 	it("classifies an explicit signature status error as execution failure", async () => {
 		const rpc: MagicBlockRouterRpc = async (method) => {
 			if (method === "getSignatureStatuses") {
@@ -457,6 +487,15 @@ describe("MagicBlock devnet on-chain audit", () => {
 							confirmationStatus: "confirmed",
 						},
 					],
+				};
+			}
+			if (method === "getTransaction") {
+				return {
+					slot: 99,
+					meta: {
+						err: { InstructionError: [0, "InvalidArgument"] },
+					},
+					transaction: {},
 				};
 			}
 			throw new Error(`unexpected method ${method}`);
