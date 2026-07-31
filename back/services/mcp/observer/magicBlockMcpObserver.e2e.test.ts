@@ -1,4 +1,12 @@
 import { PGlite } from "@electric-sql/pglite";
+import { createHash } from "node:crypto";
+import {
+	Keypair,
+	PublicKey,
+	Transaction,
+	TransactionInstruction,
+} from "@solana/web3.js";
+import bs58 from "bs58";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -9,6 +17,10 @@ import {
 } from "../../magicBlockDevnetObservationContracts";
 import type { MagicBlockPost } from "../../magicBlockDevnetPreflightTypes";
 import { materializeMagicBlockAuditCommitment } from "../../magicBlockOnchainAudit";
+import type {
+	MagicBlockAuditCommitmentDetails,
+	MagicBlockPreparedAuditTransaction,
+} from "../../magicBlockOnchainAuditContracts";
 import { createMagicBlockAuditIngress } from "../../../../hosted/magicblock/magicBlockAuditIngress";
 import { createPgMagicBlockAppendOnlyAuditLedger } from "../../../../hosted/magicblock/magicBlockAuditLedgerPg";
 import { createPgMagicBlockObservationStore } from "../../../../hosted/magicblock/magicBlockObservationStorePg";
@@ -22,6 +34,50 @@ import type { MagicBlockMcpAuditTransport } from "./magicBlockMcpObserverContrac
 
 const NOW = "2026-07-28T12:00:00.000Z";
 const AUDIT_URL = "https://audit.example/api/magicblock-devnet/audit";
+
+function preparedAuditTransaction(
+	details: MagicBlockAuditCommitmentDetails,
+): MagicBlockPreparedAuditTransaction {
+	const signer = Keypair.generate();
+	const commitment = materializeMagicBlockAuditCommitment(details);
+	const recentBlockhash = Keypair.generate().publicKey.toBase58();
+	const transaction = new Transaction({
+		feePayer: signer.publicKey,
+		recentBlockhash,
+	}).add(
+		new TransactionInstruction({
+			programId: new PublicKey(
+				"MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+			),
+			keys: [
+				{ pubkey: signer.publicKey, isSigner: true, isWritable: false },
+			],
+			data: Buffer.from(commitment.memo, "utf8"),
+		}),
+	);
+	transaction.sign(signer);
+	const serialized = transaction.serialize();
+	return {
+		schemaVersion: "compass.magicblock-prepared-audit-transaction/v1",
+		cluster: "devnet",
+		lane: "magicblock_devnet_audit_memo",
+		valueTransferLamports: 0,
+		signer: signer.publicKey.toBase58(),
+		signature: bs58.encode(transaction.signature as Buffer),
+		commitmentDigest: commitment.commitmentDigest,
+		memo: commitment.memo,
+		recentBlockhash,
+		lastValidBlockHeight: 100,
+		serializedTransactionBase64: serialized.toString("base64"),
+		serializedTransactionDigest: createHash("sha256")
+			.update(serialized)
+			.digest("hex"),
+		blockhashValidityEvidence: {
+			solana: { endpoint: "solana_devnet", recentBlockhash, commitment: "confirmed", contextSlot: 10, validity: "valid", observedAt: NOW },
+			magicRouter: { endpoint: "magic_router", recentBlockhash, commitment: "confirmed", contextSlot: 11, validity: "valid", observedAt: NOW },
+		},
+	};
+}
 
 describe("MagicBlock MCP observer local E2E", () => {
 	it("crosses MCP SDK, dispatcher, fake downstream, hosted ingress, and PGlite", async () => {
@@ -42,6 +98,7 @@ describe("MagicBlock MCP observer local E2E", () => {
 					verifiedAt: string;
 			  }
 			| undefined;
+		let preparedTransaction: MagicBlockPreparedAuditTransaction | undefined;
 		const verify = vi.fn(async () => {
 			if (!confirmedProof) throw new Error("proof unavailable");
 			return confirmedProof;
@@ -52,23 +109,17 @@ describe("MagicBlock MCP observer local E2E", () => {
 			runtime: {
 				observations,
 				auditRecords: createPgMagicBlockAuditRecordStore({ sql }),
-				onchainAudit: {
+					onchainAudit: {
 					async register(details, onPrepared) {
 						const commitment = materializeMagicBlockAuditCommitment(details);
-						await onPrepared?.({
-							status: "retryable_failure",
-							retryable: true,
-							code: "SUBMISSION_UNCONFIRMED",
-							signature: "3".repeat(64),
-							commitmentDigest: commitment.commitmentDigest,
-							memo: commitment.memo,
-						});
+						preparedTransaction = preparedAuditTransaction(details);
+						await onPrepared?.(preparedTransaction);
 						return (confirmedProof = {
 							status: "confirmed",
 							cluster: "devnet",
 							routerUrl: "https://devnet-router.magicblock.app/",
-							signature: "3".repeat(64),
-							signer: "11111111111111111111111111111111",
+							signature: preparedTransaction.signature,
+							signer: preparedTransaction.signer,
 							slot: 99,
 							commitmentDigest: commitment.commitmentDigest,
 							memo: commitment.memo,
@@ -119,6 +170,10 @@ describe("MagicBlock MCP observer local E2E", () => {
 			outcome: "review_required",
 			audit: { registration: { status: "confirmed" } },
 		});
+		if (!preparedTransaction) throw new Error("prepared transaction expected");
+		expect(JSON.stringify(deliveredBody)).not.toContain(
+			preparedTransaction.serializedTransactionBase64,
+		);
 
 		expect(returned.structuredContent).toMatchObject({
 			observationId: "obs-mcp-e2e",
@@ -144,12 +199,16 @@ describe("MagicBlock MCP observer local E2E", () => {
 			}),
 		);
 		expect(byAuditId.status).toBe(200);
-		expect(await byAuditId.json()).toMatchObject({
+		const byAuditIdBody = await byAuditId.json();
+		expect(byAuditIdBody).toMatchObject({
 			details: { auditEventId: "aud_mcp_e2e", observationId: "obs-mcp-e2e" },
-			registration: { status: "confirmed", signature: "3".repeat(64) },
+			registration: { status: "confirmed", signature: preparedTransaction.signature },
 		});
+		expect(JSON.stringify(byAuditIdBody)).not.toContain(
+			preparedTransaction.serializedTransactionBase64,
+		);
 		const bySignature = await ingress.handle(
-			new Request(`${AUDIT_URL}?signature=${"3".repeat(64)}`, {
+			new Request(`${AUDIT_URL}?signature=${preparedTransaction.signature}`, {
 				headers: { Authorization: "Bearer observer-secret" },
 			}),
 		);

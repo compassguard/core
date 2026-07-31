@@ -20,17 +20,22 @@ import bs58 from "bs58";
 
 import type {
 	MagicBlockOnchainAuditRegistration,
-	MagicBlockRetryableAuditFailure,
+	MagicBlockPreparedAuditTransaction,
 	MagicBlockRouterRpc,
 } from "../back/services/magicBlockOnchainAuditContracts";
 import {
 	MAGICBLOCK_SMOKE_STATE_SCHEMA,
 	MAGICBLOCK_SMOKE_STATE_SCHEMA_V1,
+	MAGICBLOCK_SMOKE_STATE_SCHEMA_V2,
 	MAGICBLOCK_LEGACY_EVIDENCE_RISK_ACKNOWLEDGEMENT,
+	MAGICBLOCK_LEGACY_QUARANTINE_ACKNOWLEDGEMENT,
+	MAGICBLOCK_LEGACY_TERMINALIZATION_IMPOSSIBLE_REASON,
 	type MagicBlockSmokeActiveState,
 	type MagicBlockSmokeAuthorizedState,
 	type MagicBlockSmokeLegacyPendingState,
 	type MagicBlockSmokePendingState,
+	type MagicBlockSmokeQuarantinedState,
+	type MagicBlockSmokeQuarantineEndpointObservation,
 	type MagicBlockSmokeReconciledState,
 	type MagicBlockSmokeEndpointExpiryEvidence,
 	type MagicBlockSmokeState,
@@ -38,7 +43,7 @@ import {
 
 const STATE_FILE = "state.json";
 const LOCK_FILE = "state.lock";
-const MAX_STATE_BYTES = 8_192;
+const MAX_STATE_BYTES = 16_384;
 const MAX_EVIDENCE_BYTES = 4_096;
 const SAFE_ID = /^[A-Za-z0-9._:-]{1,128}$/;
 const SAFE_NONCE = /^[A-Za-z0-9._:-]{16,128}$/;
@@ -55,10 +60,12 @@ export function createMagicBlockSmokeAuthorization(input: {
 	return withStateLock(input.stateDirectory, () => {
 		const current = readMagicBlockSmokeStateUnlocked(input.stateDirectory);
 		if (current && current.status !== "reconciled") {
-			throw new Error("MagicBlock smoke state requires reconciliation");
+			if (current.status !== "quarantined") {
+				throw new Error("MagicBlock smoke state requires reconciliation");
+			}
 		}
-		if (current?.status === "reconciled") {
-			archiveReconciledState(input.stateDirectory, current);
+		if (current?.status === "reconciled" || current?.status === "quarantined") {
+			archiveInactiveState(input.stateDirectory, current);
 		}
 		const state: MagicBlockSmokeAuthorizedState = {
 			schemaVersion: MAGICBLOCK_SMOKE_STATE_SCHEMA,
@@ -103,7 +110,7 @@ export function persistPreparedMagicBlockSmoke(input: {
 	readonly stateDirectory: string;
 	readonly authorizationNonce: string;
 	readonly signer: string;
-	readonly prepared: MagicBlockRetryableAuditFailure;
+	readonly prepared: MagicBlockPreparedAuditTransaction;
 	readonly preparedAt: string;
 }): MagicBlockSmokePendingState {
 	return withStateLock(input.stateDirectory, () => {
@@ -111,19 +118,18 @@ export function persistPreparedMagicBlockSmoke(input: {
 		if (
 			current?.status !== "active" ||
 			current.authorizationNonce !== requireNonce(input.authorizationNonce) ||
-			input.prepared.status !== "retryable_failure" ||
-			input.prepared.code !== "SUBMISSION_UNCONFIRMED" ||
-			!input.prepared.signature ||
-			!input.prepared.commitmentDigest ||
-			!input.prepared.memo ||
-			!input.prepared.recentBlockhash ||
-			input.prepared.lastValidBlockHeight === undefined
+			input.prepared.schemaVersion !==
+				"compass.magicblock-prepared-audit-transaction/v1" ||
+			input.prepared.signer !== input.signer
 		) {
 			throw new Error("MagicBlock prepared smoke unavailable");
 		}
 		const state: MagicBlockSmokePendingState = {
 			schemaVersion: MAGICBLOCK_SMOKE_STATE_SCHEMA,
 			status: "pending",
+			cluster: "devnet",
+			lane: "magicblock_devnet_audit_memo",
+			valueTransferLamports: 0,
 			authorizationNonce: current.authorizationNonce,
 			auditEventId: current.auditEventId,
 			observationId: current.observationId,
@@ -135,8 +141,20 @@ export function persistPreparedMagicBlockSmoke(input: {
 			lastValidBlockHeight: requireBlockHeight(
 				input.prepared.lastValidBlockHeight,
 			),
+			serializedTransactionBase64:
+				requireSerializedTransactionBase64(
+					input.prepared.serializedTransactionBase64,
+				),
+			serializedTransactionDigest: requireDigest(
+				input.prepared.serializedTransactionDigest,
+			),
+			blockhashValidityEvidence: validateBlockhashValidityEvidence(
+				input.prepared.blockhashValidityEvidence,
+				input.prepared.recentBlockhash,
+			),
 			preparedAt: requireTimestamp(input.preparedAt),
 		};
+		validatePreparedTransactionBinding(state);
 		writeStateAtomically(input.stateDirectory, state);
 		return Object.freeze(state);
 	});
@@ -244,6 +262,145 @@ export function importLegacyMagicBlockTransactionEvidence(input: {
 	});
 }
 
+export function quarantineLegacyPendingMagicBlockSmoke(input: {
+	readonly stateDirectory: string;
+	readonly authorizationId: string;
+	readonly incidentReference: string;
+	readonly operator: string;
+	readonly reason: string;
+	readonly authorizedAt: string;
+	readonly quarantinedAt: string;
+	readonly acknowledgement: string;
+	readonly endpointObservations?: {
+		readonly solana: MagicBlockSmokeQuarantineEndpointObservation;
+		readonly magicRouter: MagicBlockSmokeQuarantineEndpointObservation;
+	};
+	readonly observationUnavailableReason?: {
+		readonly code: "READ_ONLY_RECONCILIATION_UNAVAILABLE";
+		readonly observedAt: string;
+	};
+}): MagicBlockSmokeQuarantinedState {
+	return withStateLock(input.stateDirectory, () => {
+		const current = readMagicBlockSmokeStateUnlocked(input.stateDirectory);
+		if (current?.status === "quarantined") {
+			const expectedAdministration = createQuarantineAdministration(input);
+			if (
+				JSON.stringify(current.administration) !==
+				JSON.stringify(expectedAdministration)
+			) {
+				throw new Error("MagicBlock legacy quarantine conflicts");
+			}
+			return current;
+		}
+		if (
+			current?.status !== "legacy_pending" ||
+			current.sourceSchemaVersion !== MAGICBLOCK_SMOKE_STATE_SCHEMA_V1 ||
+			current.originalEvidence !== undefined ||
+			current.evidenceImport !== undefined
+		) {
+			throw new Error("MagicBlock legacy quarantine unavailable");
+		}
+		const administration = createQuarantineAdministration(input);
+		if (
+			administration.endpointObservations &&
+			(administration.endpointObservations.solana.signature !==
+				current.signature ||
+				administration.endpointObservations.magicRouter.signature !==
+					current.signature)
+		) {
+			throw new Error("MagicBlock legacy quarantine observation conflicts");
+		}
+		const state: MagicBlockSmokeQuarantinedState = Object.freeze({
+			schemaVersion: MAGICBLOCK_SMOKE_STATE_SCHEMA,
+			status: "quarantined",
+			historicalOutcome: "unknown",
+			terminalizationImpossibleReason:
+				MAGICBLOCK_LEGACY_TERMINALIZATION_IMPOSSIBLE_REASON,
+			scope: Object.freeze({
+				cluster: "devnet",
+				lane: "magicblock_devnet_audit_memo",
+				valueTransferLamports: 0,
+				noPaymentExecution: true,
+				oldSignatureRetryProhibited: true,
+				genericExecutionFenceReleased: false,
+			}),
+			legacyEvidence: current,
+			administration,
+		});
+		writeStateAtomically(input.stateDirectory, state);
+		return state;
+	});
+}
+
+function createQuarantineAdministration(input: {
+	readonly authorizationId: string;
+	readonly incidentReference: string;
+	readonly operator: string;
+	readonly reason: string;
+	readonly authorizedAt: string;
+	readonly quarantinedAt: string;
+	readonly acknowledgement: string;
+	readonly endpointObservations?: {
+		readonly solana: MagicBlockSmokeQuarantineEndpointObservation;
+		readonly magicRouter: MagicBlockSmokeQuarantineEndpointObservation;
+	};
+	readonly observationUnavailableReason?: {
+		readonly code: "READ_ONLY_RECONCILIATION_UNAVAILABLE";
+		readonly observedAt: string;
+	};
+}): MagicBlockSmokeQuarantinedState["administration"] {
+	if (
+		Boolean(input.endpointObservations) ===
+		Boolean(input.observationUnavailableReason)
+	) {
+		throw new Error("MagicBlock legacy quarantine observation unavailable");
+	}
+	if (input.acknowledgement !== MAGICBLOCK_LEGACY_QUARANTINE_ACKNOWLEDGEMENT) {
+		throw new Error("MagicBlock legacy quarantine acknowledgement unavailable");
+	}
+	if (
+		input.endpointObservations &&
+		((input.endpointObservations.solana.status === "confirmed" &&
+			input.endpointObservations.magicRouter.status === "confirmed") ||
+			(input.endpointObservations.solana.status === "execution_failed" &&
+				input.endpointObservations.magicRouter.status === "execution_failed"))
+	) {
+		throw new Error("MagicBlock legacy quarantine has terminal evidence");
+	}
+	return Object.freeze({
+		schemaVersion: "compass.magicblock-legacy-quarantine/v1",
+		authorizationId: requireId(input.authorizationId),
+		incidentReference: requireId(input.incidentReference),
+		operator: requireSafeText(input.operator),
+		reason: requireSafeText(input.reason),
+		authorizedAt: requireTimestamp(input.authorizedAt),
+		quarantinedAt: requireTimestamp(input.quarantinedAt),
+		acknowledgement: MAGICBLOCK_LEGACY_QUARANTINE_ACKNOWLEDGEMENT,
+		verifiedSerializedTransactionAvailable: false,
+		...(input.endpointObservations
+			? {
+					endpointObservations: Object.freeze({
+						solana: validateQuarantineEndpointObservation(
+							input.endpointObservations.solana,
+							"solana_devnet",
+						),
+						magicRouter: validateQuarantineEndpointObservation(
+							input.endpointObservations.magicRouter,
+							"magic_router",
+						),
+					}),
+				}
+			: {
+					observationUnavailableReason: Object.freeze({
+						code: "READ_ONLY_RECONCILIATION_UNAVAILABLE" as const,
+						observedAt: requireTimestamp(
+							input.observationUnavailableReason?.observedAt,
+						),
+					}),
+				}),
+	});
+}
+
 export function reconcileMagicBlockSmoke(input: {
 	readonly stateDirectory: string;
 	readonly outcome: MagicBlockSmokeReconciledState["outcome"];
@@ -319,10 +476,13 @@ function provesExpiredForState(
 	const recentBlockhash =
 		state.status === "pending"
 			? state.recentBlockhash
-			: state.evidenceImport?.recentBlockhash;
+			: state.evidenceImport?.recentBlockhash ??
+				state.originalEvidence?.recentBlockhash;
 	if (!recentBlockhash) return false;
 	const lastValidBlockHeight =
-		state.status === "pending" ? state.lastValidBlockHeight : undefined;
+		state.status === "pending"
+			? state.lastValidBlockHeight
+			: state.originalEvidence?.lastValidBlockHeight;
 	return (
 		evidence.solana.endpoint === "solana_devnet" &&
 		state.signature === evidence.solana.signature &&
@@ -571,15 +731,18 @@ function writeStateAtomically(
 	}
 }
 
-function archiveReconciledState(
+function archiveInactiveState(
 	stateDirectory: string,
-	state: MagicBlockSmokeReconciledState,
+	state: MagicBlockSmokeReconciledState | MagicBlockSmokeQuarantinedState,
 ): void {
 	const historyDirectory = join(stateDirectory, "history");
 	mkdirSync(historyDirectory, { recursive: true, mode: 0o700 });
 	const archivePath = join(
 		historyDirectory,
-		`${state.reconciledAt.replace(/[^0-9]/g, "")}-${randomUUID()}.json`,
+		`${(state.status === "reconciled"
+			? state.reconciledAt
+			: state.administration.quarantinedAt
+		).replace(/[^0-9]/g, "")}-${randomUUID()}.json`,
 	);
 	renameSync(join(stateDirectory, STATE_FILE), archivePath);
 	fsyncDirectory(historyDirectory);
@@ -602,7 +765,10 @@ function validateState(value: unknown): MagicBlockSmokeState {
 	}
 	const record = value as Record<string, unknown>;
 	if (record.schemaVersion === MAGICBLOCK_SMOKE_STATE_SCHEMA_V1) {
-		return validateV1State(record);
+		return validateLegacyState(record, MAGICBLOCK_SMOKE_STATE_SCHEMA_V1);
+	}
+	if (record.schemaVersion === MAGICBLOCK_SMOKE_STATE_SCHEMA_V2) {
+		return validateLegacyState(record, MAGICBLOCK_SMOKE_STATE_SCHEMA_V2);
 	}
 	if (record.schemaVersion !== MAGICBLOCK_SMOKE_STATE_SCHEMA) {
 		throw new Error("MagicBlock smoke state unavailable");
@@ -638,24 +804,40 @@ function validateState(value: unknown): MagicBlockSmokeState {
 				observationId: requireId(record.observationId),
 				startedAt: requireTimestamp(record.startedAt),
 			});
-		case "pending":
+		case "pending": {
 			requireExactKeys(record, [
 				"auditEventId",
 				"authorizationNonce",
+				"blockhashValidityEvidence",
+				"cluster",
 				"commitmentDigest",
+				"lane",
 				"memo",
 				"observationId",
 				"preparedAt",
 				"recentBlockhash",
 				"lastValidBlockHeight",
 				"schemaVersion",
+				"serializedTransactionBase64",
+				"serializedTransactionDigest",
 				"signer",
 				"signature",
 				"status",
+				"valueTransferLamports",
 			]);
-			return Object.freeze({
+			if (
+				record.cluster !== "devnet" ||
+				record.lane !== "magicblock_devnet_audit_memo" ||
+				record.valueTransferLamports !== 0
+			) {
+				throw new Error("MagicBlock smoke state unavailable");
+			}
+			const pending = Object.freeze({
 				schemaVersion: MAGICBLOCK_SMOKE_STATE_SCHEMA,
 				status: "pending",
+				cluster: "devnet" as const,
+				lane: "magicblock_devnet_audit_memo" as const,
+				valueTransferLamports: 0 as const,
 				authorizationNonce: requireNonce(record.authorizationNonce),
 				auditEventId: requireId(record.auditEventId),
 				observationId: requireId(record.observationId),
@@ -665,8 +847,21 @@ function validateState(value: unknown): MagicBlockSmokeState {
 				memo: requireMemo(record.memo),
 				recentBlockhash: requireBlockhash(record.recentBlockhash),
 				lastValidBlockHeight: requireBlockHeight(record.lastValidBlockHeight),
+				serializedTransactionBase64: requireSerializedTransactionBase64(
+					record.serializedTransactionBase64,
+				),
+				serializedTransactionDigest: requireDigest(
+					record.serializedTransactionDigest,
+				),
+				blockhashValidityEvidence: validateBlockhashValidityEvidence(
+					record.blockhashValidityEvidence,
+					requireBlockhash(record.recentBlockhash),
+				),
 				preparedAt: requireTimestamp(record.preparedAt),
 			});
+			validatePreparedTransactionBinding(pending);
+			return pending;
+		}
 		case "legacy_pending": {
 			const originalEvidence = validateOriginalEvidence(record.originalEvidence);
 			const evidenceImport = validateEvidenceImport(record.evidenceImport);
@@ -749,6 +944,8 @@ function validateState(value: unknown): MagicBlockSmokeState {
 				...(expiryEvidence ? { expiryEvidence } : {}),
 			});
 		}
+		case "quarantined":
+			return validateQuarantinedState(record);
 		default:
 			throw new Error("MagicBlock smoke state unavailable");
 	}
@@ -839,7 +1036,12 @@ function validateEndpointEvidence(
 	});
 }
 
-function validateV1State(record: Record<string, unknown>): MagicBlockSmokeState {
+function validateLegacyState(
+	record: Record<string, unknown>,
+	sourceSchemaVersion:
+		| typeof MAGICBLOCK_SMOKE_STATE_SCHEMA_V1
+		| typeof MAGICBLOCK_SMOKE_STATE_SCHEMA_V2,
+): MagicBlockSmokeState {
 	switch (record.status) {
 		case "authorized":
 		case "active":
@@ -853,6 +1055,9 @@ function validateV1State(record: Record<string, unknown>): MagicBlockSmokeState 
 				"memo",
 				"observationId",
 				"preparedAt",
+				...(sourceSchemaVersion === MAGICBLOCK_SMOKE_STATE_SCHEMA_V2
+					? ["recentBlockhash", "lastValidBlockHeight"]
+					: []),
 				"schemaVersion",
 				"signer",
 				"signature",
@@ -864,7 +1069,7 @@ function validateV1State(record: Record<string, unknown>): MagicBlockSmokeState 
 				signer: requireSigner(record.signer),
 				signature: requireSignature(record.signature),
 				importedAt: requireTimestamp(record.preparedAt),
-				sourceSchemaVersion: MAGICBLOCK_SMOKE_STATE_SCHEMA_V1,
+				sourceSchemaVersion,
 				originalEvidence: Object.freeze({
 					authorizationNonce: requireNonce(record.authorizationNonce),
 					auditEventId: requireId(record.auditEventId),
@@ -872,9 +1077,23 @@ function validateV1State(record: Record<string, unknown>): MagicBlockSmokeState 
 					commitmentDigest: requireDigest(record.commitmentDigest),
 					memo: requireMemo(record.memo),
 					preparedAt: requireTimestamp(record.preparedAt),
+					...(sourceSchemaVersion === MAGICBLOCK_SMOKE_STATE_SCHEMA_V2
+						? {
+								recentBlockhash: requireBlockhash(record.recentBlockhash),
+								lastValidBlockHeight: requireBlockHeight(
+									record.lastValidBlockHeight,
+								),
+							}
+						: {}),
 				}),
 			});
 		case "legacy_pending":
+			if (sourceSchemaVersion === MAGICBLOCK_SMOKE_STATE_SCHEMA_V2) {
+				return validateState({
+					...record,
+					schemaVersion: MAGICBLOCK_SMOKE_STATE_SCHEMA,
+				});
+			}
 			requireExactKeys(record, [
 				"importedAt",
 				"schemaVersion",
@@ -888,7 +1107,7 @@ function validateV1State(record: Record<string, unknown>): MagicBlockSmokeState 
 				signer: requireSigner(record.signer),
 				signature: requireSignature(record.signature),
 				importedAt: requireTimestamp(record.importedAt),
-				sourceSchemaVersion: MAGICBLOCK_SMOKE_STATE_SCHEMA_V1,
+				sourceSchemaVersion,
 			});
 		default:
 			throw new Error("MagicBlock smoke state unavailable");
@@ -910,6 +1129,8 @@ function validateOriginalEvidence(
 		"commitmentDigest",
 		"memo",
 		"preparedAt",
+		"recentBlockhash",
+		"lastValidBlockHeight",
 	];
 	if (Object.keys(record).some((key) => !allowed.includes(key))) {
 		throw new Error("MagicBlock smoke state unavailable");
@@ -930,6 +1151,16 @@ function validateOriginalEvidence(
 		...(record.memo !== undefined ? { memo: requireMemo(record.memo) } : {}),
 		...(record.preparedAt !== undefined
 			? { preparedAt: requireTimestamp(record.preparedAt) }
+			: {}),
+		...(record.recentBlockhash !== undefined
+			? { recentBlockhash: requireBlockhash(record.recentBlockhash) }
+			: {}),
+		...(record.lastValidBlockHeight !== undefined
+			? {
+					lastValidBlockHeight: requireBlockHeight(
+						record.lastValidBlockHeight,
+					),
+				}
 			: {}),
 	});
 }
@@ -968,6 +1199,287 @@ function validateEvidenceImport(
 		transactionDigest: requireDigest(record.transactionDigest),
 		recentBlockhash: requireBlockhash(record.recentBlockhash),
 		importedAt: requireTimestamp(record.importedAt),
+	});
+}
+
+function validateBlockhashValidityEvidence(
+	value: unknown,
+	recentBlockhash: string,
+): MagicBlockSmokePendingState["blockhashValidityEvidence"] {
+	if (value === null || typeof value !== "object" || Array.isArray(value)) {
+		throw new Error("MagicBlock smoke state unavailable");
+	}
+	const record = value as Record<string, unknown>;
+	requireExactKeys(record, ["magicRouter", "solana"]);
+	return Object.freeze({
+		solana: validateBlockhashValidityObservation(
+			record.solana,
+			"solana_devnet",
+			recentBlockhash,
+		),
+		magicRouter: validateBlockhashValidityObservation(
+			record.magicRouter,
+			"magic_router",
+			recentBlockhash,
+		),
+	});
+}
+
+function validateBlockhashValidityObservation(
+	value: unknown,
+	expectedEndpoint: "solana_devnet" | "magic_router",
+	recentBlockhash: string,
+): MagicBlockSmokePendingState["blockhashValidityEvidence"]["solana"] {
+	if (value === null || typeof value !== "object" || Array.isArray(value)) {
+		throw new Error("MagicBlock smoke state unavailable");
+	}
+	const record = value as Record<string, unknown>;
+	requireExactKeys(record, [
+		"commitment",
+		"contextSlot",
+		"endpoint",
+		"observedAt",
+		"recentBlockhash",
+		"validity",
+	]);
+	if (
+		record.endpoint !== expectedEndpoint ||
+		record.commitment !== "confirmed" ||
+		record.validity !== "valid" ||
+		requireBlockhash(record.recentBlockhash) !== recentBlockhash
+	) {
+		throw new Error("MagicBlock smoke state unavailable");
+	}
+	return Object.freeze({
+		endpoint: expectedEndpoint,
+		recentBlockhash,
+		commitment: "confirmed",
+		contextSlot: requireBlockHeight(record.contextSlot),
+		validity: "valid",
+		observedAt: requireTimestamp(record.observedAt),
+	});
+}
+
+function validatePreparedTransactionBinding(
+	state: MagicBlockSmokePendingState,
+): void {
+	let serialized: Buffer;
+	let transaction: Transaction;
+	try {
+		serialized = Buffer.from(state.serializedTransactionBase64, "base64");
+		if (
+			serialized.length < 1 ||
+			serialized.toString("base64") !== state.serializedTransactionBase64 ||
+			createHash("sha256").update(serialized).digest("hex") !==
+				state.serializedTransactionDigest
+		) {
+			throw new Error("invalid");
+		}
+		transaction = Transaction.from(serialized);
+	} catch {
+		throw new Error("MagicBlock prepared transaction verification failed");
+	}
+	const storedSigner = new PublicKey(state.signer);
+	const signerEntry = transaction.signatures.find((entry) =>
+		entry.publicKey.equals(storedSigner),
+	);
+	const instruction = transaction.instructions[0];
+	if (
+		transaction.signatures.length !== 1 ||
+		!signerEntry?.signature ||
+		bs58.encode(signerEntry.signature) !== state.signature ||
+		!transaction.verifySignatures(false) ||
+		transaction.feePayer?.toBase58() !== state.signer ||
+		transaction.recentBlockhash !== state.recentBlockhash ||
+		transaction.instructions.length !== 1 ||
+		instruction?.programId.toBase58() !==
+			"MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr" ||
+		instruction.keys.length !== 1 ||
+		instruction.keys[0]?.pubkey.toBase58() !== state.signer ||
+		instruction.keys[0]?.isSigner !== true ||
+		instruction.data.toString("utf8") !== state.memo
+	) {
+		throw new Error("MagicBlock prepared transaction verification failed");
+	}
+}
+
+function requireSerializedTransactionBase64(value: unknown): string {
+	if (
+		typeof value !== "string" ||
+		Buffer.byteLength(value, "utf8") < 1 ||
+		Buffer.byteLength(value, "utf8") > MAX_EVIDENCE_BYTES
+	) {
+		throw new Error("MagicBlock prepared transaction unavailable");
+	}
+	return value;
+}
+
+function validateQuarantineEndpointObservation(
+	value: unknown,
+	expectedEndpoint: "solana_devnet" | "magic_router",
+): MagicBlockSmokeQuarantineEndpointObservation {
+	if (value === null || typeof value !== "object" || Array.isArray(value)) {
+		throw new Error("MagicBlock legacy quarantine observation unavailable");
+	}
+	const record = value as Record<string, unknown>;
+	requireExactKeys(record, ["endpoint", "observedAt", "signature", "status"]);
+	if (
+		record.endpoint !== expectedEndpoint ||
+		!["confirmed", "execution_failed", "not_found", "ambiguous", "unavailable"].includes(
+			String(record.status),
+		)
+	) {
+		throw new Error("MagicBlock legacy quarantine observation unavailable");
+	}
+	return Object.freeze({
+		endpoint: expectedEndpoint,
+		signature: requireSignature(record.signature),
+		status:
+			record.status as MagicBlockSmokeQuarantineEndpointObservation["status"],
+		observedAt: requireTimestamp(record.observedAt),
+	});
+}
+
+function validateQuarantinedState(
+	record: Record<string, unknown>,
+): MagicBlockSmokeQuarantinedState {
+	requireExactKeys(record, [
+		"administration",
+		"historicalOutcome",
+		"legacyEvidence",
+		"schemaVersion",
+		"scope",
+		"status",
+		"terminalizationImpossibleReason",
+	]);
+	if (
+		record.historicalOutcome !== "unknown" ||
+		record.terminalizationImpossibleReason !==
+			MAGICBLOCK_LEGACY_TERMINALIZATION_IMPOSSIBLE_REASON
+	) {
+		throw new Error("MagicBlock smoke state unavailable");
+	}
+	const scope = asRecord(record.scope);
+	requireExactKeys(scope, [
+		"cluster",
+		"genericExecutionFenceReleased",
+		"lane",
+		"noPaymentExecution",
+		"oldSignatureRetryProhibited",
+		"valueTransferLamports",
+	]);
+	if (
+		scope.cluster !== "devnet" ||
+		scope.lane !== "magicblock_devnet_audit_memo" ||
+		scope.valueTransferLamports !== 0 ||
+		scope.noPaymentExecution !== true ||
+		scope.oldSignatureRetryProhibited !== true ||
+		scope.genericExecutionFenceReleased !== false
+	) {
+		throw new Error("MagicBlock smoke state unavailable");
+	}
+	const legacyEvidence = validateState(record.legacyEvidence);
+	if (
+		legacyEvidence.status !== "legacy_pending" ||
+		legacyEvidence.sourceSchemaVersion !== MAGICBLOCK_SMOKE_STATE_SCHEMA_V1 ||
+		legacyEvidence.originalEvidence !== undefined ||
+		legacyEvidence.evidenceImport !== undefined
+	) {
+		throw new Error("MagicBlock smoke state unavailable");
+	}
+	const administrationRecord = asRecord(record.administration);
+	const hasObservations = administrationRecord.endpointObservations !== undefined;
+	const hasUnavailableReason =
+		administrationRecord.observationUnavailableReason !== undefined;
+	requireExactKeys(administrationRecord, [
+		"acknowledgement",
+		"authorizationId",
+		"authorizedAt",
+		"incidentReference",
+		"operator",
+		"quarantinedAt",
+		"reason",
+		"schemaVersion",
+		"verifiedSerializedTransactionAvailable",
+		...(hasObservations ? ["endpointObservations"] : []),
+		...(hasUnavailableReason ? ["observationUnavailableReason"] : []),
+	]);
+	if (
+		administrationRecord.schemaVersion !==
+			"compass.magicblock-legacy-quarantine/v1" ||
+		administrationRecord.verifiedSerializedTransactionAvailable !== false
+	) {
+		throw new Error("MagicBlock smoke state unavailable");
+	}
+	let endpointObservations:
+		| MagicBlockSmokeQuarantinedState["administration"]["endpointObservations"]
+		| undefined;
+	if (hasObservations) {
+		const observations = asRecord(administrationRecord.endpointObservations);
+		requireExactKeys(observations, ["magicRouter", "solana"]);
+		endpointObservations = Object.freeze({
+			solana: validateQuarantineEndpointObservation(
+				observations.solana,
+				"solana_devnet",
+			),
+			magicRouter: validateQuarantineEndpointObservation(
+				observations.magicRouter,
+				"magic_router",
+			),
+		});
+	}
+	let observationUnavailableReason:
+		| MagicBlockSmokeQuarantinedState["administration"]["observationUnavailableReason"]
+		| undefined;
+	if (hasUnavailableReason) {
+		const unavailable = asRecord(
+			administrationRecord.observationUnavailableReason,
+		);
+		requireExactKeys(unavailable, ["code", "observedAt"]);
+		if (unavailable.code !== "READ_ONLY_RECONCILIATION_UNAVAILABLE") {
+			throw new Error("MagicBlock smoke state unavailable");
+		}
+		observationUnavailableReason = Object.freeze({
+			code: "READ_ONLY_RECONCILIATION_UNAVAILABLE",
+			observedAt: requireTimestamp(unavailable.observedAt),
+		});
+	}
+	const administration = createQuarantineAdministration({
+		authorizationId: requireId(administrationRecord.authorizationId),
+		incidentReference: requireId(administrationRecord.incidentReference),
+		operator: requireSafeText(administrationRecord.operator),
+		reason: requireSafeText(administrationRecord.reason),
+		authorizedAt: requireTimestamp(administrationRecord.authorizedAt),
+		quarantinedAt: requireTimestamp(administrationRecord.quarantinedAt),
+		acknowledgement: String(administrationRecord.acknowledgement),
+		...(endpointObservations ? { endpointObservations } : {}),
+		...(observationUnavailableReason ? { observationUnavailableReason } : {}),
+	});
+	if (
+		administration.endpointObservations &&
+		(administration.endpointObservations.solana.signature !==
+			legacyEvidence.signature ||
+			administration.endpointObservations.magicRouter.signature !==
+				legacyEvidence.signature)
+	) {
+		throw new Error("MagicBlock smoke state unavailable");
+	}
+	return Object.freeze({
+		schemaVersion: MAGICBLOCK_SMOKE_STATE_SCHEMA,
+		status: "quarantined",
+		historicalOutcome: "unknown",
+		terminalizationImpossibleReason:
+			MAGICBLOCK_LEGACY_TERMINALIZATION_IMPOSSIBLE_REASON,
+		scope: Object.freeze({
+			cluster: "devnet",
+			lane: "magicblock_devnet_audit_memo",
+			valueTransferLamports: 0,
+			noPaymentExecution: true,
+			oldSignatureRetryProhibited: true,
+			genericExecutionFenceReleased: false,
+		}),
+		legacyEvidence,
+		administration,
 	});
 }
 
@@ -1060,8 +1572,13 @@ function requireExactRiskAcknowledgement(
 
 function requireV1Schema(
 	value: unknown,
-): typeof MAGICBLOCK_SMOKE_STATE_SCHEMA_V1 {
-	if (value !== MAGICBLOCK_SMOKE_STATE_SCHEMA_V1) {
+):
+	| typeof MAGICBLOCK_SMOKE_STATE_SCHEMA_V1
+	| typeof MAGICBLOCK_SMOKE_STATE_SCHEMA_V2 {
+	if (
+		value !== MAGICBLOCK_SMOKE_STATE_SCHEMA_V1 &&
+		value !== MAGICBLOCK_SMOKE_STATE_SCHEMA_V2
+	) {
 		throw new Error("MagicBlock legacy source schema unavailable");
 	}
 	return value;

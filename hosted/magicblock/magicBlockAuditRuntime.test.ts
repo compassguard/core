@@ -1,5 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { PGlite } from "@electric-sql/pglite";
+import { createHash } from "node:crypto";
+import {
+	Keypair,
+	PublicKey,
+	Transaction,
+	TransactionInstruction,
+} from "@solana/web3.js";
+import bs58 from "bs58";
 
 import { canonicalJson, sha256Hex } from "@back/services/magicBlockDevnetPreflightCanonical";
 import {
@@ -13,21 +21,85 @@ import type {
 	MagicBlockPost,
 } from "@back/services/magicBlockDevnetPreflightTypes";
 import {
+	createMagicBlockOnchainAuditSubmitter,
 	materializeMagicBlockAuditCommitment,
 } from "@back/services/magicBlockOnchainAudit";
 import type {
 	MagicBlockAuditRecord,
 	MagicBlockAuditRecordStore,
 	MagicBlockOnchainAuditSubmitter,
+	MagicBlockPreparedAuditTransaction,
+	MagicBlockRouterRpc,
 } from "@back/services/magicBlockOnchainAuditContracts";
 
 import type { SqlExecutor } from "../verdict/verdictStorePg";
-import { createMagicBlockAuditIngress } from "./magicBlockAuditIngress";
+import {
+	createMagicBlockAuditIngress,
+	selectReservedPreparedTransaction,
+} from "./magicBlockAuditIngress";
 import { createPgMagicBlockAppendOnlyAuditLedger } from "./magicBlockAuditLedgerPg";
 import { createPgMagicBlockAuditRecordStore } from "./magicBlockAuditRecordStorePg";
 import { createPgMagicBlockObservationStore } from "./magicBlockObservationStorePg";
 
 const NOW = "2026-07-28T12:00:00.000Z";
+
+function preparedAuditTransaction(
+	details: MagicBlockAuditRecord["details"],
+	signer: Keypair = Keypair.generate(),
+): MagicBlockPreparedAuditTransaction {
+	const commitment = materializeMagicBlockAuditCommitment(details);
+	const recentBlockhash = Keypair.generate().publicKey.toBase58();
+	const transaction = new Transaction({
+		feePayer: signer.publicKey,
+		recentBlockhash,
+	}).add(
+		new TransactionInstruction({
+			programId: new PublicKey(
+				"MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+			),
+			keys: [
+				{ pubkey: signer.publicKey, isSigner: true, isWritable: false },
+			],
+			data: Buffer.from(commitment.memo, "utf8"),
+		}),
+	);
+	transaction.sign(signer);
+	const serialized = transaction.serialize();
+	return {
+		schemaVersion: "compass.magicblock-prepared-audit-transaction/v1",
+		cluster: "devnet",
+		lane: "magicblock_devnet_audit_memo",
+		valueTransferLamports: 0,
+		signer: signer.publicKey.toBase58(),
+		signature: bs58.encode(transaction.signature as Buffer),
+		commitmentDigest: commitment.commitmentDigest,
+		memo: commitment.memo,
+		recentBlockhash,
+		lastValidBlockHeight: 100,
+		serializedTransactionBase64: serialized.toString("base64"),
+		serializedTransactionDigest: createHash("sha256")
+			.update(serialized)
+			.digest("hex"),
+		blockhashValidityEvidence: {
+			solana: {
+				endpoint: "solana_devnet",
+				recentBlockhash,
+				commitment: "confirmed",
+				contextSlot: 10,
+				validity: "valid",
+				observedAt: NOW,
+			},
+			magicRouter: {
+				endpoint: "magic_router",
+				recentBlockhash,
+				commitment: "confirmed",
+				contextSlot: 11,
+				validity: "valid",
+				observedAt: NOW,
+			},
+		},
+	};
+}
 
 describe("MagicBlock authenticated audit ingress", () => {
 	it("is disabled by default and does no work", async () => {
@@ -176,6 +248,7 @@ describe("MagicBlock authenticated audit ingress", () => {
 			outcome: "review_required" as const,
 		};
 		const commitment = materializeMagicBlockAuditCommitment(details);
+		const preparedTransaction = preparedAuditTransaction(details);
 		await records.reservePrepared({
 			record: {
 				details,
@@ -184,10 +257,11 @@ describe("MagicBlock authenticated audit ingress", () => {
 					status: "retryable_failure",
 					retryable: true,
 					code: "SUBMISSION_UNCONFIRMED",
-					signature: "4".repeat(64),
+					signature: preparedTransaction.signature,
 					commitmentDigest: commitment.commitmentDigest,
 					memo: commitment.memo,
 				},
+				preparedTransaction,
 			},
 			requestDigest,
 			claimAttempt: claimedAttempt(claim),
@@ -196,8 +270,8 @@ describe("MagicBlock authenticated audit ingress", () => {
 			status: "confirmed" as const,
 			cluster: "devnet" as const,
 			routerUrl: "https://devnet-router.magicblock.app/" as const,
-			signature: "4".repeat(64),
-			signer: "11111111111111111111111111111111",
+			signature: preparedTransaction.signature,
+			signer: preparedTransaction.signer,
 			slot: 88,
 			commitmentDigest: commitment.commitmentDigest,
 			memo: commitment.memo,
@@ -236,23 +310,303 @@ describe("MagicBlock authenticated audit ingress", () => {
 			);
 		const retryable = await ingress.handle(request());
 		expect(retryable.status).toBe(503);
+		expect(await retryable.text()).not.toContain(
+			preparedTransaction.serializedTransactionBase64,
+		);
 		await expect(
 			records.findByAuditEventId(details.auditEventId),
 		).resolves.toMatchObject({
 			registration: {
 				status: "retryable_failure",
-				signature: "4".repeat(64),
+				signature: preparedTransaction.signature,
 				commitmentDigest: commitment.commitmentDigest,
 				memo: commitment.memo,
 			},
 		});
 		const response = await ingress.handle(request());
 		expect(response.status).toBe(200);
+		expect(await response.text()).not.toContain(
+			preparedTransaction.serializedTransactionBase64,
+		);
 		await expect(
 			records.findByAuditEventId(details.auditEventId),
 		).resolves.toMatchObject({
 			registration: { status: "confirmed", slot: 88 },
+			preparedTransaction,
 		});
+	});
+
+	it("rejects cryptographically tampered prepared bytes on PostgreSQL replay", async () => {
+		const db = new PGlite();
+		const sql = executor(db);
+		const observations = createPgMagicBlockObservationStore({ sql });
+		const records = createPgMagicBlockAuditRecordStore({ sql });
+		const requestDigest = "7".repeat(64);
+		const claim = await observations.claim(
+			claimInput("obs-tampered-prepared", requestDigest, NOW),
+		);
+		const details = {
+			schemaVersion: "compass.magicblock-audit-commitment/v1" as const,
+			cluster: "devnet" as const,
+			observationId: "obs-tampered-prepared",
+			auditEventId: "aud_tampered_prepared",
+			transactionDigest: "1".repeat(64),
+			requestDigest,
+			resultDigest: "3".repeat(64),
+			attestationDigest: "4".repeat(64),
+			previousLedgerDigest: "5".repeat(64),
+			ledgerDigest: "6".repeat(64),
+			outcome: "review_required" as const,
+		};
+		const commitment = materializeMagicBlockAuditCommitment(details);
+		const preparedTransaction = preparedAuditTransaction(details);
+		await records.reservePrepared({
+			record: {
+				details,
+				canonicalDetails: commitment.canonicalDetails,
+				registration: {
+					status: "retryable_failure",
+					retryable: true,
+					code: "SUBMISSION_UNCONFIRMED",
+					signature: preparedTransaction.signature,
+					commitmentDigest: commitment.commitmentDigest,
+					memo: commitment.memo,
+				},
+				preparedTransaction,
+			},
+			requestDigest,
+			claimAttempt: claimedAttempt(claim),
+		});
+		await sql(
+			`UPDATE magicblock_devnet_onchain_audit
+			SET prepared_transaction = jsonb_set(
+				prepared_transaction,
+				'{serializedTransactionDigest}',
+				to_jsonb($2::text)
+			)
+			WHERE audit_event_id = $1`,
+			[details.auditEventId, "0".repeat(64)],
+		);
+
+		await expect(
+			records.findByAuditEventId(details.auditEventId),
+		).rejects.toThrow("audit record unavailable");
+	});
+
+	it("keeps the first durable prepared transaction and fences a stale reclaim before send", async () => {
+		const signer = Keypair.generate();
+		const recentBlockhash = Keypair.generate().publicKey.toBase58();
+		const details = {
+			schemaVersion: "compass.magicblock-audit-commitment/v1" as const,
+			cluster: "devnet" as const,
+			observationId: "obs-stale-prepared",
+			auditEventId: "aud_stale_prepared",
+			transactionDigest: "1".repeat(64),
+			requestDigest: "2".repeat(64),
+			resultDigest: "3".repeat(64),
+			attestationDigest: "4".repeat(64),
+			previousLedgerDigest: "5".repeat(64),
+			ledgerDigest: "6".repeat(64),
+			outcome: "review_required" as const,
+		};
+		let observedAt = NOW;
+		let durable: MagicBlockPreparedAuditTransaction | undefined;
+		const candidates: MagicBlockPreparedAuditTransaction[] = [];
+		let sendCount = 0;
+		const routerRpc: MagicBlockRouterRpc = async (method, params) => {
+			if (method === "getBlockhashForAccounts") {
+				return { blockhash: recentBlockhash, lastValidBlockHeight: 100 };
+			}
+			if (method === "isBlockhashValid") {
+				return { context: { slot: 10 }, value: true };
+			}
+			if (method === "sendTransaction") {
+				sendCount += 1;
+				return bs58.encode(
+					Transaction.from(Buffer.from(String(params[0]), "base64"))
+						.signature as Buffer,
+				);
+			}
+			throw new Error(`unexpected Router method ${method}`);
+		};
+		const solanaRpc: MagicBlockRouterRpc = async (method) => {
+			if (method === "isBlockhashValid") {
+				return { context: { slot: 11 }, value: true };
+			}
+			if (method === "getSignatureStatuses") {
+				return { value: [{ err: null, confirmationStatus: "processed" }] };
+			}
+			throw new Error(`unexpected Solana method ${method}`);
+		};
+		const submitter = createMagicBlockOnchainAuditSubmitter({
+			signer,
+			routerRpc,
+			solanaRpc,
+			now: () => observedAt,
+			confirmationAttempts: 1,
+			waitBetweenAttempts: async () => undefined,
+		});
+		const register = () =>
+			submitter.register(details, async (candidate) => {
+				candidates.push(candidate);
+				durable ??= candidate;
+				return selectReservedPreparedTransaction(candidate, durable);
+			});
+
+		await expect(register()).resolves.toMatchObject({
+			status: "retryable_failure",
+			code: "SUBMISSION_UNCONFIRMED",
+		});
+		observedAt = "2026-07-28T12:00:13.000Z";
+		await expect(register()).resolves.toMatchObject({
+			status: "retryable_failure",
+			code: "TRANSACTION_VERIFICATION_FAILED",
+		});
+
+		expect(candidates).toHaveLength(2);
+		expect(candidates[1]).toMatchObject({
+			signature: candidates[0]?.signature,
+			serializedTransactionBase64:
+				candidates[0]?.serializedTransactionBase64,
+		});
+		expect(
+			candidates[1]?.blockhashValidityEvidence.solana.observedAt,
+		).not.toBe(
+			candidates[0]?.blockhashValidityEvidence.solana.observedAt,
+		);
+		expect(durable).toBe(candidates[0]);
+		expect(sendCount).toBe(1);
+	});
+
+	it("retries a pre-send blockhash diagnosis without a durable signature and sends once", async () => {
+		const db = new PGlite();
+		const sql = executor(db);
+		const observations = createPgMagicBlockObservationStore({ sql });
+		const records = createPgMagicBlockAuditRecordStore({ sql });
+		const signer = Keypair.generate();
+		const blockhashes = [
+			Keypair.generate().publicKey.toBase58(),
+			Keypair.generate().publicKey.toBase58(),
+		];
+		let observedAt = NOW;
+		let blockhashAttempt = 0;
+		let sendCount = 0;
+		let sentBytes = "";
+		const routerRpc: MagicBlockRouterRpc = async (method, params) => {
+			if (method === "getBlockhashForAccounts") {
+				const blockhash = blockhashes[blockhashAttempt];
+				blockhashAttempt += 1;
+				return { blockhash, lastValidBlockHeight: 100 + blockhashAttempt };
+			}
+			if (method === "isBlockhashValid") {
+				return {
+					context: { slot: 10 + blockhashAttempt },
+					value: blockhashAttempt > 1,
+				};
+			}
+			if (method === "sendTransaction") {
+				sendCount += 1;
+				sentBytes = String(params[0]);
+				return bs58.encode(
+					Transaction.from(Buffer.from(sentBytes, "base64"))
+						.signature as Buffer,
+				);
+			}
+			throw new Error(`unexpected Router method ${method}`);
+		};
+		const solanaRpc: MagicBlockRouterRpc = async (method) => {
+			if (method === "isBlockhashValid") {
+				return { context: { slot: 20 + blockhashAttempt }, value: true };
+			}
+			if (method === "getSignatureStatuses") {
+				return { value: [{ err: null, confirmationStatus: "processed" }] };
+			}
+			throw new Error(`unexpected Solana method ${method}`);
+		};
+		const onchainAudit = createMagicBlockOnchainAuditSubmitter({
+			signer,
+			routerRpc,
+			solanaRpc,
+			now: () => observedAt,
+			confirmationAttempts: 1,
+			waitBetweenAttempts: async () => undefined,
+		});
+		const ingress = createMagicBlockAuditIngress({
+			enabled: true,
+			apiKey: "audit-secret",
+			runtime: {
+				observations,
+				createLedger: ({ observationId, requestDigest, claimAttempt }) =>
+					createPgMagicBlockAppendOnlyAuditLedger({
+						sql,
+						observationId,
+						requestDigest,
+						claimAttempt,
+						createAuditEventId: () => "aud_blockhash_retry",
+						now: () => observedAt,
+					}),
+				post: boundDelegationPost("delegated"),
+				auditRecords: records,
+				onchainAudit,
+				now: () => observedAt,
+				nowEpochMs: () => Date.parse(observedAt),
+			},
+		});
+
+		const first = await ingress.handle(
+			observationRequest("audit-secret", {
+				observationId: "obs-blockhash-retry",
+			}),
+		);
+		const firstBody = await first.text();
+		expect(first.status).toBe(503);
+		expect(JSON.parse(firstBody)).toMatchObject({
+			audit: {
+				registration: {
+					code: "BLOCKHASH_VALIDITY_UNCONFIRMED",
+					recentBlockhash: blockhashes[0],
+					lastValidBlockHeight: 101,
+				},
+			},
+		});
+		expect(JSON.parse(firstBody).audit.registration).not.toHaveProperty(
+			"signature",
+		);
+		expect(sendCount).toBe(0);
+		expect(
+			await sql(
+				`SELECT signature, prepared_transaction FROM magicblock_devnet_onchain_audit
+				WHERE observation_id = $1`,
+				["obs-blockhash-retry"],
+			),
+		).toEqual([{ signature: null, prepared_transaction: null }]);
+
+		observedAt = "2026-07-28T12:01:00.000Z";
+		const second = await ingress.handle(
+			observationRequest("audit-secret", {
+				observationId: "obs-blockhash-retry",
+			}),
+		);
+		const secondBody = await second.text();
+		const durable = await records.findByObservationId("obs-blockhash-retry");
+
+		expect(second.status).toBe(503);
+		expect(JSON.parse(secondBody)).toMatchObject({
+			audit: { registration: { code: "SUBMISSION_UNCONFIRMED" } },
+		});
+		expect(blockhashAttempt).toBe(2);
+		expect(sendCount).toBe(1);
+		expect(durable?.preparedTransaction).toMatchObject({
+			lane: "magicblock_devnet_audit_memo",
+			valueTransferLamports: 0,
+			recentBlockhash: blockhashes[1],
+		});
+		expect(sentBytes).toBe(
+			durable?.preparedTransaction?.serializedTransactionBase64,
+		);
+		expect(secondBody).not.toContain(sentBytes);
+		expect(secondBody).not.toContain("preparedTransaction");
+		expect(secondBody).not.toContain("serializedTransactionBase64");
 	});
 
 	it("persists only closed sanitized Router diagnostics", async () => {
@@ -316,6 +670,7 @@ describe("MagicBlock authenticated audit ingress", () => {
 		const createLedger = createMemoryLedgerFactory(observations);
 		const post = boundDelegationPost("delegated");
 		let id = 0;
+		const durableRecords: MagicBlockAuditRecord[] = [];
 		const ingress = createMagicBlockAuditIngress({
 			enabled: true,
 			apiKey: "audit-secret",
@@ -325,7 +680,9 @@ describe("MagicBlock authenticated audit ingress", () => {
 					post,
 					now: () => NOW,
 					createOpaqueId: (kind) => `${kind}-${++id}`,
-					...confirmedOnchainRuntime(),
+					...confirmedOnchainRuntime((record) => {
+						durableRecords.push(record);
+					}),
 			},
 		});
 
@@ -338,6 +695,16 @@ describe("MagicBlock authenticated audit ingress", () => {
 			outcome: "review_required",
 			audit: { auditEventId: "aud_test_1" },
 		});
+		const prepared = durableRecords[0]?.preparedTransaction;
+		expect(prepared).toBeDefined();
+		if (!prepared) throw new Error("prepared transaction expected");
+		expect(durableRecords.at(-1)).toMatchObject({
+			registration: { status: "confirmed" },
+			preparedTransaction: prepared,
+		});
+		expect(JSON.stringify(firstBody)).not.toContain(
+			prepared.serializedTransactionBase64,
+		);
 		expect(post).toHaveBeenCalledTimes(2);
 
 		const replay = await ingress.handle(observationRequest("audit-secret"));
@@ -543,42 +910,51 @@ describe("MagicBlock Postgres persistence", () => {
 			outcome: "review_required" as const,
 		};
 		const commitment = materializeMagicBlockAuditCommitment(details);
-		const prepared = (signature: string): MagicBlockAuditRecord => ({
-			details,
-			canonicalDetails: commitment.canonicalDetails,
-			registration: {
-				status: "retryable_failure",
-				retryable: true,
-				code: "SUBMISSION_UNCONFIRMED",
-				signature,
-				commitmentDigest: commitment.commitmentDigest,
-				memo: commitment.memo,
-			},
-		});
+		const prepared = () => {
+			const preparedTransaction = preparedAuditTransaction(details);
+			return {
+				details,
+				canonicalDetails: commitment.canonicalDetails,
+				registration: {
+					status: "retryable_failure" as const,
+					retryable: true as const,
+					code: "SUBMISSION_UNCONFIRMED" as const,
+					signature: preparedTransaction.signature,
+					commitmentDigest: commitment.commitmentDigest,
+					memo: commitment.memo,
+				},
+				preparedTransaction,
+			};
+		};
+		const stalePrepared = prepared();
+		const currentPrepared = prepared();
+		const conflictingPrepared = prepared();
 		await expect(
 			records.reservePrepared({
-				record: prepared("2".repeat(64)),
+				record: stalePrepared,
 				requestDigest,
 				claimAttempt: claimedAttempt(first),
 			}),
 		).rejects.toThrow("reservation");
 		await expect(
 			records.reservePrepared({
-				record: prepared("3".repeat(64)),
+				record: currentPrepared,
 				requestDigest,
 				claimAttempt: claimedAttempt(current),
 			}),
 		).resolves.toMatchObject({
-			registration: { signature: "3".repeat(64) },
+			registration: { signature: currentPrepared.preparedTransaction.signature },
+			preparedTransaction: currentPrepared.preparedTransaction,
 		});
 		await expect(
 			records.reservePrepared({
-				record: prepared("4".repeat(64)),
+				record: conflictingPrepared,
 				requestDigest,
 				claimAttempt: claimedAttempt(current),
 			}),
 		).resolves.toMatchObject({
-			registration: { signature: "3".repeat(64) },
+			registration: { signature: currentPrepared.preparedTransaction.signature },
+			preparedTransaction: currentPrepared.preparedTransaction,
 		});
 	});
 
@@ -1005,7 +1381,9 @@ function createMemoryLedgerFactory(
 	});
 }
 
-function confirmedOnchainRuntime(): {
+function confirmedOnchainRuntime(
+	onPersist?: (record: MagicBlockAuditRecord) => void,
+): {
 	readonly auditRecords: MagicBlockAuditRecordStore;
 	readonly onchainAudit: MagicBlockOnchainAuditSubmitter;
 } {
@@ -1013,11 +1391,13 @@ function confirmedOnchainRuntime(): {
 	const auditRecords: MagicBlockAuditRecordStore = {
 		async save(record) {
 			records.set(record.details.auditEventId, record);
+			onPersist?.(record);
 		},
 		async reservePrepared({ record }) {
 			const existing = records.get(record.details.auditEventId);
 			if (existing) return existing;
 			records.set(record.details.auditEventId, record);
+			onPersist?.(record);
 			return record;
 		},
 		async findByAuditEventId(auditEventId) {
@@ -1056,17 +1436,13 @@ function confirmedOnchainRuntime(): {
 	};
 	const onchainAudit: MagicBlockOnchainAuditSubmitter = {
 		async register(details, onPrepared) {
-			const commitment = materializeMagicBlockAuditCommitment(details);
-			const prepared = {
-				status: "retryable_failure" as const,
-				retryable: true as const,
-				code: "SUBMISSION_UNCONFIRMED" as const,
-				signature: "2".repeat(64),
-				commitmentDigest: commitment.commitmentDigest,
-				memo: commitment.memo,
-			};
+			const prepared = preparedAuditTransaction(details);
 			await onPrepared?.(prepared);
-			return proof(details);
+			return {
+				...proof(details),
+				signature: prepared.signature,
+				signer: prepared.signer,
+			};
 		},
 		async verify({ signature }) {
 			const record = await auditRecords.findBySignature(signature);

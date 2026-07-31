@@ -1,6 +1,6 @@
 {
   "change": "magicblock-devnet-onchain-audit",
-  "status": "implemented_legacy_evidence_and_live_proof_pending",
+  "status": "implemented_self_contained_recovery_and_live_proof_pending",
   "scope": "devnet_only",
   "tasks": [
     {
@@ -38,7 +38,13 @@
       "id": "MB-7",
       "title": "Recover legacy pending state without duplicate submission",
       "status": "completed",
-      "result": "State v2 persists signature-bound expiry evidence before send, reads exact v1 state safely, requires coherent finalized dual endpoint terminal proof with bound context, and provides an authorized cryptographic evidence-only legacy import."
+      "result": "State v3 and production PostgreSQL reservation atomically persist and validate exact signed transaction bytes, digest, signature-bound context, and dual valid-blockhash evidence before every send; retryable/confirmed transitions preserve them, public responses omit them, and strict v1/v2 migration remains blocking when bytes are absent."
+    },
+    {
+      "id": "MB-8",
+      "title": "Quarantine irreconstructible signature-only v1 incident without terminalizing it",
+      "status": "completed",
+      "result": "Exact acknowledgement and operator authorization can preserve the historical unknown outcome in a conflict-safe quarantine, archive it, and release only one new devnet audit-Memo authorization while all payment and generic execution fences remain closed."
     }
   ],
   "verification": [
@@ -56,7 +62,7 @@
     "excludedOnchainData": "raw transaction, request, result, provider payload, credentials, secrets"
   },
   "legacyRecovery": {
-    "schema": "compass.magicblock-devnet-smoke-state/v2",
+    "schema": "compass.magicblock-devnet-smoke-state/v3",
     "terminalOutcomes": [
       "confirmed",
       "failed",
@@ -64,13 +70,11 @@
       "not_submitted"
     ],
     "evidenceImport": "enrichment_only_explicit_authorization_and_exact_risk_acknowledgement",
+    "administrativeQuarantine": "exact_signature_only_v1_unknown_outcome_devnet_audit_memo_lane_only",
     "verification": [
-      "PASS: npm run preflight:magicblock-devnet (dependency closure, 9 files, 222 tests after independent-review remediation)",
-      "PASS: npm run test:back outside the filesystem sandbox on Node 26.4.0 (61 files, 753 tests; 2 live suites and 22 tests skipped)",
-      "PASS: npm run lint -- --quiet",
-      "PASS: npm run build",
-      "PASS: npm run build:mcp",
-      "PASS: npm ci --ignore-scripts and npm ci --ignore-scripts --dry-run after lockfile repair",
+      "PASS CURRENT: npm run preflight:magicblock-devnet (dependency closure, 9 files, 231 tests)",
+      "PASS CURRENT: focused on-chain audit and smoke-state tests (2 files, 33 tests)",
+      "PASS CURRENT: focused on-chain audit, smoke-state, and hosted persistence tests (3 files, 53 tests)",
       "BLOCKED PRE-EXISTING: npx tsc --noEmit --pretty false cannot resolve ../mcp/mcpProxyContracts from back/services/__tests__/mcpProxyDispatcher.test.ts"
     ]
   }

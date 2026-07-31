@@ -21,10 +21,14 @@ import {
 	importLegacyMagicBlockTransactionEvidence,
 	importLegacyPendingMagicBlockSmoke,
 	persistPreparedMagicBlockSmoke,
+	quarantineLegacyPendingMagicBlockSmoke,
 	readMagicBlockSmokeState,
 	reconcileMagicBlockSmoke,
 } from "./magicBlockDevnetSmokeState";
-import { MAGICBLOCK_LEGACY_EVIDENCE_RISK_ACKNOWLEDGEMENT } from "./magicBlockDevnetSmokeStateContracts";
+import {
+	MAGICBLOCK_LEGACY_EVIDENCE_RISK_ACKNOWLEDGEMENT,
+	MAGICBLOCK_LEGACY_QUARANTINE_ACKNOWLEDGEMENT,
+} from "./magicBlockDevnetSmokeStateContracts";
 
 const mode = process.argv[2];
 const stateDirectory = resolve(
@@ -49,11 +53,13 @@ if (mode === "authorize") {
 	await reconcilePendingSmoke();
 } else if (mode === "import-legacy-evidence") {
 	importLegacyEvidence();
+} else if (mode === "quarantine-legacy") {
+	await quarantineLegacySmoke();
 } else if (mode === "submit") {
 	await submitAuthorizedSmoke();
 } else {
 	throw new Error(
-		"Smoke mode is required: authorize, import-legacy-evidence, reconcile, or submit.",
+		"Smoke mode is required: authorize, import-legacy-evidence, quarantine-legacy, reconcile, or submit.",
 	);
 }
 
@@ -137,6 +143,15 @@ async function reconcilePendingSmoke(): Promise<void> {
 		});
 		return;
 	}
+	if (state.status === "quarantined") {
+		writePublicResult({
+			mode: "reconcile-only",
+			state: state.status,
+			historicalOutcome: state.historicalOutcome,
+			signature: state.legacyEvidence.signature,
+		});
+		return;
+	}
 
 	const verificationOptions = {
 		confirmationAttempts: 1,
@@ -179,7 +194,8 @@ async function reconcilePendingSmoke(): Promise<void> {
 	const recentBlockhash =
 		state.status === "pending"
 			? state.recentBlockhash
-			: state.evidenceImport?.recentBlockhash;
+			: state.evidenceImport?.recentBlockhash ??
+				state.originalEvidence?.recentBlockhash;
 	const expiry = recentBlockhash
 		? {
 				solana: await collectMagicBlockSmokeEndpointExpiryEvidence(
@@ -236,6 +252,141 @@ async function reconcilePendingSmoke(): Promise<void> {
 		magicRouter: publicReconciliationResult(magicRouter),
 		...(expiry ? { expiry } : {}),
 	});
+}
+
+async function quarantineLegacySmoke(): Promise<void> {
+	const state = readMagicBlockSmokeState(stateDirectory);
+	if (state?.status === "quarantined") {
+		const administration = state.administration;
+		if (
+			administration.authorizationId !==
+				requireEnv("COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_AUTHORIZATION_ID") ||
+			administration.incidentReference !==
+				requireEnv(
+					"COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_INCIDENT_REFERENCE",
+				) ||
+			administration.operator !==
+				requireEnv("COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_OPERATOR") ||
+			administration.reason !==
+				requireEnv("COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_REASON") ||
+			administration.authorizedAt !==
+				requireEnv("COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_AUTHORIZED_AT") ||
+			administration.acknowledgement !==
+				requireEnv("COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_ACKNOWLEDGEMENT")
+		) {
+			throw new Error("MagicBlock legacy quarantine conflicts.");
+		}
+		writePublicResult({
+			mode: "quarantine-legacy",
+			state: state.status,
+			historicalOutcome: state.historicalOutcome,
+			signature: state.legacyEvidence.signature,
+			valueTransferLamports: state.scope.valueTransferLamports,
+			genericExecutionFenceReleased:
+				state.scope.genericExecutionFenceReleased,
+			quarantinedAt: administration.quarantinedAt,
+		});
+		return;
+	}
+	if (
+		state?.status !== "legacy_pending" ||
+		state.sourceSchemaVersion !==
+			"compass.magicblock-devnet-smoke-state/v1" ||
+		state.originalEvidence !== undefined ||
+		state.evidenceImport !== undefined
+	) {
+		throw new Error("Exact signature-only v1 legacy pending state is required.");
+	}
+	const observedAt = now();
+	const verificationOptions = {
+		confirmationAttempts: 1,
+		waitBetweenAttempts: async () => undefined,
+	} as const;
+	const [solana, magicRouter] = await Promise.all([
+		createMagicBlockOnchainAuditVerifier({
+			...verificationOptions,
+			rpc: createSolanaDevnetRpc(),
+		}).verify({
+			signature: state.signature,
+			expectedSigner: state.signer,
+		}),
+		createMagicBlockOnchainAuditVerifier({
+			...verificationOptions,
+			rpc: createMagicBlockRouterRpc(),
+		}).verify({
+			signature: state.signature,
+			expectedSigner: state.signer,
+		}),
+	]);
+	const outcome = classifyMagicBlockSmokeReconciliation(solana, magicRouter);
+	if (outcome === "confirmed" || outcome === "failed") {
+		const reconciled = reconcileMagicBlockSmoke({
+			stateDirectory,
+			outcome,
+			signature: state.signature,
+			reconciledAt: now(),
+		});
+		writePublicResult({
+			mode: "quarantine-legacy",
+			state: reconciled.status,
+			outcome: reconciled.outcome,
+			signature: reconciled.signature,
+		});
+		return;
+	}
+	const quarantined = quarantineLegacyPendingMagicBlockSmoke({
+		stateDirectory,
+		authorizationId: requireEnv(
+			"COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_AUTHORIZATION_ID",
+		),
+		incidentReference: requireEnv(
+			"COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_INCIDENT_REFERENCE",
+		),
+		operator: requireEnv("COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_OPERATOR"),
+		reason: requireEnv("COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_REASON"),
+		authorizedAt: requireEnv(
+			"COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_AUTHORIZED_AT",
+		),
+		quarantinedAt: now(),
+		acknowledgement: requireEnv(
+			"COMPASS_MAGICBLOCK_DEVNET_QUARANTINE_ACKNOWLEDGEMENT",
+		),
+		endpointObservations: {
+			solana: {
+				endpoint: "solana_devnet",
+				signature: state.signature,
+				status: quarantineObservationStatus(solana),
+				observedAt,
+			},
+			magicRouter: {
+				endpoint: "magic_router",
+				signature: state.signature,
+				status: quarantineObservationStatus(magicRouter),
+				observedAt,
+			},
+		},
+	});
+	writePublicResult({
+		mode: "quarantine-legacy",
+		state: quarantined.status,
+		historicalOutcome: quarantined.historicalOutcome,
+		signature: quarantined.legacyEvidence.signature,
+		valueTransferLamports: quarantined.scope.valueTransferLamports,
+		genericExecutionFenceReleased:
+			quarantined.scope.genericExecutionFenceReleased,
+		quarantinedAt: quarantined.administration.quarantinedAt,
+	});
+}
+
+function quarantineObservationStatus(
+	registration: MagicBlockOnchainAuditRegistration,
+): "confirmed" | "execution_failed" | "ambiguous" | "unavailable" {
+	if (registration.status === "confirmed") return "confirmed";
+	if (registration.code === "TRANSACTION_EXECUTION_FAILED") {
+		return "execution_failed";
+	}
+	if (registration.code === "ROUTER_UNAVAILABLE") return "unavailable";
+	return "ambiguous";
 }
 
 async function submitAuthorizedSmoke(): Promise<void> {
@@ -321,6 +472,12 @@ function requireEnv(key: string): string {
 		value !== MAGICBLOCK_LEGACY_EVIDENCE_RISK_ACKNOWLEDGEMENT
 	) {
 		throw new Error("Legacy evidence risk acknowledgement is not exact.");
+	}
+	if (
+		key.endsWith("_QUARANTINE_ACKNOWLEDGEMENT") &&
+		value !== MAGICBLOCK_LEGACY_QUARANTINE_ACKNOWLEDGEMENT
+	) {
+		throw new Error("Legacy quarantine acknowledgement is not exact.");
 	}
 	return value;
 }
