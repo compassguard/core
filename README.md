@@ -8,6 +8,20 @@ audit signer; never reuse a user or mainnet key. Confirmed proofs can be queried
 through the authenticated audit route by `auditId` or transaction `signature`.
 Local tests use injected RPC and do not constitute live devnet proof.
 
+An already-finalized proof can be imported through the separate authenticated
+`POST /api/magicblock-devnet/audit/import` route while the existing ingress
+flag is enabled. The closed `compass.magicblock-audit-proof-import/v1` request
+binds `cluster=devnet`, canonical commitment details, their canonical JSON,
+commitment digest, exact Memo, and signature. The server takes the signer only
+from `COMPASS_MAGICBLOCK_DEVNET_AUDIT_SIGNER_PUBLIC_KEY`, verifies finalized
+agreement through literal Solana devnet RPC and Magic Router using only
+`getSignatureStatuses`/`getTransaction`, and persists only after exact
+agreement. This import composition never loads a signer secret and has no
+registration or `sendTransaction` capability. It requires
+`Content-Type: application/json`, bounds and cancels stalled request bodies,
+and uses pinned, deadline- and byte-bounded streaming JSON-RPC reads; it never
+calls unbounded `response.json()`.
+
 Compass is the **execution firewall for AI agents on Solana**.
 
 It sits between AI agents, MCP tools, wallets, and on-chain protocols. Before any sensitive crypto action is signed or executed, Compass validates intent, classifies the tool call, applies policy, simulates or decodes the transaction when needed, asks for human approval when required, and records the decision in an audit trail.

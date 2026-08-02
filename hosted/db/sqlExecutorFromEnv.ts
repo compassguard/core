@@ -1,6 +1,6 @@
 import postgres from "postgres";
 
-import type { SqlExecutor } from "../verdict/verdictStorePg";
+import type { SqlExecutor } from "./sqlContracts";
 
 // Runtime env read. Bundlers (webpack/Next) inline only *literal* `process.env.X` member access,
 // never a dynamic computed lookup, so a plain function reads at runtime as intended — no

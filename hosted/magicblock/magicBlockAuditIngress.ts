@@ -1,5 +1,3 @@
-import { timingSafeEqual } from "node:crypto";
-
 import {
 	canonicalJson,
 	deepFreeze,
@@ -32,6 +30,8 @@ import type {
 	MagicBlockPreparedAuditTransaction,
 } from "@back/services/magicBlockOnchainAuditContracts";
 
+import { createMagicBlockBearerAuthorization } from "./magicBlockIngressAuth";
+
 const REQUEST_DIGEST_DOMAIN = "compass.magicblock-devnet-observation/v1/request\0";
 
 export function createMagicBlockAuditIngress(
@@ -52,13 +52,13 @@ export function createMagicBlockAuditIngress(
 	}
 
 	if (input.apiKey.trim() === "") throw new Error("audit ingress unavailable");
-	const apiKey = input.apiKey;
+	const authorization = createMagicBlockBearerAuthorization(input.apiKey);
 	const now = input.runtime.now ?? (() => new Date().toISOString());
 	const nowEpochMs = input.runtime.nowEpochMs ?? Date.now;
 
 	return {
 		async handle(request) {
-			if (!hasAuthorizedBearer(request.headers.get("authorization"), apiKey)) {
+			if (!authorization.authorize(request.headers.get("authorization"))) {
 				return jsonError(
 					401,
 					"UNAUTHENTICATED",
@@ -462,17 +462,6 @@ async function readBoundedBody(request: Request, maximumBytes: number): Promise<
 		offset += chunk.byteLength;
 	}
 	return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-}
-
-function hasAuthorizedBearer(header: string | null, expected: string): boolean {
-	if (!header?.startsWith("Bearer ")) return false;
-	const actual = header.slice("Bearer ".length).trim();
-	const actualBytes = new TextEncoder().encode(actual);
-	const expectedBytes = new TextEncoder().encode(expected);
-	return (
-		actualBytes.byteLength === expectedBytes.byteLength &&
-		timingSafeEqual(actualBytes, expectedBytes)
-	);
 }
 
 function jsonError(

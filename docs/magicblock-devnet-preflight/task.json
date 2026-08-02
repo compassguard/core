@@ -45,6 +45,12 @@
       "title": "Quarantine irreconstructible signature-only v1 incident without terminalizing it",
       "status": "completed",
       "result": "Exact acknowledgement and operator authorization can preserve the historical unknown outcome in a conflict-safe quarantine, archive it, and release only one new devnet audit-Memo authorization while all payment and generic execution fences remain closed."
+    },
+    {
+      "id": "MB-9",
+      "title": "Import an already-finalized audit proof without submission capability",
+      "status": "completed",
+      "result": "A closed authenticated import route rematerializes the canonical proof, requires finalized agreement from literal devnet and Magic Router, persists exact-once under existing SQL constraints, and provides read-only fresh GET composition without signer-secret or send capability."
     }
   ],
   "verification": [
@@ -77,5 +83,22 @@
       "PASS CURRENT: focused on-chain audit, smoke-state, and hosted persistence tests (3 files, 53 tests)",
       "BLOCKED PRE-EXISTING: npx tsc --noEmit --pretty false cannot resolve ../mcp/mcpProxyContracts from back/services/__tests__/mcpProxyDispatcher.test.ts"
     ]
+  },
+  "finalizedProofImport": {
+    "schema": "compass.magicblock-audit-proof-import/v1",
+    "databaseMigrationExpected": true,
+    "operatorRunMigrationExpected": false,
+    "databaseMigration": "idempotent store initialization restores observation_id, its partial unique index, and prepared_transaction on valid legacy tables",
+    "verification": [
+      "PASS CURRENT: npm run preflight:magicblock-devnet (dependency closure, 12 files, 256 tests)",
+      "PASS CURRENT: npm test (64 files passed, 2 skipped; 787 tests passed, 22 skipped)",
+      "PASS CURRENT: npm run lint",
+      "PASS CURRENT: npm run build",
+      "PASS CURRENT: npm run build:mcp",
+      "PASS CURRENT: task and package JSON validation, script syntax, lockfile unchanged, git diff --check",
+      "BLOCKED PRE-EXISTING: npx tsc --noEmit --pretty false cannot resolve ../mcp/mcpProxyContracts from back/services/__tests__/mcpProxyDispatcher.test.ts"
+    ],
+    "productionMutation": false,
+    "independentReviewRemediation": "read roots transitively isolated; bounded pinned RPC and request-body deadlines settle even when cancellation stalls; JSON media contract; endpoint-parameterized mismatch and availability coverage; automatic legacy-table compatibility ALTERs; fresh PostgreSQL GET and lost-ack retry"
   }
 }
