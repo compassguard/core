@@ -102,8 +102,36 @@ unexpected signer, Memo/commitment mismatch, or other proof ambiguity remains
 The separately authenticated audit route accepts `GET` with exactly one of
 `auditId` or `signature`. It loads the durable record, rematerializes the
 expected commitment, reads the transaction from literal Solana devnet RPC, and
-returns `200` only for a newly verified confirmed proof. Missing, malformed,
+Magic Router through the isolated finalized proof verifier, and returns `200`
+only when both endpoints agree on the exact finalized proof. Missing, malformed,
 unconfirmed, mismatched, or failed transactions do not verify.
+
+## Finalized proof import
+
+The separate `/api/magicblock-devnet/audit/import` POST accepts only the closed
+`compass.magicblock-audit-proof-import/v1` contract while the existing ingress
+flag is enabled and the dedicated ingress bearer authenticates. It imports an
+already-finalized devnet proof; it never signs, prepares, registers, submits,
+or retries a Solana transaction. The caller cannot choose the signer.
+
+Before RPC or SQL, Compass validates exact request shape and bounds, devnet
+cluster, identifiers, digests, signature, canonical details, and the exact
+server-rematerialized commitment digest and Memo. It then requires finalized,
+successful, coherent, exact signer/Memo/digest/signature/slot evidence from
+both literal Solana devnet RPC and Magic Router. Any unavailable, malformed,
+redirected, unconfirmed, failed, mismatched, or disagreeing evidence persists
+nothing. Exact durable replay returns the original record; conflicts by audit
+ID, observation ID, or signature return an idempotency conflict. A lost write
+acknowledgement is safe: retry reloads all three durable identities before
+returning success.
+
+Authenticated import requires JSON media type before body parsing or any RPC/
+SQL work. One fixed application deadline covers the bounded streaming request
+body and initiates rejection-safe cancellation without awaiting a potentially
+non-settling reader. Each pinned endpoint request separately bounds headers and
+streaming response reads with the same absolute-deadline cleanup, validates
+declared and observed byte length, rejects redirects and malformed JSON, and
+returns only sanitized closed failure fields.
 
 ## Acceptance
 

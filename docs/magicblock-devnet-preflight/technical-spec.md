@@ -55,6 +55,49 @@ outcome, previous ledger digest, and version. Canonical private details bind
 the observation, transaction, request, final result, attestation, ledger chain,
 cluster, and outcome without disclosing those raw payloads.
 
+The finalized import contract is isolated in
+`back/services/magicBlockAuditProofImportContracts.ts`. The hosted handler and
+environment composition live in
+`hosted/magicblock/magicBlockAuditProofImportIngress.ts` and
+`hosted/magicblock/magicBlockAuditProofImportIngressFromEnv.ts`; the latter
+imports no submitter and reads no signer-secret variable. Shared constant-time
+Bearer comparison is implemented in `magicBlockIngressAuth.ts` with its type
+in a dedicated contracts file.
+
+Read-only proof contracts, canonical materialization, and behavior live in
+`magicBlockAuditProofVerificationContracts.ts`,
+`magicBlockAuditCommitment.ts`, and
+`magicBlockAuditProofVerification.ts`. Import and GET use the dedicated
+`magicBlockAuditProofRecordStorePg.ts`; GET has its own
+`magicBlockAuditReadIngress{,FromEnv}.ts` composition. Their transitive closure
+cannot reach the mixed signer/submitter module, historical full ingress/store,
+`fs`, signer-secret loading, Keypair/signing, `register`, or
+`sendTransaction`; the dependency gate enforces this structurally and by
+forbidden capability scan. The full historical POST/register composition is
+unchanged.
+
+The proof verifier is read-only and bounded to one
+`getSignatureStatuses` plus one `getTransaction` per endpoint. Both literal
+endpoints must independently report `finalized`, the same successful slot,
+transaction signature, configured required signer, exact Memo, and commitment
+digest. Only then is a confirmed record saved and reloaded by audit ID,
+observation ID, and signature. Store initialization applies the historical,
+idempotent `ADD COLUMN IF NOT EXISTS observation_id`, partial unique
+observation index, and `ADD COLUMN IF NOT EXISTS prepared_transaction`
+compatibility changes before use. This supports valid legacy tables without a
+separate operator-run migration while preserving all three identity guards.
+
+Both clients pin their exact compile-time HTTPS URL, use `redirect: error`,
+apply a fail-closed deadline spanning fetch headers and streaming body reads,
+initiate cancellation without awaiting a potentially non-settling transport,
+validate `Content-Length`, enforce a byte ceiling while reading chunks, decode
+UTF-8 and parse JSON only after the bounded read, and expose no raw response or
+transport error. Import request reading independently has a fixed five-second
+application deadline and 8 KiB ceiling; its cleanup likewise never extends the
+deadline while best-effort cancellation remains rejection-safe.
+`application/json` is mandatory; standard parameters such as UTF-8 charset are
+accepted.
+
 ## Persistence
 
 `magicblock_devnet_audit_ledger` remains the exact private event source and

@@ -2,6 +2,57 @@
 
 Date: 2026-07-31
 
+## 2026-08-01 finalized proof import implementation
+
+This change adds a default-off, production-authenticated, closed and bounded
+import route for an already-finalized MagicBlock/Solana audit proof. It
+rematerializes canonical details, digest, and Memo before IO; pins the signer
+from the required public-key environment value; requires finalized agreement
+from literal Solana devnet RPC and Magic Router; persists under existing audit,
+observation, and signature uniqueness constraints; and reloads every identity
+before success. Store initialization restores the historical idempotent legacy
+table ALTERs, so no standalone operator-run migration is required.
+
+Regression coverage includes missing/wrong authentication, disabled and
+misconfigured composition, malformed/open/oversized requests, cluster and
+proof-binding mismatches, success, exact replay, all three identity conflicts,
+lost-write-acknowledgement retry, endpoint unavailability/unconfirmed/failure/
+disagreement, durable PGlite GET by both keys across fresh store/ingress
+instances, sanitized diagnostics, and static plus runtime proof of no
+`register` or `sendTransaction` use. The import composition reads no signer
+secret and no production mutation was performed.
+
+Current verification in this checkout:
+
+- focused proof/import/on-chain/route tests: 5 files, 45 tests passed;
+- `npm run preflight:magicblock-devnet`: dependency closure plus 12 files,
+  256 tests passed;
+- `npm test`: 64 files passed / 2 skipped, 787 tests passed / 22 skipped;
+- `npm run lint`, `npm run build`, and `npm run build:mcp`: passed;
+- task/package JSON parsing, dependency-closure script syntax, lockfile digest,
+  and `git diff --check`: passed;
+- `npx tsc --noEmit --pretty false`: blocked only by the pre-existing unrelated
+  missing `../mcp/mcpProxyContracts` import in
+  `back/services/__tests__/mcpProxyDispatcher.test.ts`.
+
+No live endpoint, signer credential, Solana transaction, deployment, feature
+flag, or production database was accessed or mutated.
+
+The independent-review remediation specifically proves transitive capability
+isolation for import and read GET roots; per-endpoint unavailable, unconfirmed,
+execution-failed, signature/signer/Memo/digest/shape/slot mismatches; stalled
+headers and bodies; declared and chunked oversize; redirects; malformed JSON;
+request-body cancellation; absolute deadline settlement when both reading and
+cancellation stall; media-type rejection before IO; legacy-table upgrade; and
+fresh PGlite GET plus lost-write-acknowledgement retry. Tests use injected
+transports only.
+
+An intermediate concurrent run reported only the existing observer E2E timing
+race: delivery had not completed before its assertion. The file passed
+immediately in isolation; the unchanged preflight rerun passed all 256 tests,
+and the final clean `npm test` rerun passed all 787 non-live tests. No timeout
+threshold or unrelated test was changed.
+
 ## 2026-07-31 self-contained recovery verification
 
 This correction adds deterministic coverage for the exact signature-only v1

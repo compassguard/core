@@ -44,12 +44,33 @@ const boundarySources = [
 	["request scope", "back/services/magicBlockDevnetRequestScope"],
 	["literal HTTPS transport", "back/services/magicBlockDevnetHttpsTransport"],
 ];
-const requiredIngressSources = [
+const baseRequiredIngressSources = [
 	["audit ingress", "hosted/magicblock/magicBlockAuditIngress"],
 	["audit ingress composition", "hosted/magicblock/magicBlockAuditIngressFromEnv"],
 	["observation store", "hosted/magicblock/magicBlockObservationStorePg"],
 	["append-only ledger", "hosted/magicblock/magicBlockAuditLedgerPg"],
 	["audit ingress entrypoint", "app/api/magicblock-devnet/audit/route"],
+];
+const proofImportIngressSources = [
+	["audit proof verification contracts", "back/services/magicBlockAuditProofVerificationContracts"],
+	["audit proof verification", "back/services/magicBlockAuditProofVerification"],
+	["audit commitment materializer", "back/services/magicBlockAuditCommitment"],
+	["audit proof import contracts", "back/services/magicBlockAuditProofImportContracts"],
+	["audit proof record store", "hosted/magicblock/magicBlockAuditProofRecordStorePg"],
+	["audit ingress authorization", "hosted/magicblock/magicBlockIngressAuth"],
+	["audit proof import ingress", "hosted/magicblock/magicBlockAuditProofImportIngress"],
+	["audit proof import composition", "hosted/magicblock/magicBlockAuditProofImportIngressFromEnv"],
+	["audit proof import entrypoint", "app/api/magicblock-devnet/audit/import/route"],
+	["audit read ingress", "hosted/magicblock/magicBlockAuditReadIngress"],
+	["audit read ingress composition", "hosted/magicblock/magicBlockAuditReadIngressFromEnv"],
+	["audit read GET entrypoint", "app/api/magicblock-devnet/audit/routeGet"],
+	["audit POST entrypoint", "app/api/magicblock-devnet/audit/routePost"],
+];
+const requiredIngressSources = [
+	...baseRequiredIngressSources,
+	...(proofImportIngressSources.some(([, source]) => resolveFile(resolve(root, source)))
+		? proofImportIngressSources
+		: []),
 ];
 const requiredObserverSources = [
 	["MCP observer contracts", "back/services/mcp/observer/magicBlockMcpObserverContracts"],
@@ -679,7 +700,7 @@ if (missingIngressRoles.length > 0) {
 	throw new Error(`incomplete MagicBlock audit ingress topology: missing ${missingIngressRoles.join(", ")}`);
 }
 const allowedIngressRoots = allowedIngressBoundaries
-	.filter(({ role }) => role === "audit ingress entrypoint")
+	.filter(({ role }) => role === "audit ingress entrypoint" || role === "audit proof import entrypoint")
 	.map(({ file }) => file);
 const allowedObserverBoundaries = requiredObserverSources.map(([role, source]) => ({
 	role,
@@ -855,6 +876,37 @@ function reaches(from, target) {
 	return false;
 }
 
+const isolatedReadRoots = allowedIngressBoundaries
+	.filter(({ role }) => role === "audit proof import entrypoint" || role === "audit read GET entrypoint")
+	.map(({ file }) => file);
+const isolatedReadClosure = closure(isolatedReadRoots);
+for (const file of isolatedReadClosure) {
+	const relativeFile = relative(root, file).replaceAll("\\", "/");
+	const parsed = analysis.get(file);
+	const forbiddenSpecifier = (parsed?.specifiers ?? []).find((specifier) =>
+		["node:fs", "node:path", "@solana/web3.js"].includes(specifier),
+	);
+	if (forbiddenSpecifier) throw new Error(`read-only MagicBlock proof root imports forbidden capability ${forbiddenSpecifier} from ${relativeFile}`);
+	const source = readFileSync(file, "utf8");
+	if (/sendTransaction|createMagicBlockAuditSignerFromEnv|createMagicBlockOnchainAuditSubmitter|\bKeypair\b|secretKey|\.register\s*\(/.test(source)) {
+		throw new Error(`read-only MagicBlock proof closure contains secret/sign/submit capability in ${relativeFile}`);
+	}
+}
+for (const forbiddenSource of [
+	"back/services/magicBlockOnchainAudit",
+	"hosted/magicblock/magicBlockAuditIngress",
+	"hosted/magicblock/magicBlockAuditIngressFromEnv",
+	"hosted/magicblock/magicBlockAuditRecordStorePg",
+]) {
+	const forbiddenFile = resolveFile(resolve(root, forbiddenSource));
+	if (!forbiddenFile) continue;
+	for (const isolatedRoot of isolatedReadRoots) {
+		if (reaches(isolatedRoot, forbiddenFile)) {
+			throw new Error(`read-only MagicBlock proof root ${relative(root, isolatedRoot)} reaches secret/sign/submit capability ${relative(root, forbiddenFile)}`);
+		}
+	}
+}
+
 for (const boundary of allowedObserverBoundaries) {
 	const allowedSources = allowedObserverDirectEdgeSources.get(boundary.role);
 	const allowedExternalSources = allowedObserverExternalSpecifiers.get(
@@ -1013,8 +1065,12 @@ for (const boundary of allowedObserverBoundaries) {
 	}
 }
 
+const isolatedReadBoundaryFiles = new Set(allowedIngressBoundaries
+	.filter(({ role }) => role.startsWith("audit proof") || role.startsWith("audit read") || role === "audit commitment materializer" || role === "audit ingress authorization")
+	.map(({ file }) => file));
 const protectedBoundaries = files.flatMap((file) => {
 	if (preflightFiles.includes(file)) return [];
+	if (isolatedReadBoundaryFiles.has(file)) return [];
 	const path = relative(root, file).replaceAll("\\", "/");
 	return protectedBoundaryMatchers.filter(([, matches]) => matches(path)).map(([role]) => ({ file, role }));
 });

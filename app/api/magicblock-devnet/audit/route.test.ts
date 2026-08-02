@@ -6,6 +6,12 @@ afterEach(() => {
 });
 
 describe("POST /api/magicblock-devnet/audit", () => {
+	it("keeps GET composition explicitly read-only", async () => {
+		const source = await import("node:fs/promises").then((fs) => fs.readFile(new URL("../../../../hosted/magicblock/magicBlockAuditReadIngressFromEnv.ts", import.meta.url), "utf8"));
+		const route = await import("node:fs/promises").then((fs) => fs.readFile(new URL("./routeGet.ts", import.meta.url), "utf8"));
+		expect(route).toContain("createMagicBlockAuditReadIngressFromEnv()");
+		expect(source).not.toMatch(/magicBlockOnchainAudit|SignerFromEnv|Submitter|sendTransaction|register\(/);
+	});
 	it("is absent by default and does not require database or network configuration", async () => {
 		vi.stubEnv("COMPASS_MAGICBLOCK_AUDIT_INGRESS_ENABLED", "false");
 		vi.stubEnv("COMPASS_MAGICBLOCK_AUDIT_INGRESS_API_KEY", "");

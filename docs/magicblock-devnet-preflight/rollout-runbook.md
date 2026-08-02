@@ -114,6 +114,31 @@ this checklist:
 
 ## Staged rollout
 
+### Finalized proof import rollout (before any enablement consideration)
+
+1. Deploy the schema-compatible code with ingress and MCP observer flags off.
+   On first store use, code applies idempotent compatibility ALTERs for legacy
+   valid audit tables (`observation_id`, its partial unique index, and
+   `prepared_transaction`). No standalone operator-run migration is required;
+   keep flags off while this schema initialization is verified.
+2. Configure only the required public/read-only/auth/database values:
+   `COMPASS_MAGICBLOCK_DEVNET_AUDIT_SIGNER_PUBLIC_KEY`,
+   `COMPASS_MAGICBLOCK_AUDIT_INGRESS_API_KEY`, and
+   `COMPASS_VERDICT_DB_URL`. Do not configure or expose a signer secret for the
+   import operation.
+3. Confirm the import route remains `404` while disabled, then enable only the
+   existing ingress flag for one authenticated, disabled-first import proof.
+   Any non-finalized or dual-endpoint disagreement stops the rollout and writes
+   nothing; never resubmit the historical signature.
+4. In fresh authenticated requests, GET the durable record once by audit ID
+   and once by signature and require exact canonical/signature binding.
+5. Disable the ingress flag again if this was an isolated recovery. Only after
+   separate review may operators consider ingress or MCP observer enablement;
+   successful import is not authorization for either.
+
+No production mutation, deployment, flag enablement, live RPC, or Solana
+transaction is performed by the implementation task itself.
+
 1. Keep both `COMPASS_MAGICBLOCK_AUDIT_INGRESS_ENABLED` and
    `COMPASS_MAGICBLOCK_MCP_OBSERVER_ENABLED` disabled while verifying the
    reviewed deployment, signer pin, balance, and durable state.
