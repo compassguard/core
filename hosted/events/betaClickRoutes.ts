@@ -1,16 +1,18 @@
 import { Hono } from "hono";
 
 import type { SqlExecutor } from "../verdict/verdictStorePg";
+import { BETA_CLICK_SOURCES } from "./betaClickContracts";
 
 const ALLOWED_ORIGINS = new Set([
 	"https://compassguard.xyz",
 	"https://www.compassguard.xyz",
 ]);
-const SOURCES = new Set(["nav", "hero", "closing", "unknown"]);
+const SOURCES = new Set<string>(BETA_CLICK_SOURCES);
+const SQL_SOURCES = BETA_CLICK_SOURCES.map((source) => `'${source}'`).join(", ");
 
 const CREATE_TABLE = `CREATE TABLE IF NOT EXISTS beta_click_events (
 	id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-	source text NOT NULL CHECK (source IN ('nav', 'hero', 'closing', 'unknown')),
+	source text NOT NULL CHECK (source IN (${SQL_SOURCES})),
 	clicked_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`;
 

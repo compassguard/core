@@ -5,9 +5,32 @@ import type { IntendedEffect } from "@shared/verdictContracts";
 import { createInMemoryCredentialStore } from "../credential/credentialStore";
 import { createInMemoryVerdictStore } from "../verdict/verdictStore";
 import type { DecidedInput, VerdictStore } from "../verdict/verdictStoreTypes";
-import { createMetricsService } from "./metricsService";
+import type { BetaClickMetricsReader } from "./metricsContracts";
+import {
+	createMetricsService as createBaseMetricsService,
+	type MetricsServiceDependencies,
+} from "./metricsService";
 
 const FIXED_NOW = "2026-07-26T12:00:00.000Z";
+
+const EMPTY_BETA_CLICK_METRICS: BetaClickMetricsReader = {
+	readAllTime: async () => ({
+		period: "all_time",
+		total: 0,
+		bySource: { nav: 0, hero: 0, closing: 0, unknown: 0 },
+	}),
+};
+
+function createMetricsService(
+	deps: Omit<MetricsServiceDependencies, "betaClickMetricsReader"> & {
+		betaClickMetricsReader?: BetaClickMetricsReader;
+	},
+) {
+	return createBaseMetricsService({
+		...deps,
+		betaClickMetricsReader: deps.betaClickMetricsReader ?? EMPTY_BETA_CLICK_METRICS,
+	});
+}
 
 function transferEffect(amountUsd?: number): IntendedEffect {
 	return amountUsd === undefined
@@ -61,6 +84,17 @@ describe("createMetricsService", () => {
 		expect(events).toEqual(["verdicts-start", "verdicts-end", "credentials"]);
 	});
 
+	it("propagates beta click read failures to the dashboard server", async () => {
+		const failure = new Error("beta click query failed");
+		const service = createMetricsService({
+			verdictStore: createInMemoryVerdictStore(),
+			credentialStore: createInMemoryCredentialStore(),
+			betaClickMetricsReader: { readAllTime: async () => Promise.reject(failure) },
+		});
+
+		await expect(service.computeMetrics()).rejects.toBe(failure);
+	});
+
 	it("empty stores → zeros, nulls, empty arrays", async () => {
 		const service = createMetricsService({
 			verdictStore: createInMemoryVerdictStore(),
@@ -71,6 +105,11 @@ describe("createMetricsService", () => {
 		const metrics = await service.computeMetrics();
 
 		expect(metrics.generatedAt).toBe(FIXED_NOW);
+		expect(metrics.betaClicks).toEqual({
+			period: "all_time",
+			total: 0,
+			bySource: { nav: 0, hero: 0, closing: 0, unknown: 0 },
+		});
 		expect(metrics.onboarding).toEqual({
 			users: 0,
 			activated: 0,

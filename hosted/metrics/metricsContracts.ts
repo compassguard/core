@@ -1,9 +1,33 @@
 // Metrics response contract — frozen in docs/plans/2026-07-26-usage-metrics.md. Served by
 // the local dashboard launcher (scripts/metrics-dashboard.ts), NOT by the hosted API: it
 // carries every user's email, so it never crosses the internet (2026-07-26-metrics-db-direct.md).
-// Two read-only operator metrics computed from data already persisted (credentials +
-// verdicts): onboarding time (signup → first guarded action / first confirmed tx) and
-// funds secured (USD screened by the firewall, by day and total).
+// Read-only operator metrics computed from data already persisted (credentials, verdicts,
+// and beta click events): onboarding time, funds secured, and aggregate beta-page clicks.
+
+import type { BetaClickSource } from "../events/betaClickContracts";
+
+export type BetaClickMetrics = {
+	/** Fixed semantic scope: every persisted click event, with no date window. */
+	period: "all_time";
+	/** Count of persisted click events. This is never a unique-person count. */
+	total: number;
+	bySource: Record<BetaClickSource, number>;
+};
+
+export type BetaClickMetricsReader = {
+	readAllTime(): Promise<BetaClickMetrics>;
+};
+
+export type BetaClickAggregateRow = {
+	source: unknown;
+	clickCount: unknown;
+};
+
+/** Domain query seam: callers select operations, never SQL text or identifiers. */
+export type BetaClickMetricsQuery = {
+	tableExists(): Promise<boolean>;
+	aggregateAllTime(): Promise<readonly BetaClickAggregateRow[]>;
+};
 
 export type OnboardingPerUser = {
 	email: string;
@@ -37,6 +61,7 @@ export type FundsBucket = {
 
 export type MetricsResponse = {
 	generatedAt: string; // isoNow at compute time
+	betaClicks: BetaClickMetrics;
 	onboarding: {
 		users: number; // distinct signup emails
 		activated: number; // users with a firstVerifyAt
