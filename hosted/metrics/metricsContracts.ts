@@ -18,6 +18,17 @@ export type BetaClickMetricsReader = {
 	readAllTime(): Promise<BetaClickMetrics>;
 };
 
+export type BetaClickAggregateRow = {
+	source: unknown;
+	clickCount: unknown;
+};
+
+/** Domain query seam: callers select operations, never SQL text or identifiers. */
+export type BetaClickMetricsQuery = {
+	tableExists(): Promise<boolean>;
+	aggregateAllTime(): Promise<readonly BetaClickAggregateRow[]>;
+};
+
 export type OnboardingPerUser = {
 	email: string;
 	signupAt: string;

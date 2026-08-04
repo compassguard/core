@@ -21,6 +21,7 @@ import { fileURLToPath } from "node:url";
 import { createSqlExecutorFromEnv } from "../hosted/db/sqlExecutorFromEnv";
 import { createPgCredentialStore } from "../hosted/credential/credentialStorePg";
 import { createBetaClickMetricsReader } from "../hosted/metrics/betaClickMetrics";
+import { createBetaClickMetricsQueryFromEnv } from "../hosted/metrics/betaClickMetricsPg";
 import { createPgVerdictStore } from "../hosted/verdict/verdictStorePg";
 import { createMetricsService } from "../hosted/metrics/metricsService";
 
@@ -33,7 +34,8 @@ const HTML_PATH =
 // — zeros indistinguishable from "no activity yet". That is the one failure mode here
 // that looks like success, so it must never be reachable.
 const sql = createSqlExecutorFromEnv();
-if (!sql) {
+const betaClickMetricsQuery = createBetaClickMetricsQueryFromEnv();
+if (!sql || !betaClickMetricsQuery) {
 	console.error(
 		"metrics dashboard: COMPASS_VERDICT_DB_URL is required (Supabase transaction-pooler URL, port 6543).",
 	);
@@ -45,7 +47,7 @@ if (!sql) {
 const metrics = createMetricsService({
 	verdictStore: createPgVerdictStore({ sql }),
 	credentialStore: createPgCredentialStore({ sql }),
-	betaClickMetricsReader: createBetaClickMetricsReader(sql),
+	betaClickMetricsReader: createBetaClickMetricsReader(betaClickMetricsQuery),
 });
 
 const server = createServer(async (request, response) => {

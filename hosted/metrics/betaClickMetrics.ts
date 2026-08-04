@@ -1,10 +1,10 @@
-import type { SqlExecutor } from "../verdict/verdictStorePg";
 import {
 	BETA_CLICK_SOURCES,
 	type BetaClickSource,
 } from "../events/betaClickContracts";
 import {
 	type BetaClickMetrics,
+	type BetaClickMetricsQuery,
 	type BetaClickMetricsReader,
 } from "./metricsContracts";
 
@@ -37,24 +37,12 @@ function parseCount(value: unknown): number {
  * Reads aggregate-only, all-time click counts directly from the persisted event table.
  * Absence of the table is an empty dataset; query failures and corrupt aggregate rows fail.
  */
-export function createBetaClickMetricsReader(sql: SqlExecutor): BetaClickMetricsReader {
+export function createBetaClickMetricsReader(query: BetaClickMetricsQuery): BetaClickMetricsReader {
 	return {
 		async readAllTime(): Promise<BetaClickMetrics> {
-			const probe = await sql(`SELECT to_regclass('beta_click_events') AS table_name`, []);
-			if (probe.length !== 1 || !("table_name" in probe[0])) {
-				throw new Error("Invalid beta click table probe result.");
-			}
-			if (probe[0].table_name === null) return emptyMetrics();
-			if (typeof probe[0].table_name !== "string") {
-				throw new Error("Invalid beta click table probe result.");
-			}
+			if (!(await query.tableExists())) return emptyMetrics();
 
-			const rows = await sql(
-				`SELECT source, COUNT(*)::text AS click_count
-				 FROM beta_click_events
-				 GROUP BY source`,
-				[],
-			);
+			const rows = await query.aggregateAllTime();
 			const metrics = emptyMetrics();
 			const seen = new Set<BetaClickSource>();
 			for (const row of rows) {
@@ -64,7 +52,7 @@ export function createBetaClickMetricsReader(sql: SqlExecutor): BetaClickMetrics
 				const source = row.source as BetaClickSource;
 				if (seen.has(source)) throw new Error("Duplicate beta click aggregate source.");
 				seen.add(source);
-				const count = parseCount(row.click_count);
+				const count = parseCount(row.clickCount);
 				metrics.bySource[source] = count;
 				metrics.total += count;
 				if (!Number.isSafeInteger(metrics.total)) {
