@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 
 import { createSqlExecutorFromEnv } from "../hosted/db/sqlExecutorFromEnv";
 import { createPgCredentialStore } from "../hosted/credential/credentialStorePg";
+import { createBetaClickMetricsReader } from "../hosted/metrics/betaClickMetrics";
 import { createPgVerdictStore } from "../hosted/verdict/verdictStorePg";
 import { createMetricsService } from "../hosted/metrics/metricsService";
 
@@ -44,6 +45,7 @@ if (!sql) {
 const metrics = createMetricsService({
 	verdictStore: createPgVerdictStore({ sql }),
 	credentialStore: createPgCredentialStore({ sql }),
+	betaClickMetricsReader: createBetaClickMetricsReader(sql),
 });
 
 const server = createServer(async (request, response) => {
