@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { createInMemoryAuditStore } from "./audit/auditStore";
 import { createAuditRoutes } from "./audit/auditRoutes";
 import { createEvaluationService } from "./evaluate/evaluationService";
@@ -40,6 +41,15 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 			"createHostedApp: inject BOTH verifications and confirmations, or neither — they must share a single verdict store.",
 		);
 	}
+	// #15 (consistency): injected verify services hold a verdict store this factory cannot see,
+	// so any later reader built here would silently get a DIFFERENT fallback store — reporting
+	// empty state rather than failing loudly. Require the store explicitly whenever the
+	// services are injected, so what this factory resolves IS what /verify writes to.
+	if (deps.verifications !== undefined && deps.verdictStore === undefined) {
+		throw new Error(
+			"createHostedApp: inject verdictStore alongside verifications/confirmations — readers built here must share the store /verify writes to.",
+		);
+	}
 	// Build the fallback verdict store lazily and at most once — only if a verify service is not
 	// injected, and only after the guard above so a rejected partial injection has no side effects
 	// (no stray pooler client, no logging). Both fallback services share the SAME instance (#15).
@@ -73,6 +83,15 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 	const credentialStore = deps.credentialStore ?? createCredentialStoreFromEnv();
 
 	app.onError(hostedErrorHandler);
+	app.use(
+		"*",
+		cors({
+			origin: ["https://compassguard.xyz", "https://www.compassguard.xyz"],
+			allowMethods: ["GET", "POST"],
+			allowHeaders: ["Authorization", "Content-Type"],
+			maxAge: 86400,
+		}),
+	);
 	app.route("/health", createHealthRoutes(deps.health));
 	// POST /signup is public (outside /v1, like /health): a caller mints an email credential
 	// here, then presents it as a Bearer token to /v1/*.
@@ -83,6 +102,11 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 	app.route("/v1", createMandateRoutes({ mandateStore }));
 	app.route("/v1", createAuditRoutes(auditStore));
 	app.route("/v1", createPolicyRoutes(policyService));
+	// NOTE: metrics are deliberately NOT served here. The dashboard computes them locally
+	// from the DB (scripts/metrics-dashboard.ts) — see
+	// docs/plans/2026-07-26-metrics-db-direct.md. Re-adding an HTTP route means re-adding an
+	// operator-only auth gate: the /v1 middleware admits any per-email credential, and
+	// /signup mints those publicly, so /v1 auth alone would expose every user's email.
 
 	return app;
 }

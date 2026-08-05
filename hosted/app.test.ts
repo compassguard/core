@@ -58,6 +58,43 @@ function createDependencies(
 }
 
 describe("createHostedApp", () => {
+	it("allows the public site to preflight authenticated API requests", async () => {
+		const app = createHostedApp(createDependencies());
+
+		const response = await app.request("/v1/verify", {
+			method: "OPTIONS",
+			headers: {
+				Origin: "https://compassguard.xyz",
+				"Access-Control-Request-Method": "POST",
+				"Access-Control-Request-Headers": "authorization, content-type",
+			},
+		});
+
+		expect(response.status).toBe(204);
+		expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+			"https://compassguard.xyz",
+		);
+		expect(response.headers.get("Access-Control-Allow-Methods")).toBe("GET,POST");
+		expect(response.headers.get("Access-Control-Allow-Headers")).toBe(
+			"Authorization,Content-Type",
+		);
+		expect(response.headers.get("Access-Control-Max-Age")).toBe("86400");
+	});
+
+	it("does not allow untrusted browser origins", async () => {
+		const app = createHostedApp(createDependencies());
+
+		const response = await app.request("/v1/verify", {
+			method: "OPTIONS",
+			headers: {
+				Origin: "https://untrusted.example",
+				"Access-Control-Request-Method": "POST",
+			},
+		});
+
+		expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+	});
+
 	it("returns hosted health status without auth", async () => {
 		const app = createHostedApp(createDependencies());
 
@@ -314,6 +351,21 @@ describe("createHostedApp", () => {
 		} as HostedAppDependencies;
 
 		expect(() => createHostedApp(partial)).toThrow(/share a single verdict store/);
+	});
+
+	// #15 metrics extension: injected verify services hold a store this factory cannot see, so
+	// metrics would silently get a DIFFERENT fallback store and report zeros. Fail loudly.
+	it("throws when verify services are injected without the verdict store metrics must read", () => {
+		const withoutStore = {
+			...createDependencies(),
+			verdictStore: undefined,
+			verifications: { verifyAction: vi.fn() },
+			confirmations: { confirmAction: vi.fn() },
+		} as unknown as HostedAppDependencies;
+
+		expect(() => createHostedApp(withoutStore)).toThrow(
+			/inject verdictStore alongside verifications/,
+		);
 	});
 
 	it("consults the mandate judge on /v1/verify when a mandate + statedPurpose are present", async () => {

@@ -12,7 +12,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ram4-dev/solana_hackathon.git"
+    "url": "git+https://github.com/compassguard/core.git"
   },
   "keywords": [
     "mcp",
@@ -40,6 +40,7 @@
     "test:back": "vitest --config vitest.back.config.ts --run",
     "test:watch": "vitest --config vitest.back.config.ts",
     "hosted:dev": "bun hosted/server.ts",
+    "metrics": "tsx scripts/metrics-dashboard.ts",
     "mcp:dev": "tsx back/services/mcp/server/mcpServer.ts",
     "mcp:install:opencode": "node scripts/install-opencode-mcp.mjs",
     "test:e2e": "node scripts/e2e-pipeline-test.mjs",
@@ -54,6 +55,7 @@
     "@orca-so/common-sdk": "^0.7.0",
     "@orca-so/whirlpools-sdk": "^0.20.0",
     "@solana/web3.js": "^1.98.4",
+    "@vercel/analytics": "^2.0.1",
     "bs58": "^6.0.0",
     "hono": "^4.12.25",
     "next": "^15.5.16",

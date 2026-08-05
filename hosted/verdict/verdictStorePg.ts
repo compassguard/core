@@ -18,6 +18,17 @@ import type {
  * `postgres` driver's .unsafe() returns them as raw JSON strings (verified live against the
  * Supabase pooler), so rowToRecord normalizes each jsonb column via parseJsonb. This module
  * imports NO driver package: prod injects a Supabase-pooler executor, tests a PGlite one.
+ *
+ * WRITE SIDE: pass the OBJECT/ARRAY to a `$n::jsonb` param, never JSON.stringify(it). The
+ * asymmetry above has a mirror image that is far more dangerous, because it fails silently.
+ * Probed live against both drivers (2026-07-27): porsager sends a stringified param as TEXT,
+ * so `::jsonb` parses it into a jsonb *string* — `jsonb_typeof` returns "string" and every
+ * `col->>'key'` predicate yields NULL rather than erroring. PGlite parses the same string
+ * into an object, so tests over the PGlite executor cannot see the difference. parseJsonb
+ * unwraps the extra layer on read, which is exactly why the corruption stayed invisible: 66
+ * live rows were written that way and every read looked correct while all server-side JSON
+ * access was quietly dead. Raw values bind correctly on BOTH drivers (objects → jsonb object,
+ * arrays → jsonb array), so there is no backing-specific branch to maintain.
  */
 export type SqlExecutor = (
 	text: string,
@@ -153,9 +164,9 @@ export function createPgVerdictStore(
 				[
 					input.correlationId,
 					input.decision,
-					JSON.stringify(input.reasons),
+					input.reasons,
 					input.humanExplanation,
-					JSON.stringify(input.intendedEffect),
+					input.intendedEffect,
 					input.decidedAt,
 					input.userId ?? null,
 					input.sessionId ?? null,
@@ -163,19 +174,19 @@ export function createPgVerdictStore(
 					input.intentSource ?? null,
 					input.judgeRationale ?? null,
 					input.toolName ?? null,
-					input.policyContext !== undefined ? JSON.stringify(input.policyContext) : null,
+					input.policyContext ?? null,
 					input.statedPurpose ?? null,
-					input.mandateSnapshot !== undefined ? JSON.stringify(input.mandateSnapshot) : null,
+					input.mandateSnapshot ?? null,
 					input.policyId ?? null,
 					input.policyVersion ?? null,
-					input.policySnapshot !== undefined ? JSON.stringify(input.policySnapshot) : null,
-					input.evaluatedRules !== undefined ? JSON.stringify(input.evaluatedRules) : null,
+					input.policySnapshot ?? null,
+					input.evaluatedRules ?? null,
 					input.deterministicDecision ?? null,
 					input.judgeModel ?? null,
 					input.judgeRawDecision ?? null,
 					input.judgeClamped ?? null,
 					input.judgeConfidence ?? null,
-					input.judgeReasonCodes !== undefined ? JSON.stringify(input.judgeReasonCodes) : null,
+					input.judgeReasonCodes ?? null,
 				],
 			);
 		},
@@ -208,7 +219,7 @@ export function createPgVerdictStore(
 				[
 					id,
 					outcome === "match" ? "CONFIRMED_MATCH" : "CONFIRMED_MISMATCH",
-					JSON.stringify(discrepancies),
+					discrepancies,
 					isoNow(),
 					txSignature ?? null,
 					outcome,

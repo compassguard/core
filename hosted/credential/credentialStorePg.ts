@@ -6,6 +6,7 @@ import {
 	type CredentialStore,
 	type CredentialStoreOptions,
 	type IssueCredentialInput,
+	type IssuedCredential,
 } from "./credentialStore";
 
 export type PgCredentialStoreDependencies = { sql: SqlExecutor } & CredentialStoreOptions;
@@ -96,6 +97,14 @@ export function createPgCredentialStore(
 				[normalizeEmail(email), isoNow()],
 			);
 			return rows.length;
+		},
+
+		async listIssued(): Promise<IssuedCredential[]> {
+			const rows = await run(`SELECT email, created_at FROM credentials`, []);
+			return rows.map((row) => ({
+				email: row.email as string,
+				createdAt: row.created_at as string,
+			}));
 		},
 	};
 }
