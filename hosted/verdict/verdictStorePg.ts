@@ -36,7 +36,18 @@ export type SqlExecutor = (
 	params: unknown[],
 ) => Promise<Record<string, unknown>[]>;
 
-export type PgVerdictStoreDependencies = { sql: SqlExecutor } & VerdictStoreOptions;
+export type PgVerdictStoreDependencies = {
+	sql: SqlExecutor;
+	/**
+	 * Skip the idempotent schema-ensure (CREATE TABLE + ~23 ADD COLUMN IF NOT EXISTS) that
+	 * normally precedes every operation. For genuinely READ-ONLY consumers — the reconstruction
+	 * CLI, any least-privilege credential, any tool that must not touch a production schema.
+	 * Default false: the service path provisions on demand, which is what makes a cold deploy
+	 * work. A store built with this set will fail on a table that does not exist yet, which is
+	 * the correct outcome for a reader: reading is not the moment to migrate.
+	 */
+	skipSchemaEnsure?: boolean;
+} & VerdictStoreOptions;
 
 // confirm_outcome preserves execution_failed vs mismatch (both are CONFIRMED_MISMATCH status).
 // claimed_at is the RETIRED lease column, kept nullable-and-unwritten by new code ONLY for
@@ -152,7 +163,7 @@ export function createPgVerdictStore(
 	}
 
 	async function run(text: string, params: unknown[]): Promise<Record<string, unknown>[]> {
-		await ensureSchema();
+		if (deps.skipSchemaEnsure !== true) await ensureSchema();
 		return sql(text, params);
 	}
 

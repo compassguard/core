@@ -14,8 +14,19 @@
 //   COMPASS_VERDICT_DB_URL='<supabase pooler url>' npm run replay -- <correlation-id>
 //   COMPASS_VERDICT_DB_URL='…' npm run replay -- <correlation-id> --json
 //
-// The DB URL stays in this process. Exit codes: 0 reconstructed, 3 refused (not
-// reconstructable), 4 not found, 1 usage or internal error.
+// The DB URL stays in this process.
+//
+// Exit codes — a script using this as an audit gate depends on them being distinct:
+//   0  reconstructed AND every compared field matches the stored verdict
+//   5  reconstructed but DIVERGED from what was stored (the interesting failure)
+//   3  refused: the row predates the snapshot fields, so it cannot be re-derived
+//   4  no such verdict
+//   1  usage or internal error
+//
+// Opens the store with skipSchemaEnsure: a read tool must never run DDL. Without it,
+// getByCorrelationId() would trigger CREATE TABLE + ~23 ADD COLUMN IF NOT EXISTS before the
+// SELECT — which fails under a least-privilege read-only credential, and would migrate a
+// production schema from a command that presents itself as read-only.
 import { createSqlExecutorFromEnv } from "../hosted/db/sqlExecutorFromEnv";
 import { createPgVerdictStore } from "../hosted/verdict/verdictStorePg";
 import { replayVerdict } from "../hosted/verdict/verdictReplay";
@@ -38,22 +49,92 @@ if (!sql) {
 	fail(1, "COMPASS_VERDICT_DB_URL is not set — point it at the Supabase pooler URL.");
 }
 
-const store = createPgVerdictStore({ sql });
-const record = await store.getByCorrelationId(correlationId);
+const store = createPgVerdictStore({ sql, skipSchemaEnsure: true });
+
+// Because this tool never provisions, an unmigrated database surfaces here as a plain
+// "relation does not exist". Report that as the actionable fact it is rather than a stack
+// trace: the fix is to deploy (which migrates), not to run this differently.
+let record;
+try {
+	record = await store.getByCorrelationId(correlationId);
+} catch (error) {
+	const message = error instanceof Error ? error.message : String(error);
+	if (/relation .* does not exist/i.test(message)) {
+		fail(
+			1,
+			"the verdicts table does not exist in this database/schema. This tool never runs " +
+				"migrations by design — deploy the service once to provision the schema, then retry.",
+		);
+	}
+	fail(1, `database read failed: ${message}`);
+}
 if (!record) {
 	fail(4, `no verdict found for correlation id ${correlationId}`);
 }
 
 const result = replayVerdict(record);
 
+/**
+ * Compare the WHOLE reproduced surface, not just the two decisions. `ok: true` means only that
+ * the row carried enough fields to attempt a replay — it is not a verdict on whether the replay
+ * MATCHED. An audit gate reading the exit status needs those to be different answers, and the
+ * fields below are exactly what the reconstruction proof (verdictReplay.test.ts) asserts.
+ */
+function diffFields(): string[] {
+	if (!result.ok) return [];
+	const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+	const mismatched: string[] = [];
+	if (result.deterministicDecision !== record.deterministicDecision) mismatched.push("deterministicDecision");
+	if (result.decision !== record.decision) mismatched.push("decision");
+	if (!same(result.reasons, record.reasons)) mismatched.push("reasons");
+	if (!same(result.evaluatedRules, record.evaluatedRules)) mismatched.push("evaluatedRules");
+	if (result.humanExplanation !== record.humanExplanation) mismatched.push("humanExplanation");
+	if (result.judgeClamped !== record.judgeClamped) mismatched.push("judgeClamped");
+	return mismatched;
+}
+
+const divergences = diffFields();
+// 0 match · 5 diverged · 3 refused. Distinct because they mean different things to a caller.
+const exitCode = !result.ok ? 3 : divergences.length > 0 ? 5 : 0;
+
+/**
+ * process.exit() can truncate an in-flight stdout write when stdout is a PIPE (`| jq`), which
+ * would silently cut a large JSON record. Flush, close the pool, then exit.
+ */
+async function finish(code: number): Promise<never> {
+	await new Promise<void>((resolve) => {
+		if (process.stdout.write("")) resolve();
+		else process.stdout.once("drain", () => resolve());
+	});
+	process.exit(code);
+}
+
 if (asJson) {
-	process.stdout.write(`${JSON.stringify({ record, replay: result }, null, 2)}\n`);
-	process.exit(result.ok ? 0 : 3);
+	process.stdout.write(
+		`${JSON.stringify({ record, replay: result, divergences, matched: exitCode === 0 }, null, 2)}\n`,
+	);
+	await finish(exitCode);
+}
+
+/**
+ * Stored verdict text is CALLER-SUPPLIED (statedPurpose, mandate text, recipient, rationale)
+ * and its validators bound type and length, not content. Writing it raw to a terminal lets an
+ * escape sequence clear the screen, move the cursor, or spoof this tool's own output — an
+ * "✓ MATCHES" line an attacker wrote. Render C0/C1 controls visibly instead of executing them.
+ * --json needs no equivalent: JSON.stringify escapes control characters.
+ */
+function escapeForTerminal(value: string): string {
+	// eslint-disable-next-line no-control-regex
+	return value.replace(/[\u0000-\u001f\u007f-\u009f]/g, (ch) => {
+		if (ch === "\n") return "\\n";
+		if (ch === "\t") return "\\t";
+		return `\\x${ch.charCodeAt(0).toString(16).padStart(2, "0")}`;
+	});
 }
 
 const line = (label: string, value: unknown) => {
 	if (value === undefined || value === null) return;
-	process.stdout.write(`  ${label.padEnd(22)} ${String(value)}\n`);
+	process.stdout.write(`  ${label.padEnd(22)} ${escapeForTerminal(String(value))}\n`);
 };
 
 process.stdout.write(`\nVERDICT ${record.correlationId}\n`);
@@ -98,21 +179,28 @@ if (!result.ok) {
 	// A refusal is a VALUE, not a crash (plan R3): rows written before the snapshot fields
 	// existed cannot be re-derived, and saying so precisely beats a stack trace.
 	process.stdout.write(`  NOT RECONSTRUCTABLE (missing ${result.missingField})\n`);
-	process.stdout.write(`  ${result.reason}\n\n`);
-	process.exit(3);
+	process.stdout.write(`  ${escapeForTerminal(result.reason)}\n\n`);
+	await finish(3);
 }
 
-const agrees =
-	result.deterministicDecision === record.deterministicDecision &&
-	result.decision === record.decision;
 line("re-derived deterministic", result.deterministicDecision);
 line("re-derived final", result.decision);
 line("re-derived reasons", result.reasons.join(", "));
-process.stdout.write(
-	`  ${agrees ? "✓ MATCHES the recorded verdict" : "✗ DIVERGES from the recorded verdict"}\n`,
-);
+line("re-derived rules", result.evaluatedRules.join(", "));
+if (divergences.length === 0) {
+	process.stdout.write("  ✓ MATCHES the recorded verdict on every compared field\n");
+} else {
+	process.stdout.write(`  ✗ DIVERGES from the recorded verdict: ${divergences.join(", ")}\n`);
+	for (const field of divergences) {
+		const stored = (record as Record<string, unknown>)[field];
+		const replayed = (result as Record<string, unknown>)[field];
+		process.stdout.write(`      ${field}\n`);
+		process.stdout.write(`        stored:   ${escapeForTerminal(JSON.stringify(stored) ?? "undefined")}\n`);
+		process.stdout.write(`        replayed: ${escapeForTerminal(JSON.stringify(replayed) ?? "undefined")}\n`);
+	}
+}
 if (result.engineVersionWarning) {
 	process.stdout.write(`  ! ${result.engineVersionWarning}\n`);
 }
 process.stdout.write("\n");
-process.exit(agrees ? 0 : 3);
+await finish(exitCode);

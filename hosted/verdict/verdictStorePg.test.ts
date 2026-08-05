@@ -226,6 +226,27 @@ describe("createPgVerdictStore — durable-specific (cross-instance + schema ens
 		await expect(b.getByCorrelationId("c1")).rejects.toThrow("simulated CREATE failure");
 	});
 
+	it("skipSchemaEnsure runs NO DDL — a read tool must not migrate the database", async () => {
+		// A CLI presented as read-only must not CREATE TABLE / ADD COLUMN on the operator's
+		// database: it fails under a least-privilege credential and would migrate production
+		// from a command that claims to only read. Found by external review (gpt-5.6).
+		const db = new PGlite();
+		const statements: string[] = [];
+		const recording: SqlExecutor = async (text, params) => {
+			statements.push(text);
+			const result = await db.query(text, params);
+			return result.rows as Record<string, unknown>[];
+		};
+		// Provision separately, the way a real deployment would.
+		await createPgVerdictStore({ sql: executor(db) }).putDecided(decided("c-ro"));
+		statements.length = 0;
+
+		const reader = createPgVerdictStore({ sql: recording, skipSchemaEnsure: true });
+		expect((await reader.getByCorrelationId("c-ro"))?.correlationId).toBe("c-ro");
+		expect(statements.some((t) => /create table|alter table/i.test(t))).toBe(false);
+		expect(statements).toHaveLength(1);
+	});
+
 	it("ensure: the memo re-arms after a failed ensure so the next op retries", async () => {
 		const db = new PGlite();
 		let failing = true;

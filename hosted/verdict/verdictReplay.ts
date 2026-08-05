@@ -15,6 +15,7 @@ import {
 	mergeJudgeReasons,
 } from "../verify/humanExplanation";
 import { evaluateAction } from "../policy/policyEngine";
+import { VERIFY_JUDGE_REASON_UNAVAILABLE } from "../verify/verifyJudge";
 import { readEngineVersion } from "./engineVersion";
 import type { VerdictRecord } from "./verdictStoreTypes";
 
@@ -66,7 +67,12 @@ export type ReplayRefusal = {
 	ok: false;
 	reason: string;
 	/** The specific field whose absence blocked replay — for callers that group refusals. */
-	missingField: "toolName" | "policyContext" | "policySnapshot" | "toolClassification";
+	missingField:
+		| "toolName"
+		| "policyContext"
+		| "policySnapshot"
+		| "toolClassification"
+		| "deterministicDecision";
 };
 
 export type ReplayResult = ({ ok: true } & ReplayedVerdict) | ReplayRefusal;
@@ -123,6 +129,21 @@ export function replayVerdict(
 		policy: record.policySnapshot,
 	});
 
+	// A judged row without its pre-judge floor cannot be replayed HONESTLY: the clamp is defined
+	// relative to the deterministic decision, so clamping against undefined would silently
+	// produce a verdict the original clamp never computed and still report ok:true. The normal
+	// service writes both together; the store's type and schema nonetheless permit one without
+	// the other, so refuse explicitly rather than trusting every future writer.
+	if (record.judgeRawDecision !== undefined && record.deterministicDecision === undefined) {
+		return {
+			ok: false,
+			missingField: "deterministicDecision",
+			reason:
+				"row records a judge decision but not the pre-judge deterministic decision, so " +
+				"the strictness clamp has no floor to replay against — not replayable",
+		};
+	}
+
 	let compassDecision = evaluation.decision;
 	let reasons = [...evaluation.reasonCodes];
 	let judgeClamped: boolean | undefined;
@@ -141,6 +162,16 @@ export function replayVerdict(
 		compassDecision = clamped.decision;
 		judgeClamped = clamped.clamped;
 		reasons = mergeJudgeReasons(reasons, recordedOutput.reasonCodes);
+	} else if (record.mandateSnapshot !== undefined) {
+		// JUDGE ATTEMPTED BUT UNAVAILABLE. The service snapshots the mandate only after the
+		// judge gate is entered and a mandate is found (verifyService.ts:135-136), and sets
+		// judgeRawDecision whenever the judge actually ran (verifyJudge.ts:77,149 — rawDecision
+		// is required on ran:true). So "mandate snapshot present, no judge output" means exactly
+		// one thing: the judge was called and did not answer, and the service appended
+		// judge_unavailable to the reasons. Replay must reproduce that or it silently loses a
+		// reason the stored verdict carries — the row is fail-HONEST about a degraded check, and
+		// a reconstruction that drops it would claim a cleaner decision than actually happened.
+		reasons = [...reasons, VERIFY_JUDGE_REASON_UNAVAILABLE];
 	}
 
 	const decision = collapseToHostedDecision(compassDecision);

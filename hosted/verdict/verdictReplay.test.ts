@@ -238,6 +238,38 @@ describe("verdict replay from the stored row (reconstruction proof)", () => {
 		expect(refused.reason).toMatch(/tool-classification snapshot/);
 	});
 
+	it("reproduces a JUDGE-UNAVAILABLE verdict, including the degraded-check reason", async () => {
+		// The service appends `judge_unavailable` when the judge was called and did not answer.
+		// Nothing records that directly — it is derived from "mandate snapshot present, no judge
+		// output". Before this was handled, replay silently dropped the reason and claimed a
+		// cleaner decision than actually happened. The pre-existing deterministic-only test
+		// missed it because it passes NO statedPurpose, so the judge gate is never entered.
+		// Surfaced by comparing the FULL replayed surface rather than just the decisions
+		// (external review, gpt-5.6, 2026-08-05).
+		const { record, replayed } = await decideAndReplay({ ran: false }, "pay the landlord");
+
+		expect(record.mandateSnapshot).toBeDefined();
+		expect(record.judgeRawDecision).toBeUndefined();
+		expect(record.reasons).toContain("judge_unavailable");
+		expect(replayed.reasons).toEqual(record.reasons);
+		expect(replayed.humanExplanation).toBe(record.humanExplanation);
+		expect(replayed.decision).toBe(record.decision);
+	});
+
+	it("refuses a judged row that lacks its pre-judge deterministic floor", async () => {
+		// The clamp is defined RELATIVE to the deterministic decision. Clamping against
+		// undefined would invent a verdict the original clamp never computed — and report
+		// success. The service always writes both; the store's type permits one without the
+		// other, so replay must not trust that. Found by external review (gpt-5.6), 2026-08-05.
+		const { record } = await decideAndReplay({ ran: false }, undefined);
+		const judgedWithoutFloor: VerdictRecord = { ...record, judgeRawDecision: "ALLOW" };
+		delete judgedWithoutFloor.deterministicDecision;
+		const refused = replayVerdict(judgedWithoutFloor);
+		expect(refused.ok).toBe(false);
+		if (refused.ok) throw new Error("expected a refusal");
+		expect(refused.missingField).toBe("deterministicDecision");
+	});
+
 	it("refuses to replay a row that predates the policy snapshot", async () => {
 		const { record } = await decideAndReplay({ ran: false }, undefined);
 		const legacy: VerdictRecord = { ...record };
