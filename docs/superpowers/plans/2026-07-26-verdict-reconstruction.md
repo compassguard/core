@@ -46,6 +46,16 @@ Every gap is a value that already exists in-flight at the persistence moment
   rule ("an audit row records what the decider saw") applied to the policy; the asymmetry
   with `mandateSnapshot` was an oversight, not a decision. Replay now evaluates against
   `record.policySnapshot` and refuses rows that predate it.
+- **[D4b] Tool-classification snapshot** (`toolClassification`), added after the second
+  external review (gpt-5.5, 2026-08-05) found the SAME drift class one layer down.
+  `classifyToolCall()` derives riskClass/defaultDecision/reasonCodes from compiled-in sets
+  (`executionGateway.ts` SENSITIVE_EXECUTION_TOOLS / SIGNING_TOOLS), so re-deriving from
+  `toolName` reads TODAY's sets: dropping `transfer_sol` from the sensitive set silently
+  reclassifies every past verdict for it (SENSITIVE_EXECUTION/REQUIRE_HUMAN_APPROVAL becomes
+  BLOCKED_UNKNOWN/DENY). Policy and classification are the two compiled-in inputs to a
+  deterministic decision; both now come from the row. Lesson generalized: **any compiled-in
+  constant a decision reads must be snapshotted, not re-derived** — identity or a derivation
+  key is never enough.
 - **[D5] Judge fields only when the judge ran**: `judgeModel`, `judgeClamped`,
   `judgeConfidence`, `judgeReasonCodes` — same presence rule as the existing `judgeRationale`.
 - **[D6] Persistence-only slice.** `VerifyActionResponse` unchanged; no new read surface. The
@@ -64,6 +74,7 @@ Every gap is a value that already exists in-flight at the persistence moment
 | `policyId?: string` | `policy_id text` |
 | `policyVersion?: string` | `policy_version text` |
 | `policySnapshot?: CompassPolicy` | `policy_snapshot jsonb` (D4a) |
+| `toolClassification?: ToolClassification` | `tool_classification jsonb` (D4b) |
 | `evaluatedRules?: string[]` | `evaluated_rules jsonb` |
 | `judgeModel?: string` | `judge_model text` |
 | `judgeClamped?: boolean` | `judge_clamped boolean` |

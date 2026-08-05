@@ -1,4 +1,5 @@
 import type { HostedDecision } from "@shared/evaluationContracts";
+import type { ToolClassification } from "@shared/executionGatewayContracts";
 import type { IntentSource, Mandate } from "@shared/mandateContracts";
 import type { CompassPolicy, PolicyEvaluationContext } from "@shared/policyContracts";
 import type { Discrepancy, IntendedEffect } from "@shared/verdictContracts";
@@ -72,6 +73,7 @@ const CREATE_TABLE = `CREATE TABLE IF NOT EXISTS verdicts (
 	policy_id text,
 	policy_version text,
 	policy_snapshot jsonb,
+	tool_classification jsonb,
 	evaluated_rules jsonb,
 	deterministic_decision text,
 	judge_model text,
@@ -101,6 +103,7 @@ const MIGRATIONS = [
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS policy_id text`,
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS policy_version text`,
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS policy_snapshot jsonb`,
+	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS tool_classification jsonb`,
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS evaluated_rules jsonb`,
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS deterministic_decision text`,
 	`ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS judge_model text`,
@@ -158,8 +161,8 @@ export function createPgVerdictStore(
 			// DECIDED. Durable persistence makes replay real, so this must be a DB guarantee.
 			await run(
 				`INSERT INTO verdicts
-					(correlation_id, status, decision, reasons, human_explanation, intended_effect, decided_at, user_id, session_id, authenticated_email, intent_source, judge_rationale, tool_name, policy_context, stated_purpose, mandate_snapshot, policy_id, policy_version, policy_snapshot, evaluated_rules, deterministic_decision, judge_model, judge_raw_decision, judge_clamped, judge_confidence, judge_reason_codes)
-				VALUES ($1, 'DECIDED', $2, $3::jsonb, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15::jsonb, $16, $17, $18::jsonb, $19::jsonb, $20, $21, $22, $23, $24, $25::jsonb)
+					(correlation_id, status, decision, reasons, human_explanation, intended_effect, decided_at, user_id, session_id, authenticated_email, intent_source, judge_rationale, tool_name, policy_context, stated_purpose, mandate_snapshot, policy_id, policy_version, policy_snapshot, tool_classification, evaluated_rules, deterministic_decision, judge_model, judge_raw_decision, judge_clamped, judge_confidence, judge_reason_codes)
+				VALUES ($1, 'DECIDED', $2, $3::jsonb, $4, $5::jsonb, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15::jsonb, $16, $17, $18::jsonb, $19::jsonb, $20::jsonb, $21, $22, $23, $24, $25, $26::jsonb)
 				ON CONFLICT (correlation_id) DO NOTHING`,
 				[
 					input.correlationId,
@@ -180,6 +183,7 @@ export function createPgVerdictStore(
 					input.policyId ?? null,
 					input.policyVersion ?? null,
 					input.policySnapshot ?? null,
+					input.toolClassification ?? null,
 					input.evaluatedRules ?? null,
 					input.deterministicDecision ?? null,
 					input.judgeModel ?? null,
@@ -319,6 +323,9 @@ function rowToRecord(row: Record<string, unknown>): VerdictRecord {
 	if (row.policy_version != null) record.policyVersion = row.policy_version as string;
 	if (row.policy_snapshot != null) {
 		record.policySnapshot = parseJsonb<CompassPolicy>(row.policy_snapshot);
+	}
+	if (row.tool_classification != null) {
+		record.toolClassification = parseJsonb<ToolClassification>(row.tool_classification);
 	}
 	if (row.evaluated_rules != null) {
 		record.evaluatedRules = parseJsonbArray(

@@ -63,10 +63,25 @@ export function validateLlmGuardOutput(
 	) {
 		return undefined;
 	}
-	if (typeof obj.confidence !== "number" || !Number.isFinite(obj.confidence)) {
+	// Confidence is persisted verbatim as judge_confidence and read as a 0..1 probability;
+	// a model answering 87 (meaning percent) would otherwise be stored as-is and misread.
+	if (
+		typeof obj.confidence !== "number" ||
+		!Number.isFinite(obj.confidence) ||
+		obj.confidence < 0 ||
+		obj.confidence > 1
+	) {
 		return undefined;
 	}
-	if (!Array.isArray(obj.reasonCodes)) {
+	// EVERY element must be a string, not merely the container an array. These codes are
+	// persisted to judge_reason_codes (jsonb) and read back through a strict string[] guard,
+	// so a non-string element accepted here becomes an UNREADABLE ROW later — getByCorrelationId
+	// and list() both throw, taking confirm and the metrics dashboard with them. Rejecting at
+	// the boundary degrades the request to judge_unavailable, which is the designed failure.
+	if (
+		!Array.isArray(obj.reasonCodes) ||
+		obj.reasonCodes.some((code) => typeof code !== "string")
+	) {
 		return undefined;
 	}
 	if (typeof obj.rationale !== "string") {

@@ -4,12 +4,13 @@
  * reconstructable": not that the fields round-trip (the contract suite covers that), but
  * that the row alone carries enough to RE-DERIVE the verdict.
  *
- * Deterministic leg: row.toolName + row.policyContext + row.policySnapshot →
- *   classifyToolCall + evaluateAction must reproduce row.deterministicDecision, the
- *   deterministic reasons prefix, and row.evaluatedRules. The rulebook comes from the ROW:
- *   policyId/policyVersion NAME the policy, only policySnapshot carries its contents, and
- *   since the default policy is a compiled-in constant editable without a version bump, an
- *   identity check cannot detect drift.
+ * Deterministic leg: row.toolContext + row.policySnapshot + row.toolClassification feed
+ *   evaluateAction, which must reproduce row.deterministicDecision, the deterministic reasons
+ *   prefix, and row.evaluatedRules. BOTH compiled-in inputs come from the ROW, never from the
+ *   current build: policyId/policyVersion only NAME the policy (a threshold can be edited
+ *   without a version bump, so identity cannot detect drift), and classifyToolCall() reads
+ *   module-level tool sets (so re-deriving from toolName reclassifies past verdicts whenever
+ *   those sets change).
  * Judge leg: the LLM call itself is not re-run (it is a recorded actor, not a replayable
  *   function) — but its recorded output (judgeRawDecision/confidence/reasonCodes/rationale)
  *   re-enters the REAL clamp, which must reproduce the stored post-judge decision,
@@ -21,12 +22,13 @@ import { describe, expect, it } from "vitest";
 
 import { PGlite } from "@electric-sql/pglite";
 
-import {
-	classifyToolCall,
-	createActionCandidate,
-} from "@back/guardrail/execution/executionGateway";
+import { createActionCandidate } from "@back/guardrail/execution/executionGateway";
 import type { LlmGuardDecision, LlmGuardOutput } from "@shared/llmDecisionContracts";
-import type { CompassDecision } from "@shared/executionGatewayContracts";
+import {
+	COMPASS_DECISIONS,
+	TOOL_RISK_CLASSES,
+	type CompassDecision,
+} from "@shared/executionGatewayContracts";
 import type { CompassPolicy } from "@shared/policyContracts";
 
 import { clampLlmDecision } from "../llm/llmDecisionAdapter";
@@ -69,6 +71,9 @@ function replayVerdict(record: VerdictRecord) {
 	if (record.policySnapshot === undefined) {
 		throw new Error("row predates the policy snapshot — not replayable");
 	}
+	if (record.toolClassification === undefined) {
+		throw new Error("row predates the tool-classification snapshot — not replayable");
+	}
 	const policy = record.policySnapshot;
 
 	const evaluation = evaluateAction({
@@ -81,7 +86,8 @@ function replayVerdict(record: VerdictRecord) {
 			createdAt: record.decidedAt,
 			params: {},
 		}),
-		classification: classifyToolCall({ toolName: record.toolName, mutates: true }),
+		// From the ROW, not classifyToolCall(): that reads today's compiled-in tool sets.
+		classification: record.toolClassification,
 		context: record.policyContext,
 		policy,
 	});
@@ -272,6 +278,44 @@ describe("verdict replay from the stored row (reconstruction proof)", () => {
 		// ...and the untouched row still reproduces itself, because it carries its own.
 		expect(replayVerdict(record).deterministicDecision).toBe(record.deterministicDecision);
 		expect(replayVerdict(record).evaluatedRules).toEqual(record.evaluatedRules);
+	});
+
+	it("replays against the row's OWN tool classification, not the current build's", async () => {
+		// The regression this guards: dropping a tool from SENSITIVE_EXECUTION_TOOLS (or
+		// changing its defaultDecision) in back/guardrail/execution/executionGateway.ts. Nothing
+		// about the row changes, and toolName still matches — so re-deriving the classification
+		// silently reclassifies every past verdict for that tool. Second compiled-in input to a
+		// decision; same drift class as the policy snapshot. Found by external review, 2026-08-05.
+		const { record, replayed } = await decideAndReplay({ ran: false }, undefined);
+		expect(record.toolClassification?.toolName).toBe("transfer_sol");
+		expect(replayed.deterministicDecision).toBe(record.deterministicDecision);
+
+		const reclassified: VerdictRecord = {
+			...record,
+			toolClassification: {
+				...record.toolClassification!,
+				// Exactly what classifyToolCall returns for a mutating tool that is NOT in
+				// SENSITIVE_EXECUTION_TOOLS (executionGateway.ts:90-99).
+				riskClass: TOOL_RISK_CLASSES.BLOCKED_UNKNOWN,
+				defaultDecision: COMPASS_DECISIONS.DENY,
+				auditRequired: true,
+				reasonCodes: ["UNKNOWN_MUTATING_TOOL"],
+			},
+		};
+		// Proof the classification is decision-bearing: same row, different classification,
+		// different outcome.
+		expect(replayVerdict(reclassified).deterministicDecision).not.toBe(
+			record.deterministicDecision,
+		);
+		// ...and the untouched row still reproduces itself, because it carries its own.
+		expect(replayVerdict(record).deterministicDecision).toBe(record.deterministicDecision);
+	});
+
+	it("refuses to replay a row that predates the tool-classification snapshot", async () => {
+		const { record } = await decideAndReplay({ ran: false }, undefined);
+		const legacy: VerdictRecord = { ...record };
+		delete legacy.toolClassification;
+		expect(() => replayVerdict(legacy)).toThrow(/predates the tool-classification snapshot/);
 	});
 
 	it("refuses to replay a row that predates the policy snapshot", async () => {

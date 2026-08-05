@@ -22,11 +22,11 @@
  *   verdictStorePg putDecided   → reasons (array of strings), intended_effect (object)
  *   verdictStorePg closeOutcome → discrepancies (array of OBJECTS — a third distinct shape)
  *   mandateStorePg  put         → allowed_recipients (array of strings)
- *   verdictStorePg putDecided   → the five RECONSTRUCTION jsonb columns (policy_context,
- *                                 mandate_snapshot, policy_snapshot, evaluated_rules,
- *                                 judge_reason_codes). policy_snapshot is the deepest shape
- *                                 in the schema — a nested lookup proves the whole tree
- *                                 survived, not just the top level.
+ *   verdictStorePg putDecided   → the six RECONSTRUCTION jsonb columns (policy_context,
+ *                                 mandate_snapshot, policy_snapshot, tool_classification,
+ *                                 evaluated_rules, judge_reason_codes). policy_snapshot is the
+ *                                 deepest shape in the schema — a nested lookup proves the
+ *                                 whole tree survived, not just the top level.
  *
  * Drives the STORE METHODS, not hand-written SQL: a binding regression would land in the store,
  * so the store is what must be exercised. Writes land in the REAL tables (the pooler routes each
@@ -171,7 +171,7 @@ describe.skipIf(!LIVE)("jsonb param binding — real porsager driver", () => {
 		expect(row.first_recipient).toBe("Rcpt111");
 	});
 
-	it("putDecided stores all five RECONSTRUCTION jsonb columns queryably", async () => {
+	it("putDecided stores all six RECONSTRUCTION jsonb columns queryably", async () => {
 		const client = sql as NonNullable<typeof sql>;
 		const store = createPgVerdictStore({ sql: client });
 		await store.putDecided({
@@ -190,6 +190,13 @@ describe.skipIf(!LIVE)("jsonb param binding — real porsager driver", () => {
 				updatedAt: "2026-07-27T00:00:00.000Z",
 			},
 			policySnapshot: DEFAULT_POLICY,
+			toolClassification: {
+				toolName: "transfer_sol",
+				riskClass: "SENSITIVE_EXECUTION",
+				defaultDecision: "REQUIRE_HUMAN_APPROVAL",
+				auditRequired: true,
+				reasonCodes: ["KNOWN_SENSITIVE_EXECUTION_TOOL"],
+			},
 			evaluatedRules: ["transfers.max_usd_without_approval"],
 			judgeReasonCodes: ["MANDATE_RECIPIENT_MISMATCH"],
 		});
@@ -199,7 +206,9 @@ describe.skipIf(!LIVE)("jsonb param binding — real porsager driver", () => {
 				`SELECT jsonb_typeof(policy_context)    AS ctx_t,
 				        jsonb_typeof(mandate_snapshot)  AS mnd_t,
 				        jsonb_typeof(policy_snapshot)   AS pol_t,
-				        jsonb_typeof(evaluated_rules)   AS rules_t,
+				        jsonb_typeof(tool_classification) AS cls_t,
+			        tool_classification->>'riskClass' AS cls_risk,
+			        jsonb_typeof(evaluated_rules)   AS rules_t,
 				        jsonb_typeof(judge_reason_codes) AS codes_t,
 				        policy_context->>'recipient_address' AS ctx_recipient,
 				        mandate_snapshot->>'mandateText'     AS mnd_text,
@@ -213,10 +222,12 @@ describe.skipIf(!LIVE)("jsonb param binding — real porsager driver", () => {
 			)
 		)[0];
 
-		// All five would read "string" under a stringified bind.
+		// All six would read "string" under a stringified bind.
 		expect(row.ctx_t).toBe("object");
 		expect(row.mnd_t).toBe("object");
 		expect(row.pol_t).toBe("object");
+		expect(row.cls_t).toBe("object");
+		expect(row.cls_risk).toBe("SENSITIVE_EXECUTION");
 		expect(row.rules_t).toBe("array");
 		expect(row.codes_t).toBe("array");
 

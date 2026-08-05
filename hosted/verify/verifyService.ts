@@ -215,6 +215,10 @@ export function createVerifyService(
 					// cannot detect drift (an edited threshold replays a verdict that never
 					// happened). Same reasoning as mandateSnapshot above.
 					policySnapshot: policy,
+					// The second compiled-in input to the decision. classifyToolCall() reads
+					// module-level tool sets, so re-deriving it later from toolName alone reads
+					// TODAY's sets — same drift as the policy (D4a).
+					toolClassification: classification,
 					evaluatedRules: evaluation.evaluatedRules,
 					deterministicDecision: evaluation.decision,
 					...(judgeModel !== undefined ? { judgeModel } : {}),

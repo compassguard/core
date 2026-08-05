@@ -1,4 +1,5 @@
 import type { HostedDecision } from "@shared/evaluationContracts";
+import type { ToolClassification } from "@shared/executionGatewayContracts";
 import type { IntentSource, Mandate } from "@shared/mandateContracts";
 import type { CompassPolicy, PolicyEvaluationContext } from "@shared/policyContracts";
 import type { Discrepancy, IntendedEffect } from "@shared/verdictContracts";
@@ -77,6 +78,16 @@ export type VerdictRecord = {
 	 * mandateSnapshot (plan D1: an audit row records what the decider saw).
 	 */
 	policySnapshot?: CompassPolicy;
+	/**
+	 * The ToolClassification the engine evaluated — riskClass, defaultDecision, auditRequired
+	 * and its reason codes, as they read at decision time. classifyToolCall() derives these
+	 * from compiled-in tool sets (back/guardrail/execution/executionGateway.ts
+	 * SENSITIVE_EXECUTION_TOOLS / SIGNING_TOOLS), so re-deriving from toolName alone reads
+	 * TODAY's sets: dropping a tool from SENSITIVE_EXECUTION_TOOLS silently reclassifies every
+	 * past verdict for it. Same drift class as policySnapshot (D4a) — the second compiled-in
+	 * input to a decision.
+	 */
+	toolClassification?: ToolClassification;
 	/** The rule paths the policy engine actually evaluated for this decision. */
 	evaluatedRules?: string[];
 	/**
@@ -141,6 +152,8 @@ export type DecidedInput = {
 	policyVersion?: string;
 	/** The policy content as it read at decision time (see VerdictRecord.policySnapshot). */
 	policySnapshot?: CompassPolicy;
+	/** The ToolClassification evaluated at decision time (see VerdictRecord). */
+	toolClassification?: ToolClassification;
 	/** The rule paths the policy engine actually evaluated for this decision. */
 	evaluatedRules?: string[];
 	/** The policy engine's pre-judge CompassDecision (see VerdictRecord). */

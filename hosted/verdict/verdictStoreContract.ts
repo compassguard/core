@@ -232,6 +232,13 @@ export function describeVerdictStoreContract(name: string, makeStore: MakeStore)
 				policyId: "default-conservative",
 				policyVersion: "0.1.0",
 				policySnapshot: DEFAULT_POLICY,
+				toolClassification: {
+					toolName: "transfer_sol",
+					riskClass: "SENSITIVE_EXECUTION",
+					defaultDecision: "REQUIRE_HUMAN_APPROVAL",
+					auditRequired: true,
+					reasonCodes: ["KNOWN_SENSITIVE_EXECUTION_TOOL"],
+				},
 				evaluatedRules: ["transfers.max_usd_without_approval"],
 				deterministicDecision: "REQUIRE_HUMAN_APPROVAL",
 				judgeModel: "kimi-k2.5",
@@ -258,6 +265,10 @@ export function describeVerdictStoreContract(name: string, makeStore: MakeStore)
 			expect(record?.policySnapshot?.transfers.max_usd_without_approval).toBe(
 				DEFAULT_POLICY.transfers.max_usd_without_approval,
 			);
+			expect(record?.toolClassification?.riskClass).toBe("SENSITIVE_EXECUTION");
+			expect(record?.toolClassification?.reasonCodes).toEqual([
+				"KNOWN_SENSITIVE_EXECUTION_TOOL",
+			]);
 			expect(record?.evaluatedRules).toEqual(["transfers.max_usd_without_approval"]);
 			expect(record?.deterministicDecision).toBe("REQUIRE_HUMAN_APPROVAL");
 			expect(record?.judgeModel).toBe("kimi-k2.5");
@@ -287,6 +298,7 @@ export function describeVerdictStoreContract(name: string, makeStore: MakeStore)
 			expect(record?.policyId).toBeUndefined();
 			expect(record?.policyVersion).toBeUndefined();
 			expect(record?.policySnapshot).toBeUndefined();
+			expect(record?.toolClassification).toBeUndefined();
 			expect(record?.evaluatedRules).toBeUndefined();
 			expect(record?.deterministicDecision).toBeUndefined();
 			expect(record?.judgeModel).toBeUndefined();
