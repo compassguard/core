@@ -91,6 +91,15 @@ export type VerdictRecord = {
 	/** The rule paths the policy engine actually evaluated for this decision. */
 	evaluatedRules?: string[];
 	/**
+	 * WHICH BUILD decided this verdict (commit SHA / build id). Policy and classification are
+	 * snapshotted because they are compiled-in constants a decision reads; the engine CODE is
+	 * the third such input and the only one that cannot be snapshotted. Recording the build
+	 * turns "would this code have decided the same?" into a `git checkout`. Absent when the
+	 * deployment sets no build identity (local dev, tests) — absent, never a "unknown"
+	 * sentinel. See hosted/verdict/engineVersion.ts.
+	 */
+	engineVersion?: string;
+	/**
 	 * The policy engine's pre-judge CompassDecision (e.g. REQUIRE_HUMAN_APPROVAL), before
 	 * collapse and before any judge input. With the final `decision`, this attributes the
 	 * outcome: rules-only when they match, judge-tightened when they differ.
@@ -156,6 +165,8 @@ export type DecidedInput = {
 	toolClassification?: ToolClassification;
 	/** The rule paths the policy engine actually evaluated for this decision. */
 	evaluatedRules?: string[];
+	/** Which build decided this verdict (see VerdictRecord.engineVersion). */
+	engineVersion?: string;
 	/** The policy engine's pre-judge CompassDecision (see VerdictRecord). */
 	deterministicDecision?: string;
 	/** Concrete LLM model id the judge call used, when it ran. */

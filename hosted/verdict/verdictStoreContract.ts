@@ -240,6 +240,7 @@ export function describeVerdictStoreContract(name: string, makeStore: MakeStore)
 					reasonCodes: ["KNOWN_SENSITIVE_EXECUTION_TOOL"],
 				},
 				evaluatedRules: ["transfers.max_usd_without_approval"],
+				engineVersion: "deadbeef123",
 				deterministicDecision: "REQUIRE_HUMAN_APPROVAL",
 				judgeModel: "kimi-k2.5",
 				judgeRawDecision: "ALLOW",
@@ -270,6 +271,7 @@ export function describeVerdictStoreContract(name: string, makeStore: MakeStore)
 				"KNOWN_SENSITIVE_EXECUTION_TOOL",
 			]);
 			expect(record?.evaluatedRules).toEqual(["transfers.max_usd_without_approval"]);
+			expect(record?.engineVersion).toBe("deadbeef123");
 			expect(record?.deterministicDecision).toBe("REQUIRE_HUMAN_APPROVAL");
 			expect(record?.judgeModel).toBe("kimi-k2.5");
 			expect(record?.judgeRawDecision).toBe("ALLOW");
@@ -300,6 +302,7 @@ export function describeVerdictStoreContract(name: string, makeStore: MakeStore)
 			expect(record?.policySnapshot).toBeUndefined();
 			expect(record?.toolClassification).toBeUndefined();
 			expect(record?.evaluatedRules).toBeUndefined();
+			expect(record?.engineVersion).toBeUndefined();
 			expect(record?.deterministicDecision).toBeUndefined();
 			expect(record?.judgeModel).toBeUndefined();
 			expect(record?.judgeRawDecision).toBeUndefined();

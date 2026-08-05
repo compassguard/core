@@ -54,6 +54,7 @@ export function createSqlExecutorFromEnv(
 				prepare: false,
 				max: 1,
 				idle_timeout: 20,
+				onnotice: forwardUnexpectedNotices,
 				...(urlDeclaresSsl ? {} : { ssl: "require" }),
 			});
 		} catch (error) {
@@ -88,4 +89,24 @@ function isProductionDeployment(
 	const vercelEnv = getEnv("VERCEL_ENV")?.trim();
 	if (vercelEnv) return vercelEnv === "production";
 	return getEnv("NODE_ENV")?.trim() === "production";
+}
+
+/**
+ * Postgres NOTICE handler. The stores' schema-ensure is deliberately idempotent — one
+ * `CREATE TABLE IF NOT EXISTS` plus ~22 `ADD COLUMN IF NOT EXISTS` — and on every run against
+ * an existing table Postgres emits a NOTICE per statement ("already exists, skipping"). Those
+ * are the SUCCESS path saying so, not warnings: the driver's default handler prints all of them
+ * to stdout, which floods serverless cold-start logs and buries the output of any CLI built on
+ * this executor (scripts/replay-verdict.ts, scripts/metrics-dashboard.ts).
+ *
+ * Drops exactly the two expected codes and forwards everything else, so a genuinely surprising
+ * notice still surfaces. Suppressing ALL notices would hide the unexpected ones too.
+ *   42P07 duplicate_table   — CREATE TABLE IF NOT EXISTS on an existing table
+ *   42701 duplicate_column  — ADD COLUMN IF NOT EXISTS on an existing column
+ */
+const EXPECTED_IDEMPOTENT_DDL_NOTICES = new Set(["42P07", "42701"]);
+
+function forwardUnexpectedNotices(notice: { code?: string; message?: string }): void {
+	if (notice.code !== undefined && EXPECTED_IDEMPOTENT_DDL_NOTICES.has(notice.code)) return;
+	console.warn(`postgres notice ${notice.code ?? "?"}: ${notice.message ?? ""}`);
 }

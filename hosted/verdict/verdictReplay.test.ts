@@ -22,8 +22,6 @@ import { describe, expect, it } from "vitest";
 
 import { PGlite } from "@electric-sql/pglite";
 
-import { createActionCandidate } from "@back/guardrail/execution/executionGateway";
-import type { LlmGuardDecision, LlmGuardOutput } from "@shared/llmDecisionContracts";
 import {
 	COMPASS_DECISIONS,
 	TOOL_RISK_CLASSES,
@@ -31,20 +29,11 @@ import {
 } from "@shared/executionGatewayContracts";
 import type { CompassPolicy } from "@shared/policyContracts";
 
-import { clampLlmDecision } from "../llm/llmDecisionAdapter";
-import {
-	collapseToHostedDecision,
-	hostedRiskLevelFor,
-} from "../evaluate/hostedDecision";
-import {
-	composeVerdictExplanation,
-	mergeJudgeReasons,
-} from "../verify/humanExplanation";
 import { createVerifyService } from "../verify/verifyService";
 import { createInMemoryMandateStore } from "../mandate/mandateStore";
-import { evaluateAction } from "../policy/policyEngine";
 import { loadDefaultPolicy } from "../policy/loadPolicy";
 import { createPgVerdictStore, type SqlExecutor } from "./verdictStorePg";
+import { replayVerdict, type ReplayResult } from "./verdictReplay";
 import type { VerdictRecord } from "./verdictStoreTypes";
 import type { VerifyJudgeResult } from "../verify/verifyJudge";
 
@@ -55,83 +44,10 @@ function executor(db: PGlite): SqlExecutor {
 	};
 }
 
-/**
- * Re-derive a verdict from its stored row alone (no request, no live LLM). Returns the
- * reproduced decision surface for comparison against what the row itself recorded.
- */
-function replayVerdict(record: VerdictRecord) {
-	if (record.toolName === undefined || record.policyContext === undefined) {
-		throw new Error("row predates reconstruction fields — not replayable");
-	}
-	// The rulebook comes from the ROW, not from the current build. Replaying against
-	// loadDefaultPolicy() re-reads a compiled-in constant that may have been edited since
-	// the decision — and because an edit need not bump `version`, an identity check cannot
-	// detect it. The snapshot is the only thing that makes "re-derive from the stored row
-	// alone" true rather than "re-derive if nobody touched defaultPolicy.ts".
-	if (record.policySnapshot === undefined) {
-		throw new Error("row predates the policy snapshot — not replayable");
-	}
-	if (record.toolClassification === undefined) {
-		throw new Error("row predates the tool-classification snapshot — not replayable");
-	}
-	const policy = record.policySnapshot;
-
-	const evaluation = evaluateAction({
-		candidate: createActionCandidate({
-			id: record.correlationId,
-			chain: "solana",
-			network: "solana",
-			toolName: record.toolName,
-			actionKind: record.intendedEffect.actionKind,
-			createdAt: record.decidedAt,
-			params: {},
-		}),
-		// From the ROW, not classifyToolCall(): that reads today's compiled-in tool sets.
-		classification: record.toolClassification,
-		context: record.policyContext,
-		policy,
-	});
-
-	let compassDecision = evaluation.decision;
-	let reasons = [...evaluation.reasonCodes];
-	let judgeClamped: boolean | undefined;
-	if (record.judgeRawDecision !== undefined) {
-		// Feed the RECORDED model output back through the real clamp.
-		const recordedOutput: LlmGuardOutput = {
-			decision: record.judgeRawDecision as LlmGuardDecision,
-			confidence: record.judgeConfidence ?? 0,
-			reasonCodes: record.judgeReasonCodes ?? [],
-			rationale: record.judgeRationale ?? "",
-		};
-		const clamped = clampLlmDecision(
-			record.deterministicDecision as CompassDecision,
-			recordedOutput,
-		);
-		compassDecision = clamped.decision;
-		judgeClamped = clamped.clamped;
-		reasons = mergeJudgeReasons(reasons, recordedOutput.reasonCodes);
-	}
-
-	const decision = collapseToHostedDecision(compassDecision);
-	const judgeChangedDecision =
-		record.judgeRawDecision !== undefined &&
-		compassDecision !== (record.deterministicDecision as CompassDecision);
-	const humanExplanation = composeVerdictExplanation(decision, reasons, {
-		changedDecision: judgeChangedDecision,
-		...(record.judgeRationale !== undefined
-			? { rationale: record.judgeRationale }
-			: {}),
-	});
-
-	return {
-		deterministicDecision: evaluation.decision as string,
-		evaluatedRules: evaluation.evaluatedRules,
-		decision,
-		riskLevel: hostedRiskLevelFor(compassDecision),
-		reasons,
-		humanExplanation,
-		judgeClamped,
-	};
+/** Narrow a ReplayResult to its success case, failing loudly with the refusal reason. */
+function expectReplayed(result: ReplayResult) {
+	if (!result.ok) throw new Error(`replay refused: ${result.reason}`);
+	return result;
 }
 
 /** Full pipeline: real service writes to Pg → read the row back → replay → compare. */
@@ -162,7 +78,7 @@ async function decideAndReplay(judgeResult: VerifyJudgeResult, statedPurpose?: s
 	);
 	const record = await verdictStore.getByCorrelationId(res.correlationId);
 	if (!record) throw new Error("verdict row missing");
-	return { res, record, replayed: replayVerdict(record) };
+	return { res, record, replayed: expectReplayed(replayVerdict(record)) };
 }
 
 describe("verdict replay from the stored row (reconstruction proof)", () => {
@@ -243,7 +159,7 @@ describe("verdict replay from the stored row (reconstruction proof)", () => {
 		expect(record.judgeRawDecision).toBe("ALLOW");
 		expect(record.decision).toBe("review"); // loosen was discarded
 
-		const replayed = replayVerdict(record);
+		const replayed = expectReplayed(replayVerdict(record));
 		expect(replayed.decision).toBe(record.decision);
 		expect(replayed.judgeClamped).toBe(true);
 		expect(replayed.reasons).toEqual(record.reasons);
@@ -272,12 +188,12 @@ describe("verdict replay from the stored row (reconstruction proof)", () => {
 		};
 		// Proof the edit is decision-changing: replayed through the edited rulebook, the
 		// same row yields the other outcome.
-		expect(replayVerdict(rowUnderEditedBuild).deterministicDecision).toBe(
+		expect(expectReplayed(replayVerdict(rowUnderEditedBuild)).deterministicDecision).toBe(
 			"REQUIRE_HUMAN_APPROVAL",
 		);
 		// ...and the untouched row still reproduces itself, because it carries its own.
-		expect(replayVerdict(record).deterministicDecision).toBe(record.deterministicDecision);
-		expect(replayVerdict(record).evaluatedRules).toEqual(record.evaluatedRules);
+		expect(expectReplayed(replayVerdict(record)).deterministicDecision).toBe(record.deterministicDecision);
+		expect(expectReplayed(replayVerdict(record)).evaluatedRules).toEqual(record.evaluatedRules);
 	});
 
 	it("replays against the row's OWN tool classification, not the current build's", async () => {
@@ -304,24 +220,32 @@ describe("verdict replay from the stored row (reconstruction proof)", () => {
 		};
 		// Proof the classification is decision-bearing: same row, different classification,
 		// different outcome.
-		expect(replayVerdict(reclassified).deterministicDecision).not.toBe(
+		expect(expectReplayed(replayVerdict(reclassified)).deterministicDecision).not.toBe(
 			record.deterministicDecision,
 		);
 		// ...and the untouched row still reproduces itself, because it carries its own.
-		expect(replayVerdict(record).deterministicDecision).toBe(record.deterministicDecision);
+		expect(expectReplayed(replayVerdict(record)).deterministicDecision).toBe(record.deterministicDecision);
 	});
 
 	it("refuses to replay a row that predates the tool-classification snapshot", async () => {
 		const { record } = await decideAndReplay({ ran: false }, undefined);
 		const legacy: VerdictRecord = { ...record };
 		delete legacy.toolClassification;
-		expect(() => replayVerdict(legacy)).toThrow(/predates the tool-classification snapshot/);
+		const refused = replayVerdict(legacy);
+		expect(refused.ok).toBe(false);
+		if (refused.ok) throw new Error("expected a refusal");
+		expect(refused.missingField).toBe("toolClassification");
+		expect(refused.reason).toMatch(/tool-classification snapshot/);
 	});
 
 	it("refuses to replay a row that predates the policy snapshot", async () => {
 		const { record } = await decideAndReplay({ ran: false }, undefined);
 		const legacy: VerdictRecord = { ...record };
 		delete legacy.policySnapshot;
-		expect(() => replayVerdict(legacy)).toThrow(/predates the policy snapshot/);
+		const refused = replayVerdict(legacy);
+		expect(refused.ok).toBe(false);
+		if (refused.ok) throw new Error("expected a refusal");
+		expect(refused.missingField).toBe("policySnapshot");
+		expect(refused.reason).toMatch(/policy snapshot/);
 	});
 });

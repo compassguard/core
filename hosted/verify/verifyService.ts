@@ -17,6 +17,7 @@ import {
 import { derivePolicyContext } from "../policy/policyContext";
 import { evaluateAction } from "../policy/policyEngine";
 import { loadDefaultPolicy } from "../policy/loadPolicy";
+import { readEngineVersion } from "../verdict/engineVersion";
 import type { VerdictStore } from "../verdict/verdictStoreTypes";
 import {
 	composeVerdictExplanation,
@@ -85,6 +86,9 @@ export function createVerifyService(
 				params: args,
 			});
 			const policy = loadDefaultPolicy();
+			// Read per-request, not per-process: a long-lived warm container must not outlive
+			// its own build identity if the env is ever re-provisioned under it.
+			const engineVersion = readEngineVersion();
 			const evaluation = evaluateAction({
 				candidate,
 				classification,
@@ -220,6 +224,10 @@ export function createVerifyService(
 					// TODAY's sets — same drift as the policy (D4a).
 					toolClassification: classification,
 					evaluatedRules: evaluation.evaluatedRules,
+					// WHICH BUILD decided. Policy and classification are snapshotted above;
+					// the engine code is the third compiled-in input and the one that cannot
+					// be — so record the build instead (plan R4).
+					...(engineVersion !== undefined ? { engineVersion } : {}),
 					deterministicDecision: evaluation.decision,
 					...(judgeModel !== undefined ? { judgeModel } : {}),
 					...(judgeRawDecision !== undefined ? { judgeRawDecision } : {}),

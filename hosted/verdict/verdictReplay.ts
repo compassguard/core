@@ -1,0 +1,195 @@
+import {
+	createActionCandidate,
+} from "@back/guardrail/execution/executionGateway";
+import type { CompassDecision } from "@shared/executionGatewayContracts";
+import type { HostedDecision } from "@shared/evaluationContracts";
+import type { LlmGuardDecision, LlmGuardOutput } from "@shared/llmDecisionContracts";
+
+import { clampLlmDecision } from "../llm/llmDecisionAdapter";
+import {
+	collapseToHostedDecision,
+	hostedRiskLevelFor,
+} from "../evaluate/hostedDecision";
+import {
+	composeVerdictExplanation,
+	mergeJudgeReasons,
+} from "../verify/humanExplanation";
+import { evaluateAction } from "../policy/policyEngine";
+import { readEngineVersion } from "./engineVersion";
+import type { VerdictRecord } from "./verdictStoreTypes";
+
+/**
+ * Verdict reconstruction — re-derive a decision from its stored row ALONE (no request, no live
+ * LLM). This is the shipped implementation; `verdictReplay.test.ts` and
+ * `scripts/replay-verdict.ts` both consume it, so the reconstruction proof tests what actually
+ * runs rather than a private copy (plan R1).
+ *
+ * BOTH compiled-in inputs come from the row, never from the current build:
+ *   - policySnapshot   — policyId/policyVersion only NAME the rulebook, and a threshold can be
+ *                        edited without a version bump, so identity cannot detect drift (D4a).
+ *   - toolClassification — classifyToolCall() reads module-level tool sets, so re-deriving it
+ *                        from toolName reclassifies past verdicts whenever those sets change (D4b).
+ *
+ * The judge leg is NOT re-run: an LLM is a recorded actor, not a replayable function. Its
+ * recorded output re-enters the REAL clamp, which must reproduce the stored post-judge decision.
+ *
+ * WHAT REPLAY STILL CANNOT PIN: the engine code itself (clamp, collapse, explanation
+ * composition, the policy engine) runs from the CURRENT build. Code cannot be snapshotted, so
+ * the row records WHICH BUILD decided (engineVersion) and replay reports a mismatch as a
+ * WARNING rather than a refusal — the decision-bearing inputs are snapshotted, so replay is
+ * usually still correct, and the caller decides whether to trust it (plan R4).
+ */
+
+/** The reproduced decision surface, for comparison against what the row itself recorded. */
+export type ReplayedVerdict = {
+	deterministicDecision: string;
+	evaluatedRules: string[];
+	decision: HostedDecision;
+	riskLevel: ReturnType<typeof hostedRiskLevelFor>;
+	reasons: string[];
+	humanExplanation: string;
+	judgeClamped: boolean | undefined;
+	/**
+	 * Set when the row was decided by a DIFFERENT build than the one replaying it, or when the
+	 * row carries no engineVersion at all. Advisory: the snapshotted inputs still drive the
+	 * result, but engine-code changes since then are invisible to this replay.
+	 */
+	engineVersionWarning?: string;
+};
+
+/**
+ * Why a row could not be replayed. A VALUE, not an exception (plan R3): every verdict written
+ * before the reconstruction fields existed takes this path, so it is the common case for
+ * historical data and a caller must be able to report it rather than catch it.
+ */
+export type ReplayRefusal = {
+	ok: false;
+	reason: string;
+	/** The specific field whose absence blocked replay — for callers that group refusals. */
+	missingField: "toolName" | "policyContext" | "policySnapshot" | "toolClassification";
+};
+
+export type ReplayResult = ({ ok: true } & ReplayedVerdict) | ReplayRefusal;
+
+export function replayVerdict(
+	record: VerdictRecord,
+	options: { currentEngineVersion?: string } = {},
+): ReplayResult {
+	if (record.toolName === undefined) {
+		return {
+			ok: false,
+			missingField: "toolName",
+			reason: "row predates the reconstruction fields (no toolName) — not replayable",
+		};
+	}
+	if (record.policyContext === undefined) {
+		return {
+			ok: false,
+			missingField: "policyContext",
+			reason: "row predates the reconstruction fields (no policyContext) — not replayable",
+		};
+	}
+	if (record.policySnapshot === undefined) {
+		return {
+			ok: false,
+			missingField: "policySnapshot",
+			reason:
+				"row predates the policy snapshot — the rulebook that decided it was never " +
+				"recorded, and the current build's policy may differ without a version bump",
+		};
+	}
+	if (record.toolClassification === undefined) {
+		return {
+			ok: false,
+			missingField: "toolClassification",
+			reason:
+				"row predates the tool-classification snapshot — re-deriving it would read " +
+				"today's tool sets and could silently reclassify this verdict",
+		};
+	}
+
+	const evaluation = evaluateAction({
+		candidate: createActionCandidate({
+			id: record.correlationId,
+			chain: "solana",
+			network: "solana",
+			toolName: record.toolName,
+			actionKind: record.intendedEffect.actionKind,
+			createdAt: record.decidedAt,
+			params: {},
+		}),
+		classification: record.toolClassification,
+		context: record.policyContext,
+		policy: record.policySnapshot,
+	});
+
+	let compassDecision = evaluation.decision;
+	let reasons = [...evaluation.reasonCodes];
+	let judgeClamped: boolean | undefined;
+	if (record.judgeRawDecision !== undefined) {
+		// Feed the RECORDED model output back through the real clamp.
+		const recordedOutput: LlmGuardOutput = {
+			decision: record.judgeRawDecision as LlmGuardDecision,
+			confidence: record.judgeConfidence ?? 0,
+			reasonCodes: record.judgeReasonCodes ?? [],
+			rationale: record.judgeRationale ?? "",
+		};
+		const clamped = clampLlmDecision(
+			record.deterministicDecision as CompassDecision,
+			recordedOutput,
+		);
+		compassDecision = clamped.decision;
+		judgeClamped = clamped.clamped;
+		reasons = mergeJudgeReasons(reasons, recordedOutput.reasonCodes);
+	}
+
+	const decision = collapseToHostedDecision(compassDecision);
+	const judgeChangedDecision =
+		record.judgeRawDecision !== undefined &&
+		compassDecision !== (record.deterministicDecision as CompassDecision);
+	const humanExplanation = composeVerdictExplanation(decision, reasons, {
+		changedDecision: judgeChangedDecision,
+		...(record.judgeRationale !== undefined
+			? { rationale: record.judgeRationale }
+			: {}),
+	});
+
+	const running = options.currentEngineVersion ?? readEngineVersion();
+	const engineVersionWarning = describeEngineDrift(record.engineVersion, running);
+
+	return {
+		ok: true,
+		deterministicDecision: evaluation.decision as string,
+		evaluatedRules: evaluation.evaluatedRules,
+		decision,
+		riskLevel: hostedRiskLevelFor(compassDecision),
+		reasons,
+		humanExplanation,
+		judgeClamped,
+		...(engineVersionWarning !== undefined ? { engineVersionWarning } : {}),
+	};
+}
+
+/** Advisory build-drift note; undefined when the row and the running build agree. */
+function describeEngineDrift(
+	rowVersion: string | undefined,
+	runningVersion: string | undefined,
+): string | undefined {
+	if (rowVersion === undefined) {
+		return (
+			"row carries no engineVersion, so the build that decided it is unknown; " +
+			"engine-code changes since then are invisible to this replay"
+		);
+	}
+	if (runningVersion === undefined) {
+		return `row was decided by build ${rowVersion}; the running build is unidentified`;
+	}
+	if (rowVersion !== runningVersion) {
+		return (
+			`row was decided by build ${rowVersion}, replaying on ${runningVersion}: the ` +
+			"snapshotted policy and classification still drive the result, but engine code " +
+			`(clamp, collapse, explanation) may differ — check out ${rowVersion} to be exact`
+		);
+	}
+	return undefined;
+}
