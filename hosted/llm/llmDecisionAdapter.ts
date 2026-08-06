@@ -49,6 +49,27 @@ export function isLlmConfigured(config: LlmJudgeConfig): boolean {
 
 const VALID_LLM_DECISIONS = new Set<string>(Object.values(LLM_GUARD_DECISIONS));
 
+/**
+ * The output contract every judge prompt must state, kept beside the validator that enforces
+ * it so prompt and check cannot drift apart. Each clause below names a rejection rule in
+ * validateLlmGuardOutput: an unstated rule is one models are left to guess, and a guess that
+ * misses is indistinguishable from an unreachable provider — both yield undefined, both
+ * surface as `judge_unavailable`, and the verdict silently falls back to deterministic-only.
+ *
+ * Measured against OpenCode Zen 2026-08-06 with the contract UNSTATED: models agreed on the
+ * judgement and disagreed on the format — `"confidence": "HIGH"` (kimi-k2.5, minimax-m2.5/2.7,
+ * and ~8% of deepseek-v4-flash calls), ```json fences (glm-5), an invented `"BLOCK"` decision
+ * (qwen3.6-plus). 6 of 10 models were unparseable. With it stated, 19/19 across three models.
+ */
+export const LLM_OUTPUT_CONTRACT = [
+	"Reply with a single raw JSON object and nothing else: no prose, no explanation outside the JSON, and no markdown code fences.",
+	'The object has exactly four fields. "decision": one of "ALLOW", "DENY", "REQUIRE_HUMAN_APPROVAL", "REQUIRE_ADDITIONAL_CONTEXT" — uppercase, verbatim, no other value.',
+	'"confidence": a JSON number between 0 and 1, such as 0.9 — never a word such as "HIGH", and never a percentage such as 87.',
+	'"reasonCodes": an array of short UPPER_SNAKE_CASE strings, every element a string.',
+	'"rationale": a single plain string explaining the decision.',
+	'Example of the exact shape: {"decision":"DENY","confidence":0.9,"reasonCodes":["RECIPIENT_NOT_IN_MANDATE"],"rationale":"The recipient is not listed in the mandate."}',
+].join(" ");
+
 export function validateLlmGuardOutput(
 	raw: unknown,
 ): LlmGuardOutput | undefined {
@@ -144,9 +165,9 @@ export type LlmProviderFn = (input: {
 
 const LLM_SYSTEM_PROMPT = [
 	"You are Compass MCP Guard's advisory risk judge.",
-	"Return only JSON with decision, confidence, reasonCodes, and rationale.",
 	"You may keep or tighten the deterministic decision, never loosen it.",
 	"Never request transaction execution or signing.",
+	LLM_OUTPUT_CONTRACT,
 ].join(" ");
 
 export async function callLlmJudge(

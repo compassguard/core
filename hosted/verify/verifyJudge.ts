@@ -11,6 +11,7 @@ import {
 	clampLlmDecision,
 	isLlmConfigured,
 	resolveLlmConfig,
+	LLM_OUTPUT_CONTRACT,
 	type LlmProviderFn,
 } from "../llm/llmDecisionAdapter";
 import { sanitizeUntrustedContext } from "../llm/llmDecisionSanitizer";
@@ -26,15 +27,10 @@ const JUDGE_RATIONALE_MAX_LENGTH = 500;
  * decision; the strictness clamp enforces this even if the model disobeys. "Owns approve"
  * arrives only with decoded ground truth (intent_source "full").
  *
- * The output contract is stated EXPLICITLY — enum members verbatim, `confidence` as a number,
- * no markdown fences — because validateLlmGuardOutput (llmDecisionAdapter.ts) rejects anything
- * off-shape, and a rejected judgement is indistinguishable from an unreachable provider: both
- * degrade to `judge_unavailable` and a silently deterministic-only verdict. Measured against
- * OpenCode Zen 2026-08-06, an under-specified contract was the dominant failure mode — models
- * agreed on the JUDGEMENT and disagreed on the FORMAT, emitting `"confidence": "HIGH"`
- * (kimi-k2.5, minimax-m2.5, and ~8% of deepseek-v4-flash calls), ```json fences (glm-5), or an
- * invented `"BLOCK"` decision (qwen3.6-plus). Naming the shape is what makes the judge
- * portable across models rather than tuned to whichever one happens to guess right.
+ * The output contract comes from LLM_OUTPUT_CONTRACT, shared with the legacy /v1/evaluate
+ * judge and defined beside validateLlmGuardOutput — the check that rejects off-shape output.
+ * Stating it is what makes the judge portable across models rather than tuned to whichever
+ * one happens to guess the shape; see that constant for the measured failure modes.
  */
 const VERIFY_JUDGE_SYSTEM_PROMPT = [
 	"You are Compass's mandate judge for POST /v1/verify.",
@@ -44,12 +40,7 @@ const VERIFY_JUDGE_SYSTEM_PROMPT = [
 	"You may keep or tighten the deterministic decision, never loosen it.",
 	"Tighten when the stated purpose or arguments conflict with the mandate: wrong recipient, wrong purpose, amount beyond the mandate, or activity the mandate does not authorize.",
 	"Never request transaction execution or signing.",
-	"Reply with a single raw JSON object and nothing else: no prose, no explanation outside the JSON, and no markdown code fences.",
-	'The object has exactly four fields. "decision": one of "ALLOW", "DENY", "REQUIRE_HUMAN_APPROVAL", "REQUIRE_ADDITIONAL_CONTEXT" — uppercase, verbatim, no other value.',
-	'"confidence": a JSON number between 0 and 1, such as 0.9 — never a word such as "HIGH".',
-	'"reasonCodes": an array of short UPPER_SNAKE_CASE strings.',
-	'"rationale": a single plain string explaining the decision.',
-	'Example of the exact shape: {"decision":"DENY","confidence":0.9,"reasonCodes":["RECIPIENT_NOT_IN_MANDATE"],"rationale":"The recipient is not listed in the mandate."}',
+	LLM_OUTPUT_CONTRACT,
 ].join(" ");
 
 /** The LlmJudgeInput shape, extended with the mandate triad's self_report legs. */
