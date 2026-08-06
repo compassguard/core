@@ -188,14 +188,37 @@ Copy `.env.example` to `.env.local` and set values for your environment.
 
 ### LLM Judge
 
+There are **two independent judges**, each with its own on/off switch. They share
+the provider settings below but nothing else — enabling one does not enable the other.
+
 | Variable | Description |
 |----------|-------------|
-| `COMPASS_LLM_DECISION_ENABLED` | Enable optional advisory LLM judge (default: `false`) |
-| `COMPASS_LLM_PROVIDER` | LLM provider (default: `opencode-go`) |
+| `COMPASS_VERIFY_JUDGE_ENABLED` | Enable the **`/v1/verify` mandate judge** — compares the caller's `intent.statedPurpose` against the owner's registered mandate (default: `false`) |
+| `COMPASS_LLM_DECISION_ENABLED` | Enable the **`/v1/evaluate` advisory judge** (default: `false`). Has no effect on `/v1/verify` |
+
+Shared provider settings, used by whichever judge is enabled:
+
+| Variable | Description |
+|----------|-------------|
+| `COMPASS_LLM_PROVIDER` | LLM provider: `opencode-go` or `openai` (default: `opencode-go`) |
 | `COMPASS_LLM_MODEL` | Model name (default: `kimi-k2.5`) |
-| `COMPASS_LLM_BASE_URL` | Chat completions endpoint URL |
-| `COMPASS_LLM_API_KEY` | API key for the LLM provider (required for OpenAI) |
+| `COMPASS_LLM_BASE_URL` | Chat completions endpoint URL (required for `opencode-go`) |
+| `COMPASS_LLM_API_KEY` | API key for the LLM provider (required for `openai`) |
 | `COMPASS_LLM_TIMEOUT_MS` | Timeout for LLM calls (default: `3000`) |
+
+To turn on the judge that guards `/v1/verify`, set **`COMPASS_VERIFY_JUDGE_ENABLED`** —
+`COMPASS_LLM_DECISION_ENABLED` gates the older `/v1/evaluate` path and leaves `/v1/verify`
+running deterministic-only.
+
+The verify judge additionally requires a **durable mandate store**
+(`COMPASS_VERDICT_DB_URL`) and only runs on requests that carry
+`intent.statedPurpose` from an identity with a registered mandate; otherwise the
+verdict is deterministic-only and reports `intentSource: "none"`. On any judge
+failure the deterministic decision stands and `judge_unavailable` is appended to
+`reasons` — the judge can tighten a decision, never loosen one.
+
+Env changes require a **redeploy**: the hosted app resolves judge config once when
+the Hono app is constructed and caches it for the life of the serverless instance.
 
 ### LLM Router
 
