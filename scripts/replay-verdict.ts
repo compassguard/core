@@ -90,6 +90,10 @@ function diffFields(): string[] {
 	if (!same(result.evaluatedRules, record.evaluatedRules)) mismatched.push("evaluatedRules");
 	if (result.humanExplanation !== record.humanExplanation) mismatched.push("humanExplanation");
 	if (result.judgeClamped !== record.judgeClamped) mismatched.push("judgeClamped");
+	if (result.intentSource !== (record.intentSource ?? "none")) mismatched.push("intentSource");
+	// NOT compared: riskLevel. It is a pure function of the (compared) decision and is not
+	// persisted, so there is nothing on the row to compare against; a change in
+	// hostedRiskLevelFor is engine drift, which engineVersion already flags.
 	return mismatched;
 }
 
@@ -102,18 +106,32 @@ const exitCode = !result.ok ? 3 : divergences.length > 0 ? 5 : 0;
  * would silently cut a large JSON record. Flush, close the pool, then exit.
  */
 async function finish(code: number): Promise<never> {
+	// write()'s BOOLEAN is a backpressure signal, not a completion signal: it returns true
+	// whenever the buffer is under the high-water mark, even with earlier writes still pending.
+	// The CALLBACK is what fires once the data is handed off, so await that instead.
 	await new Promise<void>((resolve) => {
-		if (process.stdout.write("")) resolve();
-		else process.stdout.once("drain", () => resolve());
+		process.stdout.write("", () => resolve());
 	});
 	process.exit(code);
 }
 
 if (asJson) {
 	process.stdout.write(
-		`${JSON.stringify({ record, replay: result, divergences, matched: exitCode === 0 }, null, 2)}\n`,
+		`${jsonSafe({ record, replay: result, divergences, matched: exitCode === 0 })}\n`,
 	);
 	await finish(exitCode);
+}
+
+/**
+ * JSON.stringify escapes C0 controls (< U+0020) but NOT DEL or the C1 block
+ * (U+007F-U+009F). A terminal that honours 8-bit CSI executes U+009B the same as ESC[, so
+ * `--json` piped to a terminal is not automatically safe. Re-encode those as \\uXXXX escapes,
+ * which are valid JSON and inert on every terminal.
+ */
+function jsonSafe(value: unknown): string {
+	return JSON.stringify(value, null, 2).replace(/[\u007f-\u009f]/g, (ch) =>
+		`\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`,
+	);
 }
 
 /**
@@ -137,7 +155,7 @@ const line = (label: string, value: unknown) => {
 	process.stdout.write(`  ${label.padEnd(22)} ${escapeForTerminal(String(value))}\n`);
 };
 
-process.stdout.write(`\nVERDICT ${record.correlationId}\n`);
+process.stdout.write(`\nVERDICT ${escapeForTerminal(record.correlationId)}\n`);
 process.stdout.write(`${"─".repeat(72)}\n`);
 process.stdout.write("WHAT THE DECIDER SAW\n");
 line("decided at", record.decidedAt);
@@ -200,7 +218,7 @@ if (divergences.length === 0) {
 	}
 }
 if (result.engineVersionWarning) {
-	process.stdout.write(`  ! ${result.engineVersionWarning}\n`);
+	process.stdout.write(`  ! ${escapeForTerminal(result.engineVersionWarning)}\n`);
 }
 process.stdout.write("\n");
 await finish(exitCode);

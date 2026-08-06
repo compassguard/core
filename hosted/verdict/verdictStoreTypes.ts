@@ -20,6 +20,23 @@ export type VerdictStatus = "DECIDED" | "CONFIRMED_MATCH" | "CONFIRMED_MISMATCH"
  */
 export type ConfirmOutcome = "match" | "mismatch" | "execution_failed";
 
+/**
+ * What became of the mandate judge for this decision — RECORDED, not inferred.
+ *   not_attempted — the judge gate never opened (no judge wired, no stated purpose, no mandate
+ *                   found, or a deterministic DENY, which is final and never escalates)
+ *   unavailable   — the judge was called and did not answer; the service appends
+ *                   `judge_unavailable` to the reasons, and the verdict is honestly degraded
+ *   completed     — the judge answered; its output is in the judge* fields
+ *
+ * Reconstruction previously DERIVED this from "mandate snapshot present, no judge output".
+ * That inference held for every shipped writer but was never encoded in the contract: a
+ * type-valid row could snapshot a mandate without attempting a judge, and replay would then
+ * invent a `judge_unavailable` reason that never existed. Recording the fact removes the
+ * inference — the same lesson as snapshotting policy (D4a) and classification (D4b) rather
+ * than re-deriving them. Absent on rows written before this field existed.
+ */
+export type JudgeStatus = "not_attempted" | "unavailable" | "completed";
+
 export type VerdictRecord = {
 	correlationId: string;
 	decision: HostedDecision;
@@ -47,6 +64,8 @@ export type VerdictRecord = {
 	intentSource?: IntentSource;
 	/** The mandate judge's rationale, when it ran (audit/flywheel value). */
 	judgeRationale?: string;
+	/** What became of the mandate judge — recorded, never inferred (see JudgeStatus). */
+	judgeStatus?: JudgeStatus;
 	/** The tool name the caller invoked — the classification input for deterministic replay. */
 	toolName?: string;
 	/**
@@ -147,6 +166,8 @@ export type DecidedInput = {
 	intentSource?: IntentSource;
 	/** The mandate judge's rationale, when it ran (audit/flywheel value). */
 	judgeRationale?: string;
+	/** What became of the mandate judge — recorded, never inferred (see JudgeStatus). */
+	judgeStatus?: JudgeStatus;
 	/** The tool name the caller invoked (see VerdictRecord). */
 	toolName?: string;
 	/** The derived PolicyEvaluationContext the rules evaluated (see VerdictRecord). */

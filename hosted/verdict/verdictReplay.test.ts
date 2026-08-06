@@ -250,10 +250,33 @@ describe("verdict replay from the stored row (reconstruction proof)", () => {
 
 		expect(record.mandateSnapshot).toBeDefined();
 		expect(record.judgeRawDecision).toBeUndefined();
+		expect(record.judgeStatus).toBe("unavailable"); // RECORDED, not inferred
 		expect(record.reasons).toContain("judge_unavailable");
 		expect(replayed.reasons).toEqual(record.reasons);
 		expect(replayed.humanExplanation).toBe(record.humanExplanation);
 		expect(replayed.decision).toBe(record.decision);
+	});
+
+	it("trusts a RECORDED judgeStatus over the mandate-snapshot inference", async () => {
+		// The old inference read "mandate snapshot present, no judge output" as unavailable.
+		// A type-valid row can snapshot a found mandate WITHOUT attempting a judge, and the
+		// inference would invent a judge_unavailable reason that never happened. The recorded
+		// status settles it. Found by external review (gpt-5.6), 2026-08-06.
+		const { record } = await decideAndReplay({ ran: false }, "pay the landlord");
+		const neverAttempted: VerdictRecord = {
+			...record,
+			judgeStatus: "not_attempted",
+			reasons: record.reasons.filter((r) => r !== "judge_unavailable"),
+		};
+		const replayed = expectReplayed(replayVerdict(neverAttempted));
+		expect(replayed.reasons).not.toContain("judge_unavailable");
+		expect(replayed.reasons).toEqual(neverAttempted.reasons);
+	});
+
+	it("reconstructs intentSource so a row disagreeing with its judge fields is caught", async () => {
+		const { record, replayed } = await decideAndReplay({ ran: false }, undefined);
+		expect(replayed.intentSource).toBe("none");
+		expect(record.intentSource).toBe("none");
 	});
 
 	it("refuses a judged row that lacks its pre-judge deterministic floor", async () => {

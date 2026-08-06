@@ -3,6 +3,7 @@ import {
 } from "@back/guardrail/execution/executionGateway";
 import type { CompassDecision } from "@shared/executionGatewayContracts";
 import type { HostedDecision } from "@shared/evaluationContracts";
+import type { IntentSource } from "@shared/mandateContracts";
 import type { LlmGuardDecision, LlmGuardOutput } from "@shared/llmDecisionContracts";
 
 import { clampLlmDecision } from "../llm/llmDecisionAdapter";
@@ -50,6 +51,12 @@ export type ReplayedVerdict = {
 	reasons: string[];
 	humanExplanation: string;
 	judgeClamped: boolean | undefined;
+	/**
+	 * Which check actually ran. Persisted on the row and part of the /verify response, so it
+	 * belongs in the reproduced surface — leaving it out let a row whose stored intentSource
+	 * disagreed with its judge fields still compare as a clean match.
+	 */
+	intentSource: IntentSource;
 	/**
 	 * Set when the row was decided by a DIFFERENT build than the one replaying it, or when the
 	 * row carries no engineVersion at all. Advisory: the snapshotted inputs still drive the
@@ -162,15 +169,10 @@ export function replayVerdict(
 		compassDecision = clamped.decision;
 		judgeClamped = clamped.clamped;
 		reasons = mergeJudgeReasons(reasons, recordedOutput.reasonCodes);
-	} else if (record.mandateSnapshot !== undefined) {
-		// JUDGE ATTEMPTED BUT UNAVAILABLE. The service snapshots the mandate only after the
-		// judge gate is entered and a mandate is found (verifyService.ts:135-136), and sets
-		// judgeRawDecision whenever the judge actually ran (verifyJudge.ts:77,149 — rawDecision
-		// is required on ran:true). So "mandate snapshot present, no judge output" means exactly
-		// one thing: the judge was called and did not answer, and the service appended
-		// judge_unavailable to the reasons. Replay must reproduce that or it silently loses a
-		// reason the stored verdict carries — the row is fail-HONEST about a degraded check, and
-		// a reconstruction that drops it would claim a cleaner decision than actually happened.
+	} else if (judgeWasUnavailable(record)) {
+		// The judge was called and did not answer, so the service appended judge_unavailable.
+		// Replay must reproduce it: the row is deliberately fail-HONEST about a degraded check,
+		// and a reconstruction that dropped it would claim a cleaner decision than happened.
 		reasons = [...reasons, VERIFY_JUDGE_REASON_UNAVAILABLE];
 	}
 
@@ -190,6 +192,8 @@ export function replayVerdict(
 
 	return {
 		ok: true,
+		// "self_report" exactly when the judge produced a decision (verifyService.ts:158).
+		intentSource: record.judgeRawDecision !== undefined ? "self_report" : "none",
 		deterministicDecision: evaluation.decision as string,
 		evaluatedRules: evaluation.evaluatedRules,
 		decision,
@@ -199,6 +203,18 @@ export function replayVerdict(
 		judgeClamped,
 		...(engineVersionWarning !== undefined ? { engineVersionWarning } : {}),
 	};
+}
+
+/**
+ * Did the judge run and fail? Prefer the RECORDED judgeStatus. Fall back to the old inference
+ * ("mandate snapshot present, no judge output") only for rows written before judgeStatus
+ * existed — that inference held for every shipped writer, but the record contract permits a
+ * type-valid row that snapshots a mandate without attempting a judge, which the inference would
+ * misread as unavailable. Recorded fact first, inference only where no fact was recorded.
+ */
+function judgeWasUnavailable(record: VerdictRecord): boolean {
+	if (record.judgeStatus !== undefined) return record.judgeStatus === "unavailable";
+	return record.mandateSnapshot !== undefined;
 }
 
 /** Advisory build-drift note; undefined when the row and the running build agree. */

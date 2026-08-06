@@ -18,7 +18,7 @@ import { derivePolicyContext } from "../policy/policyContext";
 import { evaluateAction } from "../policy/policyEngine";
 import { loadDefaultPolicy } from "../policy/loadPolicy";
 import { readEngineVersion } from "../verdict/engineVersion";
-import type { VerdictStore } from "../verdict/verdictStoreTypes";
+import type { JudgeStatus, VerdictStore } from "../verdict/verdictStoreTypes";
 import {
 	composeVerdictExplanation,
 	mergeJudgeReasons,
@@ -108,6 +108,8 @@ export function createVerifyService(
 			// Reconstruction context (plan 2026-07-26): the mandate the judge saw (or should
 			// have — judge_unavailable included) and the judge call's provenance.
 			let mandateSnapshot: Mandate | undefined;
+			// RECORDED, not inferred: reconstruction must not have to guess from absence.
+			let judgeStatus: JudgeStatus = "not_attempted";
 			let judgeModel: string | undefined;
 			let judgeRawDecision: string | undefined;
 			let judgeClamped: boolean | undefined;
@@ -159,8 +161,10 @@ export function createVerifyService(
 						judgeClamped = judged.clamped;
 						judgeConfidence = judged.confidence;
 						judgeReasonCodes = judged.reasonCodes;
+						judgeStatus = "completed";
 					} else {
 						// Fail-honest: a structural-only check is never presented as a mandate check.
+						judgeStatus = "unavailable";
 						reasons = [...reasons, VERIFY_JUDGE_REASON_UNAVAILABLE];
 					}
 				}
@@ -204,6 +208,7 @@ export function createVerifyService(
 					// resolved credential — distinct from the self-reported userId above.
 					authenticatedEmail: caller?.authenticatedEmail,
 					intentSource,
+					judgeStatus,
 					...(judgeRationale !== undefined ? { judgeRationale } : {}),
 					// Reconstruction context: enough to re-derive this verdict later — what the
 					// caller claimed, what the mandate said, which policy/rules ran, what the
