@@ -14,6 +14,9 @@ import type { VerdictStore } from "./verdict/verdictStoreTypes";
 import { createCredentialStoreFromEnv } from "./credential/credentialStoreFromEnv";
 import { createSignupService } from "./signup/signupService";
 import { createSignupRoutes } from "./signup/signupRoutes";
+import { createWaitlistStoreFromEnv } from "./waitlist/waitlistStoreFromEnv";
+import { createWaitlistService } from "./waitlist/waitlistService";
+import { createWaitlistRoutes } from "./waitlist/waitlistRoutes";
 import { createVerifyService } from "./verify/verifyService";
 import { createVerifyConfirmService } from "./verify/verifyConfirmService";
 import { createBoundedConfirmedTxFetcher } from "./verify/getConfirmedTx";
@@ -83,6 +86,9 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 	// Per-email credential store (D13): env-selected durable Supabase or in-memory fallback,
 	// built once and shared by the /v1 auth middleware and the public signup endpoint.
 	const credentialStore = deps.credentialStore ?? createCredentialStoreFromEnv();
+	// Waitlist store: separate from credentialStore on purpose — joining the waitlist records
+	// an email and grants no credential, unlike /signup.
+	const waitlistStore = deps.waitlistStore ?? createWaitlistStoreFromEnv();
 
 	app.onError(hostedErrorHandler);
 	app.use(
@@ -99,6 +105,8 @@ export function createHostedApp(deps: HostedAppDependencies): Hono {
 	// POST /signup is public (outside /v1, like /health): a caller mints an email credential
 	// here, then presents it as a Bearer token to /v1/*.
 	app.route("/", createSignupRoutes(createSignupService({ credentialStore })));
+	// POST /waitlist is public too, and mints nothing: it only records an email.
+	app.route("/", createWaitlistRoutes(createWaitlistService({ waitlistStore })));
 	app.use("/v1/*", hostedAuthMiddleware(deps.auth, credentialStore));
 	app.route("/v1", createEvaluationRoutes(evaluationService));
 	app.route("/v1", createVerifyRoutes(verifyService, verifyConfirmService));

@@ -9,6 +9,10 @@
       "destination": "/api/hosted/signup"
     },
     {
+      "source": "/waitlist",
+      "destination": "/api/hosted/waitlist"
+    },
+    {
       "source": "/events/beta-click",
       "destination": "/api/hosted/events/beta-click"
     },
