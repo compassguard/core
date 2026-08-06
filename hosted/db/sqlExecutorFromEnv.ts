@@ -8,23 +8,23 @@ import type { SqlExecutor } from "../verdict/verdictStorePg";
 // runtimes (Edge, CSP without unsafe-eval) even on the in-memory path.
 export const readEnv = (key: string): string | undefined => process.env[key];
 
+type PostgresClient = ReturnType<typeof postgres>;
+
 // One client per (process, URL), reused across warm serverless invocations — a fresh TCP/pooler
 // connection per invocation would exhaust Postgres. Keyed by URL so a rotated
 // COMPASS_VERDICT_DB_URL (or a different injected env in tests) never silently keeps talking to
 // the previous database. This is the SINGLE cached client every env-selected store shares.
-let cachedClient: ReturnType<typeof postgres> | undefined;
+let cachedClient: PostgresClient | undefined;
 let cachedUrl: string | undefined;
 
 /**
- * The shared env-selected SqlExecutor: a durable Supabase Postgres executor when
- * COMPASS_VERDICT_DB_URL is set, `undefined` otherwise (tests / un-provisioned dev). The
- * connection string MUST point at the Supabase transaction-mode pooler (port 6543);
- * `prepare: false` + a bounded pool are required for that pooling mode. Both the verdict store
- * and the credential store consume this, so one pooler client serves both.
+ * Returns the shared tagged-template Postgres client for callers that must not cross the raw
+ * string SqlExecutor seam. Keep domain queries in their owning adapter and invoke this client
+ * only as a template tag so interpolated values remain driver-bound parameters.
  */
-export function createSqlExecutorFromEnv(
+export function createPostgresClientFromEnv(
 	getEnv: (key: string) => string | undefined = readEnv,
-): SqlExecutor | undefined {
+): PostgresClient | undefined {
 	const url = getEnv("COMPASS_VERDICT_DB_URL")?.trim();
 	if (!url) {
 		// Fail loudly in production. An unconfigured durable store makes both the credential and
@@ -69,7 +69,21 @@ export function createSqlExecutorFromEnv(
 		}
 		cachedUrl = url;
 	}
-	const client = cachedClient;
+	return cachedClient;
+}
+
+/**
+ * The shared env-selected SqlExecutor: a durable Supabase Postgres executor when
+ * COMPASS_VERDICT_DB_URL is set, `undefined` otherwise (tests / un-provisioned dev). The
+ * connection string MUST point at the Supabase transaction-mode pooler (port 6543);
+ * `prepare: false` + a bounded pool are required for that pooling mode. Both the verdict store
+ * and the credential store consume this, so one pooler client serves both.
+ */
+export function createSqlExecutorFromEnv(
+	getEnv: (key: string) => string | undefined = readEnv,
+): SqlExecutor | undefined {
+	const client = createPostgresClientFromEnv(getEnv);
+	if (!client) return undefined;
 	const sql: SqlExecutor = async (text, params) => {
 		const rows = await client.unsafe(text, params as (string | number | null)[]);
 		return rows as unknown as Record<string, unknown>[];

@@ -9,7 +9,7 @@ La idea principal es permitir que agentes y usuarios ejecuten operaciones comune
 
 Arquitectura actual (alto nivel):
 
-- `app`: entrypoints mínimos de Next para la landing pública (`/`), redirect `/landing` y página WIP `/launch`.
+- `app`: entrypoints mínimos de Next para la raíz JSON de la API (`/`), el redirect `/landing` al sitio público y las páginas `/demo` y `/launch`.
 - `back`: servicios MCP Guard server-side (execution gateway, policy, transfer guard, audit, on-chain approval, providers compartidos) y programas Anchor.
 
 ## Objetivo del guardrail

@@ -230,6 +230,11 @@
           <div class="tile-sub" id="kpi-users-sub"></div>
         </div>
         <div class="tile">
+          <div class="tile-label">Beta page clicks — all time</div>
+          <div class="tile-value" id="kpi-beta-clicks">—</div>
+          <div class="tile-sub" id="kpi-beta-clicks-sub"></div>
+        </div>
+        <div class="tile">
           <div class="tile-label">Median time to first tx</div>
           <div class="tile-value" id="kpi-ttfv">—</div>
           <div class="tile-sub">signup → first guarded action</div>
@@ -338,6 +343,7 @@
       function render(data) {
         var totals = data.fundsSecured.totals;
         var onboarding = data.onboarding;
+        var betaClicks = data.betaClicks;
 
         $("as-of").textContent = "as of " + fmtStamp(data.generatedAt) + " UTC";
 
@@ -359,6 +365,11 @@
 
         $("kpi-users").textContent = String(onboarding.users);
         $("kpi-users-sub").textContent = onboarding.activated + " sent a first tx · " + onboarding.flagged + " got flagged";
+
+        $("kpi-beta-clicks").textContent = String(betaClicks.total);
+        $("kpi-beta-clicks-sub").textContent = "nav " + betaClicks.bySource.nav +
+          " · hero " + betaClicks.bySource.hero + " · closing " + betaClicks.bySource.closing +
+          " · unknown " + betaClicks.bySource.unknown + " · click events, not unique people";
 
         $("kpi-ttfv").textContent = fmtSeconds(onboarding.medianSecondsToFirstVerify);
         $("kpi-ttff").textContent = fmtSeconds(onboarding.medianSecondsToFirstFlagged);

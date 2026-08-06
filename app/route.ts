@@ -1,14 +1,13 @@
-import { readFileSync } from "fs";
-import { join } from "path";
-import { NextResponse } from "next/server";
-
 export async function GET() {
-	const html = readFileSync(join(process.cwd(), "landing.html"), "utf-8");
-
-	return new NextResponse(html, {
-		headers: {
-			"Content-Type": "text/html; charset=utf-8",
-			"Cache-Control": "no-store, must-revalidate",
+	return Response.json(
+		{
+			service: "Compass Guard API",
+			status: "ok",
+			message: "Compass Guard API is running.",
+			documentation: "https://docs.compassguard.xyz",
+			health: "/health",
+			apiVersion: "v1",
 		},
-	});
+		{ status: 200, headers: { "Cache-Control": "public, max-age=300" } },
+	);
 }

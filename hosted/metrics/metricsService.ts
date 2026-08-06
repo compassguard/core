@@ -3,6 +3,7 @@ import type { HostedDecision } from "@shared/evaluationContracts";
 import type { CredentialStore } from "../credential/credentialStore";
 import type { VerdictStore } from "../verdict/verdictStoreTypes";
 import type {
+	BetaClickMetricsReader,
 	FundsBucket,
 	MetricsResponse,
 	MetricsService,
@@ -12,6 +13,7 @@ import type {
 export type MetricsServiceDependencies = {
 	verdictStore: VerdictStore;
 	credentialStore: CredentialStore;
+	betaClickMetricsReader: BetaClickMetricsReader;
 	isoNow?: () => string;
 };
 
@@ -111,19 +113,21 @@ function isFlagged(decision: HostedDecision): boolean {
 }
 
 /**
- * Computes both operator metrics read-only from data already persisted (credentials +
- * verdicts) — no new event tracking, no schema migration. Backing-agnostic: the same code
- * path runs over in-memory and Pg stores because it only calls list()/listIssued().
+ * Computes operator metrics read-only from data already persisted — no new event tracking
+ * or schema migration. Onboarding and funds remain store-agnostic; beta click totals come
+ * from an injected aggregate reader so this service never receives individual click rows.
  */
 export function createMetricsService(deps: MetricsServiceDependencies): MetricsService {
 	const isoNow = deps.isoNow ?? (() => new Date().toISOString());
 
 	return {
 		async computeMetrics(): Promise<MetricsResponse> {
-			// Both Pg stores lazily ensure their schema. Keep that DDL serial on the
-			// transaction-pooler connection; concurrent setup can wait indefinitely.
+			// Both Pg stores lazily ensure their schema. Keep their DDL and the subsequent
+			// beta-event probe serial on the transaction-pooler connection; concurrent setup
+			// can wait indefinitely.
 			const verdicts = await deps.verdictStore.list();
 			const issued = await deps.credentialStore.listIssued();
+			const betaClicks = await deps.betaClickMetricsReader.readAllTime();
 
 			// signupAt per email = min(createdAt) across that email's credentials — revoked
 			// credentials still mark signup.
@@ -228,6 +232,7 @@ export function createMetricsService(deps: MetricsServiceDependencies): MetricsS
 
 			return {
 				generatedAt: isoNow(),
+				betaClicks,
 				onboarding: {
 					users: signupByEmail.size,
 					activated: perUser.filter((user) => user.firstVerifyAt !== undefined).length,

@@ -1,8 +1,0 @@
-<svg width="160" height="160" viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
-  <title id="title">Compass logo</title>
-  <desc id="desc">Blue Compass shield logo.</desc>
-  <rect width="160" height="160" rx="40" fill="#0052FF"/>
-  <path d="M80 132C80 132 119 112.5 119 73.5V39L80 24L41 39V73.5C41 112.5 80 132 80 132Z" fill="white" fill-opacity="0.16" stroke="white" stroke-width="8" stroke-linejoin="round"/>
-  <path d="M96 52L84 88L48 100L60 64L96 52Z" fill="white"/>
-  <path d="M64 68L84 88" stroke="#0052FF" stroke-width="6" stroke-linecap="round"/>
-</svg>

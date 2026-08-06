@@ -15,6 +15,7 @@ export default defineConfig({
     include: [
       'back/**/*.{test,spec}.?(c|m)[jt]s?(x)',
       'hosted/**/*.{test,spec}.?(c|m)[jt]s?(x)',
+      'app/**/*.{test,spec}.?(c|m)[jt]s?(x)',
     ],
     exclude: ['node_modules/**', '.next/**'],
   },
