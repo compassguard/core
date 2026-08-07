@@ -16,3 +16,17 @@ describe("metrics dashboard beta click tile", () => {
 		expect(html).toContain("click events, not unique people");
 	});
 });
+
+describe("metrics dashboard waitlist tile", () => {
+	it("labels the total as all-time signups and renders the count from the response", async () => {
+		const html = await readFile(
+			new URL("../../scripts/metrics-dashboard.html", import.meta.url),
+			"utf8",
+		);
+
+		expect(html).toContain("Waitlist signups — all time");
+		expect(html).toContain('id="kpi-waitlist"');
+		expect(html).toContain("waitlist.total");
+		expect(html).toContain("deduplicated by address");
+	});
+});

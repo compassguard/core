@@ -235,6 +235,11 @@
           <div class="tile-sub" id="kpi-beta-clicks-sub"></div>
         </div>
         <div class="tile">
+          <div class="tile-label">Waitlist signups — all time</div>
+          <div class="tile-value" id="kpi-waitlist">—</div>
+          <div class="tile-sub" id="kpi-waitlist-sub"></div>
+        </div>
+        <div class="tile">
           <div class="tile-label">Median time to first tx</div>
           <div class="tile-value" id="kpi-ttfv">—</div>
           <div class="tile-sub">signup → first guarded action</div>
@@ -344,6 +349,7 @@
         var totals = data.fundsSecured.totals;
         var onboarding = data.onboarding;
         var betaClicks = data.betaClicks;
+        var waitlist = data.waitlist;
 
         $("as-of").textContent = "as of " + fmtStamp(data.generatedAt) + " UTC";
 
@@ -370,6 +376,11 @@
         $("kpi-beta-clicks-sub").textContent = "nav " + betaClicks.bySource.nav +
           " · hero " + betaClicks.bySource.hero + " · closing " + betaClicks.bySource.closing +
           " · unknown " + betaClicks.bySource.unknown + " · click events, not unique people";
+
+        $("kpi-waitlist").textContent = String(waitlist.total);
+        $("kpi-waitlist-sub").textContent = waitlist.total === 1
+          ? "1 email on the list, deduplicated by address"
+          : waitlist.total + " emails on the list, deduplicated by address";
 
         $("kpi-ttfv").textContent = fmtSeconds(onboarding.medianSecondsToFirstVerify);
         $("kpi-ttff").textContent = fmtSeconds(onboarding.medianSecondsToFirstFlagged);

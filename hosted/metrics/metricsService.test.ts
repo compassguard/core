@@ -5,7 +5,7 @@ import type { IntendedEffect } from "@shared/verdictContracts";
 import { createInMemoryCredentialStore } from "../credential/credentialStore";
 import { createInMemoryVerdictStore } from "../verdict/verdictStore";
 import type { DecidedInput, VerdictStore } from "../verdict/verdictStoreTypes";
-import type { BetaClickMetricsReader } from "./metricsContracts";
+import type { BetaClickMetricsReader, WaitlistMetricsReader } from "./metricsContracts";
 import {
 	createMetricsService as createBaseMetricsService,
 	type MetricsServiceDependencies,
@@ -21,14 +21,20 @@ const EMPTY_BETA_CLICK_METRICS: BetaClickMetricsReader = {
 	}),
 };
 
+const EMPTY_WAITLIST_METRICS: WaitlistMetricsReader = {
+	readAllTime: async () => ({ period: "all_time", total: 0 }),
+};
+
 function createMetricsService(
-	deps: Omit<MetricsServiceDependencies, "betaClickMetricsReader"> & {
+	deps: Omit<MetricsServiceDependencies, "betaClickMetricsReader" | "waitlistMetricsReader"> & {
 		betaClickMetricsReader?: BetaClickMetricsReader;
+		waitlistMetricsReader?: WaitlistMetricsReader;
 	},
 ) {
 	return createBaseMetricsService({
 		...deps,
 		betaClickMetricsReader: deps.betaClickMetricsReader ?? EMPTY_BETA_CLICK_METRICS,
+		waitlistMetricsReader: deps.waitlistMetricsReader ?? EMPTY_WAITLIST_METRICS,
 	});
 }
 
@@ -95,6 +101,17 @@ describe("createMetricsService", () => {
 		await expect(service.computeMetrics()).rejects.toBe(failure);
 	});
 
+	it("propagates waitlist read failures to the dashboard server", async () => {
+		const failure = new Error("waitlist query failed");
+		const service = createMetricsService({
+			verdictStore: createInMemoryVerdictStore(),
+			credentialStore: createInMemoryCredentialStore(),
+			waitlistMetricsReader: { readAllTime: async () => Promise.reject(failure) },
+		});
+
+		await expect(service.computeMetrics()).rejects.toBe(failure);
+	});
+
 	it("empty stores → zeros, nulls, empty arrays", async () => {
 		const service = createMetricsService({
 			verdictStore: createInMemoryVerdictStore(),
@@ -110,6 +127,7 @@ describe("createMetricsService", () => {
 			total: 0,
 			bySource: { nav: 0, hero: 0, closing: 0, unknown: 0 },
 		});
+		expect(metrics.waitlist).toEqual({ period: "all_time", total: 0 });
 		expect(metrics.onboarding).toEqual({
 			users: 0,
 			activated: 0,
