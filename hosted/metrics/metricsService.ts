@@ -8,12 +8,14 @@ import type {
 	MetricsResponse,
 	MetricsService,
 	OnboardingPerUser,
+	WaitlistMetricsReader,
 } from "./metricsContracts";
 
 export type MetricsServiceDependencies = {
 	verdictStore: VerdictStore;
 	credentialStore: CredentialStore;
 	betaClickMetricsReader: BetaClickMetricsReader;
+	waitlistMetricsReader: WaitlistMetricsReader;
 	isoNow?: () => string;
 };
 
@@ -114,8 +116,9 @@ function isFlagged(decision: HostedDecision): boolean {
 
 /**
  * Computes operator metrics read-only from data already persisted — no new event tracking
- * or schema migration. Onboarding and funds remain store-agnostic; beta click totals come
- * from an injected aggregate reader so this service never receives individual click rows.
+ * or schema migration. Onboarding and funds remain store-agnostic; beta click and waitlist
+ * totals each come from an injected aggregate reader so this service never receives
+ * individual click rows or waitlist emails.
  */
 export function createMetricsService(deps: MetricsServiceDependencies): MetricsService {
 	const isoNow = deps.isoNow ?? (() => new Date().toISOString());
@@ -128,6 +131,7 @@ export function createMetricsService(deps: MetricsServiceDependencies): MetricsS
 			const verdicts = await deps.verdictStore.list();
 			const issued = await deps.credentialStore.listIssued();
 			const betaClicks = await deps.betaClickMetricsReader.readAllTime();
+			const waitlist = await deps.waitlistMetricsReader.readAllTime();
 
 			// signupAt per email = min(createdAt) across that email's credentials — revoked
 			// credentials still mark signup.
@@ -233,6 +237,7 @@ export function createMetricsService(deps: MetricsServiceDependencies): MetricsS
 			return {
 				generatedAt: isoNow(),
 				betaClicks,
+				waitlist,
 				onboarding: {
 					users: signupByEmail.size,
 					activated: perUser.filter((user) => user.firstVerifyAt !== undefined).length,

@@ -2,7 +2,8 @@
 // the local dashboard launcher (scripts/metrics-dashboard.ts), NOT by the hosted API: it
 // carries every user's email, so it never crosses the internet (2026-07-26-metrics-db-direct.md).
 // Read-only operator metrics computed from data already persisted (credentials, verdicts,
-// and beta click events): onboarding time, funds secured, and aggregate beta-page clicks.
+// beta click events, and waitlist signups): onboarding time, funds secured, aggregate
+// beta-page clicks, and the waitlist total.
 
 import type { BetaClickSource } from "../events/betaClickContracts";
 
@@ -18,6 +19,17 @@ export type BetaClickMetricsReader = {
 	readAllTime(): Promise<BetaClickMetrics>;
 };
 
+export type WaitlistMetrics = {
+	/** Fixed semantic scope: every persisted waitlist signup, with no date window. */
+	period: "all_time";
+	/** Count of distinct emails in waitlist_signups — the store dedupes by normalized email. */
+	total: number;
+};
+
+export type WaitlistMetricsReader = {
+	readAllTime(): Promise<WaitlistMetrics>;
+};
+
 export type BetaClickAggregateRow = {
 	source: unknown;
 	clickCount: unknown;
@@ -27,6 +39,12 @@ export type BetaClickAggregateRow = {
 export type BetaClickMetricsQuery = {
 	tableExists(): Promise<boolean>;
 	aggregateAllTime(): Promise<readonly BetaClickAggregateRow[]>;
+};
+
+/** Domain query seam: callers select operations, never SQL text or identifiers. */
+export type WaitlistMetricsQuery = {
+	tableExists(): Promise<boolean>;
+	countAllTime(): Promise<unknown>;
 };
 
 export type OnboardingPerUser = {
@@ -62,6 +80,7 @@ export type FundsBucket = {
 export type MetricsResponse = {
 	generatedAt: string; // isoNow at compute time
 	betaClicks: BetaClickMetrics;
+	waitlist: WaitlistMetrics;
 	onboarding: {
 		users: number; // distinct signup emails
 		activated: number; // users with a firstVerifyAt

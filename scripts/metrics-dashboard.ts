@@ -22,6 +22,8 @@ import { createSqlExecutorFromEnv } from "../hosted/db/sqlExecutorFromEnv";
 import { createPgCredentialStore } from "../hosted/credential/credentialStorePg";
 import { createBetaClickMetricsReader } from "../hosted/metrics/betaClickMetrics";
 import { createBetaClickMetricsQueryFromEnv } from "../hosted/metrics/betaClickMetricsPg";
+import { createWaitlistMetricsReader } from "../hosted/metrics/waitlistMetrics";
+import { createWaitlistMetricsQueryFromEnv } from "../hosted/metrics/waitlistMetricsPg";
 import { createPgVerdictStore } from "../hosted/verdict/verdictStorePg";
 import { createMetricsService } from "../hosted/metrics/metricsService";
 
@@ -35,7 +37,8 @@ const HTML_PATH =
 // that looks like success, so it must never be reachable.
 const sql = createSqlExecutorFromEnv();
 const betaClickMetricsQuery = createBetaClickMetricsQueryFromEnv();
-if (!sql || !betaClickMetricsQuery) {
+const waitlistMetricsQuery = createWaitlistMetricsQueryFromEnv();
+if (!sql || !betaClickMetricsQuery || !waitlistMetricsQuery) {
 	console.error(
 		"metrics dashboard: COMPASS_VERDICT_DB_URL is required (Supabase transaction-pooler URL, port 6543).",
 	);
@@ -48,6 +51,7 @@ const metrics = createMetricsService({
 	verdictStore: createPgVerdictStore({ sql }),
 	credentialStore: createPgCredentialStore({ sql }),
 	betaClickMetricsReader: createBetaClickMetricsReader(betaClickMetricsQuery),
+	waitlistMetricsReader: createWaitlistMetricsReader(waitlistMetricsQuery),
 });
 
 const server = createServer(async (request, response) => {
